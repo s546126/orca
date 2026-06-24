@@ -154,7 +154,14 @@ import { parsePtySessionId } from '../../shared/pty-session-id-format'
 import { clampLinearIssueListLimit } from '../../shared/linear-issue-read-limits'
 import { isFolderRepo } from '../../shared/repo-kind'
 import { DEFAULT_WORKSPACE_STATUS_ID } from '../../shared/workspace-statuses'
-import { buildSetupRunnerCommand } from '../../shared/setup-runner-command'
+import {
+  buildSetupRunnerCommand,
+  getSetupRunnerCommandPlatformForPath
+} from '../../shared/setup-runner-command'
+import {
+  createSequencedSetupAgentCommands,
+  SETUP_AGENT_SEQUENCE_STARTUP_COMMAND_ENV
+} from '../../shared/setup-agent-sequencing'
 import { TASK_PROVIDERS } from '../../shared/task-providers'
 import { FIRST_PANE_ID } from '../../shared/pane-key'
 import { isTerminalLeafId, makePaneKey, parsePaneKey } from '../../shared/stable-pane-id'
@@ -991,6 +998,7 @@ type RuntimePtyController = {
     rows: number
     cwd?: string
     command?: string
+    commandDelivery?: 'renderer' | 'provider'
     startupCommandDelivery?: WorktreeStartupLaunch['startupCommandDelivery']
     env?: Record<string, string>
     envToDelete?: string[]
@@ -12624,12 +12632,11 @@ export class OrcaRuntimeService {
     }
     const shouldRunSetup = hooks?.scripts.setup && shouldRunSetupForCreate(repo, effectiveDecision)
     if (shouldRunSetup && hooks?.scripts.setup) {
-      if (this.authoritativeWindowId !== null) {
+      const shouldUseSetupRunner = this.authoritativeWindowId !== null || Boolean(effectiveStartup)
+      if (shouldUseSetupRunner) {
         try {
-          // Why: CLI-created worktrees must use the same runner-script path as the
-          // renderer create flow so repo-committed `orca.yaml` setup hooks run in
-          // the visible first terminal instead of a hidden background shell with
-          // different failure and prompt behavior.
+          // Why: setup+startup must share the terminal runner path even without
+          // a renderer window, so the startup shell can wait on setup completion.
           setup = createSetupRunnerScript(
             repo,
             worktreePath,
@@ -12677,7 +12684,30 @@ export class OrcaRuntimeService {
     let startupTerminalTabId: string | null = null
     let startupTerminalPaneKey: string | null = null
     let startupTerminalPtyId: string | null = null
-    if (effectiveStartup && this.ptyController?.spawn) {
+
+    let sequencedStartup = effectiveStartup
+    let wrappedSetupCommandStr: string | undefined
+    if (effectiveStartup && setup) {
+      const platform = getSetupRunnerCommandPlatformForPath(
+        setup.runnerScriptPath,
+        process.platform === 'win32' ? 'windows' : 'posix'
+      )
+      const sequenced = createSequencedSetupAgentCommands({
+        runnerScriptPath: setup.runnerScriptPath,
+        startupCommand: effectiveStartup.command,
+        platform
+      })
+      sequencedStartup = {
+        ...effectiveStartup,
+        command: sequenced.startupCommand,
+        ...(sequenced.startupEnv
+          ? { env: { ...effectiveStartup.env, ...sequenced.startupEnv } }
+          : {})
+      }
+      wrappedSetupCommandStr = sequenced.setupCommand
+    }
+
+    if (sequencedStartup && this.ptyController?.spawn) {
       try {
         // Why: automation startup must not depend on a renderer TerminalPane
         // mounting. Runtime-spawned PTYs run immediately and the UI adopts the
@@ -12687,12 +12717,15 @@ export class OrcaRuntimeService {
           this.markLocalWorkspaceTrustedForAgent(startupTrustAgent, worktreePath)
         }
         const terminal = await this.createTerminal(`id:${worktree.id}`, {
-          command: effectiveStartup.command,
-          env: effectiveStartup.env,
-          ...(effectiveStartup.launchConfig ? { launchConfig: effectiveStartup.launchConfig } : {}),
+          command: sequencedStartup.command,
+          ...(setup && effectiveStartup
+            ? { claudeAgentTeamsSourceCommand: effectiveStartup.command }
+            : {}),
+          env: sequencedStartup.env,
+          ...(sequencedStartup.launchConfig ? { launchConfig: sequencedStartup.launchConfig } : {}),
           ...(effectiveCreatedWithAgent ? { launchAgent: effectiveCreatedWithAgent } : {}),
-          startupCommandDelivery: effectiveStartup.startupCommandDelivery,
-          telemetry: effectiveStartup.telemetry
+          startupCommandDelivery: sequencedStartup.startupCommandDelivery,
+          telemetry: sequencedStartup.telemetry
         })
         if (effectiveDraftPaste) {
           this.pasteStartupDraftWhenReady(terminal.handle, effectiveDraftPaste)
@@ -12718,10 +12751,15 @@ export class OrcaRuntimeService {
         // Why: reveal-on-adopt can create the startup tab before renderer
         // activation handles setup. Honor the same split-vs-tab setting here
         // because renderer activation will skip setup once the startup tab exists.
-        const setupCommand = buildSetupRunnerCommand(
-          setup.runnerScriptPath,
-          process.platform === 'win32' ? 'windows' : 'posix'
-        )
+        const setupCommand =
+          wrappedSetupCommandStr ??
+          buildSetupRunnerCommand(
+            setup.runnerScriptPath,
+            getSetupRunnerCommandPlatformForPath(
+              setup.runnerScriptPath,
+              process.platform === 'win32' ? 'windows' : 'posix'
+            )
+          )
         const setupLaunchMode =
           (this.store.getSettings() as Partial<Pick<GlobalSettings, 'setupScriptLaunchMode'>>)
             .setupScriptLaunchMode ?? 'new-tab'
@@ -12755,7 +12793,16 @@ export class OrcaRuntimeService {
       // Why: plain CLI creates should not steal the user's current workspace.
       // Explicit activation and hook-running still use renderer activation so
       // the user can watch prompts/output in a visible pane.
-      const activationSetup = didSpawnSetup ? undefined : setup
+      const activationSetup = didSpawnSetup
+        ? undefined
+        : setup
+          ? {
+              ...setup,
+              ...(didSpawnStartup && wrappedSetupCommandStr
+                ? { command: wrappedSetupCommandStr }
+                : {})
+            }
+          : undefined
       if (effectiveStartup && !didSpawnStartup) {
         this.notifyActivateWorktree(
           repo.id,
@@ -12775,10 +12822,15 @@ export class OrcaRuntimeService {
           initialTerminalHandle = terminal.handle
         }
         if (setup && !didSpawnSetup) {
-          const setupCommand = buildSetupRunnerCommand(
-            setup.runnerScriptPath,
-            process.platform === 'win32' ? 'windows' : 'posix'
-          )
+          const setupCommand =
+            wrappedSetupCommandStr ??
+            buildSetupRunnerCommand(
+              setup.runnerScriptPath,
+              getSetupRunnerCommandPlatformForPath(
+                setup.runnerScriptPath,
+                process.platform === 'win32' ? 'windows' : 'posix'
+              )
+            )
           const setupLaunchMode =
             (this.store.getSettings() as Partial<Pick<GlobalSettings, 'setupScriptLaunchMode'>>)
               .setupScriptLaunchMode ?? 'new-tab'
@@ -12807,6 +12859,16 @@ export class OrcaRuntimeService {
         console.warn(`[worktree-create] ${warning}`)
       }
     }
+    const returnedSetup = didSpawnSetup
+      ? undefined
+      : setup
+        ? {
+            ...setup,
+            ...(didSpawnStartup && wrappedSetupCommandStr
+              ? { command: wrappedSetupCommandStr }
+              : {})
+          }
+        : undefined
     return {
       worktree: {
         ...worktree,
@@ -12817,7 +12879,7 @@ export class OrcaRuntimeService {
         git: created
       },
       ...(lineageInput ? { lineage, workspaceLineage, warnings: lineageWarnings } : {}),
-      ...(setup ? { setup } : {}),
+      ...(returnedSetup ? { setup: returnedSetup } : {}),
       ...(defaultTabs ? { defaultTabs } : {}),
       ...(warning ? { warning } : {}),
       ...(addResult.localBaseRefRefresh
@@ -12943,7 +13005,25 @@ export class OrcaRuntimeService {
     let startupTerminalTabId: string | null = null
     let startupTerminalPaneKey: string | null = null
     let startupTerminalPtyId: string | null = null
-    if (args.startup && this.ptyController?.spawn) {
+
+    let sequencedStartup = args.startup
+    let wrappedSetupCommandStr: string | undefined
+    if (args.startup && result.setup) {
+      const platform = getSetupRunnerCommandPlatformForPath(result.setup.runnerScriptPath, 'posix')
+      const sequenced = createSequencedSetupAgentCommands({
+        runnerScriptPath: result.setup.runnerScriptPath,
+        startupCommand: args.startup.command,
+        platform
+      })
+      sequencedStartup = {
+        ...args.startup,
+        command: sequenced.startupCommand,
+        ...(sequenced.startupEnv ? { env: { ...args.startup.env, ...sequenced.startupEnv } } : {})
+      }
+      wrappedSetupCommandStr = sequenced.setupCommand
+    }
+
+    if (sequencedStartup && this.ptyController?.spawn) {
       try {
         const startupTrustAgent = args.startupDraftPaste?.agent ?? args.createdWithAgent
         if (startupTrustAgent) {
@@ -12954,12 +13034,15 @@ export class OrcaRuntimeService {
           )
         }
         const terminal = await this.createTerminal(`path:${result.worktree.path}`, {
-          command: args.startup.command,
-          env: args.startup.env,
-          ...(args.startup.launchConfig ? { launchConfig: args.startup.launchConfig } : {}),
+          command: sequencedStartup.command,
+          ...(result.setup && args.startup
+            ? { claudeAgentTeamsSourceCommand: args.startup.command }
+            : {}),
+          env: sequencedStartup.env,
+          ...(sequencedStartup.launchConfig ? { launchConfig: sequencedStartup.launchConfig } : {}),
           ...(args.createdWithAgent ? { launchAgent: args.createdWithAgent } : {}),
-          startupCommandDelivery: args.startup.startupCommandDelivery,
-          telemetry: args.startup.telemetry
+          startupCommandDelivery: sequencedStartup.startupCommandDelivery,
+          telemetry: sequencedStartup.telemetry
         })
         if (args.startupDraftPaste) {
           this.pasteStartupDraftWhenReady(terminal.handle, args.startupDraftPaste)
@@ -12985,10 +13068,12 @@ export class OrcaRuntimeService {
         // Why: remote/mobile task creates spawn the agent terminal in runtime,
         // so renderer activation never receives the setup payload. Runtime
         // must apply the same user-selected split-vs-tab setup placement.
-        const setupCommand = buildSetupRunnerCommand(
-          result.setup.runnerScriptPath,
-          isWindowsAbsolutePathLike(result.setup.runnerScriptPath) ? 'windows' : 'posix'
-        )
+        const setupCommand =
+          wrappedSetupCommandStr ??
+          buildSetupRunnerCommand(
+            result.setup.runnerScriptPath,
+            getSetupRunnerCommandPlatformForPath(result.setup.runnerScriptPath, 'posix')
+          )
         const setupLaunchMode =
           (this.store.getSettings() as Partial<Pick<GlobalSettings, 'setupScriptLaunchMode'>>)
             .setupScriptLaunchMode ?? 'new-tab'
@@ -13020,7 +13105,16 @@ export class OrcaRuntimeService {
 
     const shouldActivate = args.activate === true || args.runHooks === true
     if (shouldActivate) {
-      const activationSetup = didSpawnSetup ? undefined : result.setup
+      const activationSetup = didSpawnSetup
+        ? undefined
+        : result.setup
+          ? {
+              ...result.setup,
+              ...(didSpawnStartup && wrappedSetupCommandStr
+                ? { command: wrappedSetupCommandStr }
+                : {})
+            }
+          : undefined
       if (args.startup && !didSpawnStartup) {
         this.notifyActivateWorktree(
           repo.id,
@@ -13046,7 +13140,7 @@ export class OrcaRuntimeService {
         if (result.setup && !didSpawnSetup) {
           const setupCommand = buildSetupRunnerCommand(
             result.setup.runnerScriptPath,
-            isWindowsAbsolutePathLike(result.setup.runnerScriptPath) ? 'windows' : 'posix'
+            getSetupRunnerCommandPlatformForPath(result.setup.runnerScriptPath, 'posix')
           )
           const setupLaunchMode =
             (this.store.getSettings() as Partial<Pick<GlobalSettings, 'setupScriptLaunchMode'>>)
@@ -13073,10 +13167,27 @@ export class OrcaRuntimeService {
       }
     }
 
+    const returnedSetup = didSpawnSetup
+      ? undefined
+      : result.setup
+        ? {
+            ...result.setup,
+            ...(didSpawnStartup && wrappedSetupCommandStr
+              ? { command: wrappedSetupCommandStr }
+              : {})
+          }
+        : undefined
+    const resultForRenderer = returnedSetup
+      ? { ...result, setup: returnedSetup }
+      : (() => {
+          const { setup: _setup, ...resultWithoutSetup } = result
+          return resultWithoutSetup
+        })()
+
     const resultWithStartupTerminal =
       didSpawnStartup && startupTerminalHandle
         ? {
-            ...result,
+            ...resultForRenderer,
             startupTerminal: {
               spawned: true,
               handle: startupTerminalHandle,
@@ -13086,7 +13197,7 @@ export class OrcaRuntimeService {
               surface: 'background' as const
             }
           }
-        : result
+        : resultForRenderer
 
     return warning ? { ...resultWithStartupTerminal, warning } : resultWithStartupTerminal
   }
@@ -14585,6 +14696,7 @@ export class OrcaRuntimeService {
     worktreeSelector?: string,
     opts: {
       command?: string
+      claudeAgentTeamsSourceCommand?: string
       env?: Record<string, string>
       launchConfig?: WorktreeStartupLaunch['launchConfig']
       launchToken?: string
@@ -14646,14 +14758,16 @@ export class OrcaRuntimeService {
         ...opts.env,
         ...(launchToken ? { ORCA_AGENT_LAUNCH_TOKEN: launchToken } : {})
       }
+      const claudeAgentTeamsSourceCommand =
+        opts.claudeAgentTeamsSourceCommand?.trim() || opts.command?.trim() || undefined
       const claudeAgentTeamsMode = this.store?.getSettings?.().claudeAgentTeamsMode
       const effectiveClaudeAgentTeamsMode = inferCapturedClaudeAgentTeamsMode(
         opts.launchConfig,
-        opts.command,
+        claudeAgentTeamsSourceCommand,
         claudeAgentTeamsMode
       )
       const agentTeamsPlan = await buildClaudeAgentTeamsLaunchPlan({
-        command: opts.command,
+        command: claudeAgentTeamsSourceCommand,
         mode: effectiveClaudeAgentTeamsMode,
         baseEnv: {
           ...process.env,
@@ -14670,6 +14784,13 @@ export class OrcaRuntimeService {
             shimBin
           }).env
       })
+      const sequencedStartupCommand =
+        agentTeamsPlan &&
+        claudeAgentTeamsSourceCommand &&
+        opts.command &&
+        claudeAgentTeamsSourceCommand !== opts.command
+          ? agentTeamsPlan.command
+          : undefined
       const effectiveLaunchConfig =
         opts.launchConfig && agentTeamsPlan
           ? {
@@ -14685,9 +14806,17 @@ export class OrcaRuntimeService {
               }
             }
           : opts.launchConfig
+      // Why: setup/agent sequencing wraps the PTY launch in a wait shell before
+      // Claude Agent Teams runs. Preserve the direct Claude command separately
+      // so the wrapper can exec the teammate-mode variant after setup completes.
       const env = this.buildTerminalWorkspaceEnv(
         workspace,
-        baseEnv,
+        {
+          ...baseEnv,
+          ...(sequencedStartupCommand
+            ? { [SETUP_AGENT_SEQUENCE_STARTUP_COMMAND_ENV]: sequencedStartupCommand }
+            : {})
+        },
         paneKey,
         tabId,
         agentTeamsPlan?.env
@@ -14696,7 +14825,8 @@ export class OrcaRuntimeService {
         cols: 120,
         rows: 40,
         cwd: workspace.path,
-        command: agentTeamsPlan?.command ?? opts.command,
+        command: sequencedStartupCommand ? opts.command : (agentTeamsPlan?.command ?? opts.command),
+        commandDelivery: 'provider',
         startupCommandDelivery: opts.startupCommandDelivery,
         env,
         envToDelete: agentTeamsPlan?.envToDelete,
@@ -15541,6 +15671,7 @@ export class OrcaRuntimeService {
       rows: 40,
       cwd: workspace.path,
       command: opts.command,
+      commandDelivery: 'provider',
       env: this.buildTerminalWorkspaceEnv(workspace, opts.env ?? {}, paneKey, parentTabId),
       envToDelete: opts.envToDelete,
       connectionId: workspace.connectionId,
