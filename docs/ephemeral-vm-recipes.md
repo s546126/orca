@@ -40,6 +40,59 @@ The recipe owns provider-specific behavior:
 
 This intentionally prioritizes openness and flexibility over provider-specific abstractions.
 
+## Existing Product References
+
+Existing agent-workspace products commonly treat cloud VMs as a first-party managed service. In
+that model, the product owns a hosted control plane and exposes commands such as create, list,
+delete, exec, and attach. Provider credentials stay on the product backend, VM rows are persisted
+in a central database, and VM creation is gated by authentication, billing state, team
+entitlements, active-VM limits, provider kill switches, and idempotency keys.
+
+Those products also tend to own the provider abstraction internally. For example, each supported
+provider has a driver behind a common interface for create, destroy, exec, snapshot, restore,
+status, SSH attach, and WebSocket attach. The user can choose from supported providers or images,
+but the product decides which providers exist and how each provider is integrated.
+
+The image story is also usually product-owned. Deployed environments select from known-good image
+or snapshot IDs recorded in a manifest. Images are prebuilt with a product daemon, shell tooling,
+agent CLIs, language runtimes, and smoke-tested startup behavior. This gives the product rollback,
+supportability, bounded startup latency, and a predictable attach protocol, but it also means the
+product is responsible for maintaining provider images and baked tool versions.
+
+Attach is typically modeled as short-lived credential minting. The backend creates a temporary
+PTY, RPC, or SSH lease, stores only hashed tokens or provider identity handles, and revokes older
+credentials when a new attach session is minted or when the VM is destroyed. WebSocket attach is
+preferred when the provider cannot expose raw TCP SSH or when the product needs a daemon/RPC
+channel for browser proxying and workspace coordination. SSH attach remains a fallback for
+providers that expose an SSH gateway.
+
+This is intentionally not Orca's target model for VM recipes.
+
+Orca should not become the control plane for users' cloud infrastructure. The recipe model should
+keep provider authentication, VM creation, image selection, dependency setup, repo cloning,
+network exposure, and cleanup in user-owned scripts. Orca should provide the product surface
+around that script: trust prompts, logs, cancellation, pairing, remote project registration,
+workspace creation, and lifecycle metadata.
+
+The useful ideas to borrow are narrow:
+
+- require a clear machine-readable attach/pairing contract
+- make the advertised endpoint explicit and separate from VM-local bind details
+- make the remote project root discoverable before workspace creation
+- track recipe-created runtimes separately from long-lived remote servers
+- support short-lived connection material where Orca owns any generated credentials
+- surface precise failure states for missing pairing data, unreachable endpoints, missing project
+  roots, and incomplete cleanup hooks
+
+The ideas to avoid for v1 are also explicit:
+
+- server-side provider keys owned by Orca
+- first-party provider drivers
+- Orca-maintained VM images or snapshots
+- billing or active-VM limits
+- provider-specific attach fallback logic inside Orca
+- automatic management of users' agent CLI versions or cloud dependencies
+
 ## Core Model
 
 A VM recipe is a project-scoped command configured in the repo's `orca.yaml`.
