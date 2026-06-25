@@ -49,8 +49,9 @@ has installed, such as Vercel Sandbox, E2B, Docker-like image tooling, custom cl
 internal infrastructure commands.
 
 The command provisions the remote environment, starts `orca serve` inside it, and returns enough
-information for the local Orca client to pair with that server. Once paired, Orca controls the
-remote runtime like any other remote Orca server.
+information for the local Orca client to pair with that server. The pairing URL already encodes
+the endpoint Orca should connect to, plus the pairing credentials needed to authorize the client.
+Once paired, Orca controls the remote runtime like any other remote Orca server.
 
 There is no local worktree in this flow. The workspace/worktree is created remotely after pairing.
 
@@ -88,7 +89,8 @@ Conceptually:
 4. The recipe starts `orca serve` in that environment.
 5. The recipe returns a reachable pairing URL or equivalent pairing data.
 6. Orca pairs with that server.
-7. Orca creates the workspace/worktree remotely using normal remote-server APIs.
+7. Orca learns which remote project root should back this project.
+8. Orca creates the workspace/worktree remotely using normal remote-server APIs.
 
 For v1, recipes may not need any input from Orca. Because the recipe is project-scoped and the
 paired server is controlled by Orca after pairing, the client can provide workspace details after
@@ -97,12 +99,35 @@ the connection is established.
 Optional context environment variables can be considered later, but should not be required for the
 initial model.
 
+### Remote Project Root
+
+Pairing only tells Orca how to reach and authenticate to the remote `orca serve` runtime. It does
+not identify which directory on that runtime is the project repo.
+
+The remote project root is still needed because Orca's project-host setup and worktree APIs are
+path-based. They need a repo root on the target runtime before they can register the project,
+derive worktree locations, list worktrees, run git commands, watch files, and launch terminals in
+the correct workspace.
+
+The contract should be phrased as: the recipe must make the remote project root discoverable to
+Orca. That does not necessarily mean the path must be printed beside the pairing URL. Viable
+shapes include:
+
+- the recipe outputs structured data containing `pairingUrl` and `projectRoot`
+- the recipe starts `orca serve` with a project-root flag or environment variable, and the server
+  advertises that root after pairing
+- the recipe calls an Orca registration command/API after `orca serve` starts
+
+The cleanest v1 may be to have the recipe output structured data with both the pairing URL and the
+remote project root. A server-advertised root is also attractive because it keeps stdout focused on
+pairing and lets the runtime report its own state after connection.
+
 ## Networking
 
 Networking is provider-specific and belongs to the recipe.
 
-The recipe must ensure the pairing URL is reachable from the local Orca client. This matters
-because many providers have different internal and external addresses.
+The recipe must ensure the endpoint encoded in the pairing URL is reachable from the local Orca
+client. This matters because many providers have different internal and external addresses.
 
 For example, a VM may run `orca serve` on port `6767` internally, while the provider exposes it as
 `https://sandbox-12345.provider.dev`.
@@ -111,10 +136,10 @@ The recipe is responsible for aligning:
 
 - the address and port `orca serve` binds to inside the VM
 - the provider's exposed public URL or tunnel URL
-- the pairing URL returned to Orca
+- the advertised endpoint encoded into the pairing URL returned to Orca
 
-In practice, `orca serve` likely needs a way to separate bind address from advertised pairing
-address, such as:
+`orca serve` already has the concept of an advertised pairing address. A recipe can bind the
+server to the VM-local interface/port while advertising the provider URL clients should use:
 
 ```bash
 orca serve --host 0.0.0.0 --port 6767 --pairing-address https://sandbox-12345.provider.dev
