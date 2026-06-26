@@ -262,6 +262,9 @@ describe('runBackgroundWorktreeCreation', () => {
       runtimeId: 'runtime-1',
       workspaceId: 'repo-runtime::/workspace/repo/worktree'
     })
+    expect(store.removePendingWorktreeCreation).toHaveBeenCalledWith('creation-1', {
+      cleanupVm: false
+    })
   })
 
   it('preserves provider-backed VM start points after provisioning', async () => {

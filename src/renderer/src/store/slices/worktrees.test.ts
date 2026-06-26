@@ -5594,6 +5594,24 @@ describe('pending worktree creation state', () => {
     expect(store.getState().pendingWorktreeCreations.c1).toBeUndefined()
   })
 
+  it('removePendingWorktreeCreation can drop a completed VM creation without cleanup', () => {
+    const store = createTestStore()
+    store.getState().beginPendingWorktreeCreation(
+      makePendingCreation('c1', {
+        phase: 'fetching',
+        request: {
+          ...makePendingCreation('c1').request,
+          ephemeralVmRuntimeId: 'runtime-1'
+        }
+      })
+    )
+
+    store.getState().removePendingWorktreeCreation('c1', { cleanupVm: false })
+
+    expect(mockApi.ephemeralVm.cleanup).not.toHaveBeenCalled()
+    expect(store.getState().pendingWorktreeCreations.c1).toBeUndefined()
+  })
+
   it('setActivePendingWorktreeCreation ignores unknown ids but always accepts null', () => {
     const store = createTestStore()
     store.getState().beginPendingWorktreeCreation(makePendingCreation('c1'))
