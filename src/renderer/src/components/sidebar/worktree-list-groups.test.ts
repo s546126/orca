@@ -736,6 +736,7 @@ describe('buildRows with pinned worktrees', () => {
       [],
       new Set(),
       new Map(),
+      new Map(),
       [],
       {
         projects: [{ ...project, sourceRepoIds: [repo.id, localRepoB.id, remoteRepo.id] }],
@@ -814,6 +815,7 @@ describe('buildRows with pinned worktrees', () => {
       undefined,
       [],
       new Set(),
+      new Map(),
       new Map(),
       [],
       {
