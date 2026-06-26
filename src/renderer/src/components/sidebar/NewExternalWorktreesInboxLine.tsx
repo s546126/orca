@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { ChevronRight, EyeOff } from 'lucide-react'
+import { ChevronRight, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -112,7 +112,7 @@ export default function NewExternalWorktreesInboxLine({
                   onClick={onSuppress}
                   className="absolute inset-0 text-muted-foreground hover:bg-worktree-sidebar-accent hover:text-worktree-sidebar-accent-foreground can-hover:pointer-events-none can-hover:opacity-0 can-hover:group-hover:pointer-events-auto can-hover:group-hover:opacity-100 can-hover:group-focus-within:pointer-events-auto can-hover:group-focus-within:opacity-100"
                 >
-                  <EyeOff className="size-3" aria-hidden="true" />
+                  <X className="size-3" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={4}>
