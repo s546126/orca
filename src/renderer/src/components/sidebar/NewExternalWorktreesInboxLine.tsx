@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { ChevronRight, Eye, EyeOff } from 'lucide-react'
+import { ChevronRight, EyeOff } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -84,7 +84,6 @@ export default function NewExternalWorktreesInboxLine({
             aria-hidden="true"
           />
         </Button>
-        <Eye className="size-3 shrink-0" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate">
           {translate(
             'auto.components.sidebar.NewExternalWorktreesInboxLine.7c4e9b2a81',
