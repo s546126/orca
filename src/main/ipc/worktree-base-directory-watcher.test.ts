@@ -17,7 +17,12 @@ vi.mock('./worktree-remote', () => ({
   notifyWorktreesChanged: vi.fn()
 }))
 
+vi.mock('../providers/ssh-filesystem-dispatch', () => ({
+  getSshFilesystemProvider: vi.fn()
+}))
+
 import { subscribe } from '@parcel/watcher'
+import { getSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
 import { notifyWorktreesChanged } from './worktree-remote'
 import {
   disposeWorktreeBaseDirectoryWatchers,
@@ -77,6 +82,7 @@ describe('worktree base directory watcher', () => {
     vi.useFakeTimers()
     watcherCallbacks.clear()
     unsubscribeMocks.clear()
+    vi.mocked(getSshFilesystemProvider).mockReturnValue(undefined)
     vi.mocked(subscribe).mockImplementation(async (root, callback) => {
       const unsubscribe = vi.fn(async () => {})
       watcherCallbacks.set(root, callback)
@@ -127,10 +133,9 @@ describe('worktree base directory watcher', () => {
     expect(notifyWorktreesChanged).toHaveBeenCalledWith(expect.anything(), 'repo-1')
   })
 
-  it('does not install local desktop watchers for non-local or folder repos', async () => {
+  it('does not install local desktop watchers for runtime or folder repos', async () => {
     await syncWorktreeBaseDirectoryWatchers(
       makeStore([
-        makeRepo({ id: 'ssh', connectionId: 'ssh-1' }),
         makeRepo({ id: 'runtime', executionHostId: 'runtime:dev' }),
         makeRepo({ id: 'folder', kind: 'folder' })
       ]) as never,
@@ -138,6 +143,40 @@ describe('worktree base directory watcher', () => {
     )
 
     expect(subscribe).not.toHaveBeenCalled()
+  })
+
+  it('uses the remote sibling root for default SSH worktree roots', async () => {
+    const remoteCallbacks = new Map<string, (events: never[]) => void>()
+    const remoteUnwatch = vi.fn()
+    const remoteWatch = vi.fn(async (root: string, callback: (events: never[]) => void) => {
+      remoteCallbacks.set(root, callback)
+      return remoteUnwatch
+    })
+    vi.mocked(getSshFilesystemProvider).mockReturnValue({
+      stat: vi.fn(async () => ({ type: 'directory', size: 0, mtime: 0 })),
+      realpath: vi.fn(async (path: string) => path),
+      readFile: vi.fn(async () => ({ content: '', isBinary: false })),
+      watch: remoteWatch
+    } as never)
+
+    await syncWorktreeBaseDirectoryWatchers(
+      makeStore([makeRepo({ connectionId: 'ssh-1', path: '/home/alice/project' })]) as never,
+      makeWindow() as never
+    )
+
+    expect(subscribe).not.toHaveBeenCalled()
+    expect(remoteWatch).toHaveBeenCalledWith('/home/alice', expect.any(Function))
+    remoteCallbacks.get('/home/alice')?.([
+      {
+        kind: 'create',
+        absolutePath: '/home/alice/external-5104/.git'
+      }
+    ] as never[])
+    await vi.advanceTimersByTimeAsync(300)
+
+    expect(notifyWorktreesChanged).toHaveBeenCalledWith(expect.anything(), 'repo-1')
+    await disposeWorktreeBaseDirectoryWatchers()
+    expect(remoteUnwatch).toHaveBeenCalled()
   })
 
   it('unsubscribes roots that disappear after repo settings change', async () => {

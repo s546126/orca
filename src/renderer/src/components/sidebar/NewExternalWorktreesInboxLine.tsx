@@ -53,11 +53,19 @@ export default function NewExternalWorktreesInboxLine({
           size="icon-xs"
           disabled={pending}
           aria-expanded={isExpanded}
-          aria-label={translate(
-            'auto.components.sidebar.NewExternalWorktreesInboxLine.2a8f1d6c40',
-            '{{value0}} new externally-created worktrees for {{value1}}',
-            { value0: isExpanded ? 'Collapse' : 'Expand', value1: repoDisplayName }
-          )}
+          aria-label={
+            isExpanded
+              ? translate(
+                  'auto.components.sidebar.NewExternalWorktreesInboxLine.d9f7b2a14c',
+                  'Collapse new externally-created worktrees for {{value0}}',
+                  { value0: repoDisplayName }
+                )
+              : translate(
+                  'auto.components.sidebar.NewExternalWorktreesInboxLine.e2c4a8d91f',
+                  'Expand new externally-created worktrees for {{value0}}',
+                  { value0: repoDisplayName }
+                )
+          }
           onClick={() => setIsExpanded((value) => !value)}
           className="shrink-0 rounded-[4px] text-muted-foreground hover:bg-worktree-sidebar-accent hover:text-worktree-sidebar-accent-foreground"
         >
@@ -107,7 +115,6 @@ export default function NewExternalWorktreesInboxLine({
                     size="xs"
                     disabled={pending}
                     onClick={() => onImportWorktree(worktree.id!)}
-                    className="h-6 px-2 text-[11px] font-medium"
                   >
                     {translate(
                       'auto.components.sidebar.NewExternalWorktreesInboxLine.8b3f2e1d74',
@@ -127,7 +134,6 @@ export default function NewExternalWorktreesInboxLine({
                   size="xs"
                   disabled={pending}
                   onClick={onKeepHidden}
-                  className="h-6 px-2 text-[11px] font-medium"
                 >
                   {translate(
                     'auto.components.sidebar.NewExternalWorktreesInboxLine.1c9e7a4b28',
@@ -138,11 +144,10 @@ export default function NewExternalWorktreesInboxLine({
               {onImportAll ? (
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="default"
                   size="xs"
                   disabled={pending}
                   onClick={onImportAll}
-                  className="h-6 px-2 text-[11px] font-medium"
                 >
                   {translate(
                     'auto.components.sidebar.NewExternalWorktreesInboxLine.6f2d8c1e95',
@@ -158,7 +163,7 @@ export default function NewExternalWorktreesInboxLine({
                 size="xs"
                 disabled={pending}
                 onClick={onSuppress}
-                className="h-6 justify-start px-1.5 text-[11px] font-normal text-muted-foreground hover:text-worktree-sidebar-accent-foreground"
+                className="justify-start font-normal text-muted-foreground hover:text-worktree-sidebar-accent-foreground"
               >
                 {translate(
                   'auto.components.sidebar.NewExternalWorktreesInboxLine.c3e8a1f4b2',

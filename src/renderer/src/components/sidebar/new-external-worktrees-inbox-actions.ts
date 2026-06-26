@@ -1,5 +1,6 @@
 import type { Repo } from '../../../../shared/types'
 import { mergeExternalWorktreeInboxPaths } from '../../../../shared/external-worktree-inbox'
+import { translate } from '@/i18n/i18n'
 
 export type NewExternalWorktreesInboxActionState = {
   pending: boolean
@@ -27,12 +28,30 @@ type NewExternalWorktreesInboxActionDeps = {
   ) => Promise<boolean>
 }
 
-export const NEW_EXTERNAL_WORKTREE_INBOX_KEEP_HIDDEN_ERROR =
-  'Could not keep external worktrees hidden. Try again.'
-export const NEW_EXTERNAL_WORKTREE_INBOX_IMPORT_ERROR =
-  'Could not import external worktrees. Try again.'
-export const NEW_EXTERNAL_WORKTREE_INBOX_SUPPRESS_ERROR =
-  'Could not hide external worktrees permanently. Try again.'
+function newExternalWorktreeInboxKeepHiddenError(): string {
+  return translate(
+    'auto.components.sidebar.newExternalWorktreesInboxActions.a11c2f6d89',
+    'Could not keep external worktrees hidden. Try again.'
+  )
+}
+
+function newExternalWorktreeInboxImportError(): string {
+  return translate(
+    'auto.components.sidebar.newExternalWorktreesInboxActions.b7e4d1a062',
+    'Could not import external worktrees. Try again.'
+  )
+}
+
+function newExternalWorktreeInboxSuppressError(): string {
+  return translate(
+    'auto.components.sidebar.newExternalWorktreesInboxActions.c94f0b3a15',
+    'Could not hide external worktrees permanently. Try again.'
+  )
+}
+
+function rollbackPathList(paths: readonly string[] | undefined): string[] {
+  return [...(paths ?? [])]
+}
 
 async function refreshAfterRepoInboxUpdate(
   args: NewExternalWorktreesInboxActionDeps,
@@ -44,7 +63,7 @@ async function refreshAfterRepoInboxUpdate(
   if (!updated) {
     args.setInboxState(args.projectId, {
       pending: false,
-      error: NEW_EXTERNAL_WORKTREE_INBOX_IMPORT_ERROR
+      error: newExternalWorktreeInboxImportError()
     })
     return false
   }
@@ -53,7 +72,7 @@ async function refreshAfterRepoInboxUpdate(
     await args.updateRepo(args.projectId, rollbackUpdates)
     args.setInboxState(args.projectId, {
       pending: false,
-      error: NEW_EXTERNAL_WORKTREE_INBOX_IMPORT_ERROR
+      error: newExternalWorktreeInboxImportError()
     })
     return false
   }
@@ -75,7 +94,7 @@ export async function keepNewExternalWorktreeInboxHidden(
   if (!updated) {
     args.setInboxState(args.projectId, {
       pending: false,
-      error: NEW_EXTERNAL_WORKTREE_INBOX_KEEP_HIDDEN_ERROR
+      error: newExternalWorktreeInboxKeepHiddenError()
     })
     return
   }
@@ -97,8 +116,10 @@ export async function importNewExternalWorktreeInboxPaths(
     args,
     { importedExternalWorktreePaths, externalWorktreeInboxBaselinePaths },
     {
-      importedExternalWorktreePaths: args.repo.importedExternalWorktreePaths,
-      externalWorktreeInboxBaselinePaths: args.repo.externalWorktreeInboxBaselinePaths
+      importedExternalWorktreePaths: rollbackPathList(args.repo.importedExternalWorktreePaths),
+      externalWorktreeInboxBaselinePaths: rollbackPathList(
+        args.repo.externalWorktreeInboxBaselinePaths
+      )
     }
   )
 }
@@ -118,7 +139,7 @@ export async function suppressNewExternalWorktreeInbox(
   if (!updated) {
     args.setInboxState(args.projectId, {
       pending: false,
-      error: NEW_EXTERNAL_WORKTREE_INBOX_SUPPRESS_ERROR
+      error: newExternalWorktreeInboxSuppressError()
     })
     return false
   }

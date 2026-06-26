@@ -1094,6 +1094,12 @@ export function buildRows(
               result.push(buildImportedWorktreesCardRow(candidate, 'repo-group'))
             }
           }
+          for (const repoId of repoIds) {
+            const candidate = newExternalWorktreesInboxByRepo.get(repoId)
+            if (candidate) {
+              result.push(buildNewExternalWorktreesInboxRow(candidate))
+            }
+          }
           // Why: surface in-progress creates at the top of their own repo so the
           // new workspace appears where it will land, not flashed to the very top
           // of the sidebar.
@@ -1109,30 +1115,13 @@ export function buildRows(
             ? getMixedHostContextLabels(group, repoMap, projectIndex, hostLabelById)
             : undefined
         if (groupBy === 'repo') {
-          const repoIdsInGroup =
-            group.repoIds.size > 0
-              ? [...group.repoIds]
-              : repo
-                ? [repo.id]
-                : key.startsWith('repo:')
-                  ? [key.slice('repo:'.length)]
-                  : []
-          for (const repoId of repoIdsInGroup) {
-            const repoItems = orderMainWorktreeFirst(
-              items.filter((worktree) => worktree.repoId === repoId)
-            )
-            appendWorktreeRows(result, repoItems, repoMap, lineageById, worktreeMap, {
-              nestLineage,
-              collapsedGroups,
-              groupDepth: projectGroupDepth,
-              sectionKey: key,
-              hostContextLabelByRepoId
-            })
-            const inboxCandidate = newExternalWorktreesInboxByRepo.get(repoId)
-            if (inboxCandidate) {
-              result.push(buildNewExternalWorktreesInboxRow(inboxCandidate))
-            }
-          }
+          appendWorktreeRows(result, items, repoMap, lineageById, worktreeMap, {
+            nestLineage,
+            collapsedGroups,
+            groupDepth: projectGroupDepth,
+            sectionKey: key,
+            hostContextLabelByRepoId
+          })
         } else {
           appendWorktreeRows(result, items, repoMap, lineageById, worktreeMap, {
             nestLineage,

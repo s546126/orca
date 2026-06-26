@@ -1,8 +1,12 @@
-import type { Event as WatcherEvent } from '@parcel/watcher'
 import {
   normalizeRuntimePathForComparison,
   relativePathInsideRoot
 } from '../../shared/cross-platform-path'
+
+type WorktreeBaseWatcherEvent = {
+  type: 'create' | 'update' | 'delete'
+  path: string
+}
 
 export type WorktreeBaseWatchKind = 'base' | 'git-common'
 
@@ -16,6 +20,7 @@ export type WorktreeBaseWatchTarget = {
   key: string
   kind: WorktreeBaseWatchKind
   path: string
+  connectionId?: string
   repos: Map<string, WorktreeBaseRepoWatchConfig>
 }
 
@@ -89,7 +94,7 @@ function matchingGitCommonRepoIds(target: WorktreeBaseWatchTarget, eventPath: st
 
 export function matchingWorktreeBaseRepoIds(
   target: WorktreeBaseWatchTarget,
-  event: WatcherEvent
+  event: WorktreeBaseWatcherEvent
 ): string[] {
   return target.kind === 'git-common'
     ? matchingGitCommonRepoIds(target, event.path)

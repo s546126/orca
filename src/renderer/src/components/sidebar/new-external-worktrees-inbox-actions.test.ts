@@ -36,6 +36,30 @@ describe('new external worktree inbox actions', () => {
     expect(setInboxState).toHaveBeenLastCalledWith(projectId, null)
   })
 
+  it('rolls import path lists back with explicit empty arrays when refresh fails', async () => {
+    const updateRepo = vi.fn().mockResolvedValue(true)
+    const fetchWorktrees = vi.fn().mockResolvedValue(false)
+    const setInboxState = vi.fn()
+
+    await importNewExternalWorktreeInboxPaths({
+      projectId,
+      repo: {},
+      worktreePaths: ['/scratch/new'],
+      updateRepo,
+      fetchWorktrees,
+      setInboxState
+    })
+
+    expect(updateRepo).toHaveBeenNthCalledWith(1, projectId, {
+      importedExternalWorktreePaths: ['/scratch/new'],
+      externalWorktreeInboxBaselinePaths: ['/scratch/new']
+    })
+    expect(updateRepo).toHaveBeenNthCalledWith(2, projectId, {
+      importedExternalWorktreePaths: [],
+      externalWorktreeInboxBaselinePaths: []
+    })
+  })
+
   it('extends the inbox baseline when keeping a batch hidden', async () => {
     const updateRepo = vi.fn().mockResolvedValue(true)
     const setInboxState = vi.fn()

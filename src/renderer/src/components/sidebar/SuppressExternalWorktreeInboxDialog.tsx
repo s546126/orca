@@ -46,23 +46,22 @@ export default function SuppressExternalWorktreeInboxDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+        <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
           {translate(
             'auto.components.sidebar.SuppressExternalWorktreeInboxDialog.1f8a5d9e73',
-            'You can turn this back on from the'
-          )}{' '}
+            'You can turn this back on later from project settings.'
+          )}
           <button
             type="button"
-            className="font-medium text-foreground underline underline-offset-2"
+            className="mt-1 block font-medium text-foreground underline underline-offset-2"
             onClick={onOpenRecovery}
           >
             {translate(
               'auto.components.sidebar.SuppressExternalWorktreeInboxDialog.8c0b2e7a41',
-              'project menu → Non-Orca worktrees'
+              'Open Non-Orca worktrees settings'
             )}
           </button>
-          .
-        </p>
+        </div>
 
         <DialogFooter>
           <Button
