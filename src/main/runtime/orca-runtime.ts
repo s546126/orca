@@ -8963,15 +8963,12 @@ export class OrcaRuntimeService {
     if (!this.store) {
       throw new Error('runtime_unavailable')
     }
-    const existingProject = this.listProjects().find((project) => project.id === args.projectId)
-    if (!existingProject) {
-      throw new Error(`Project not found: ${args.projectId}`)
-    }
     let repo = await this.addRepo(args.path, args.kind === 'folder' ? 'folder' : 'git')
     let setup = getProjectHostSetupForRepo(this.listProjectHostSetups(), repo)
     if (setup.projectId !== args.projectId) {
+      const existingProject = this.listProjects().find((project) => project.id === args.projectId)
       if (
-        !existingProject.providerIdentity ||
+        !existingProject?.providerIdentity ||
         existingProject.providerIdentity.provider !== 'github'
       ) {
         throw new Error('Imported folder does not match the selected project identity.')

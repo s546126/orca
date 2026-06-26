@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EventEmitter } from 'events'
 import { randomUUID } from 'crypto'
+import { execFileSync } from 'child_process'
 import { lstat, mkdir, mkdtemp, rm, writeFile } from 'fs/promises'
 import { homedir, tmpdir } from 'os'
 import { join } from 'path'
@@ -4659,6 +4660,85 @@ describe('OrcaRuntimeService', () => {
     const repo = await runtime.addRepo('/tmp/runtime-add-root-prep', 'folder')
 
     expect(prepareLocalWorktreeRootForRepoMock).toHaveBeenCalledWith(runtimeStore, repo)
+  })
+
+  it('sets up an existing folder on a fresh runtime after importing the repo project', async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), 'orca-runtime-project-setup-'))
+    const repos: Record<string, unknown>[] = []
+    getRepoUpstreamMock.mockResolvedValueOnce({ owner: 'stablyai', repo: 'orca' })
+    const runtimeStore = {
+      ...store,
+      getRepos: () => [...repos] as never,
+      addRepo: (repo: Record<string, unknown>) => {
+        repos.push(repo)
+      },
+      getRepo: (id: string) => repos.find((repo) => repo.id === id) as never,
+      updateRepo: (id: string, updates: Record<string, unknown>) => {
+        const index = repos.findIndex((repo) => repo.id === id)
+        if (index === -1) {
+          return null
+        }
+        repos[index] = { ...repos[index], ...updates }
+        return repos[index] as never
+      },
+      getProjects: () =>
+        repos
+          .map((repo) => {
+            const upstream = repo.upstream as { owner: string; repo: string } | undefined
+            if (!upstream) {
+              return null
+            }
+            return {
+              id: `github:${upstream.owner}/${upstream.repo}`,
+              displayName: repo.displayName,
+              badgeColor: repo.badgeColor,
+              providerIdentity: { provider: 'github', owner: upstream.owner, repo: upstream.repo },
+              sourceRepoIds: [repo.id],
+              createdAt: repo.addedAt,
+              updatedAt: repo.addedAt
+            }
+          })
+          .filter(Boolean) as never,
+      getProjectHostSetups: () =>
+        repos.map((repo) => {
+          const upstream = repo.upstream as { owner: string; repo: string } | undefined
+          return {
+            id: repo.id,
+            projectId: upstream ? `github:${upstream.owner}/${upstream.repo}` : repo.id,
+            hostId: 'local',
+            repoId: repo.id,
+            path: repo.path,
+            displayName: repo.displayName,
+            kind: repo.kind,
+            setupState: 'ready',
+            setupMethod: repo.projectHostSetupMethod ?? 'legacy-repo',
+            createdAt: repo.addedAt,
+            updatedAt: repo.addedAt
+          }
+        }) as never
+    }
+    const runtime = new OrcaRuntimeService(runtimeStore as never)
+
+    try {
+      execFileSync('git', ['init'], { cwd: tempRoot, stdio: 'ignore' })
+      const result = await runtime.setupProjectExistingFolder({
+        projectId: 'github:stablyai/orca',
+        hostId: 'runtime:env-1',
+        path: tempRoot,
+        kind: 'git',
+        setupMethod: 'imported-existing-folder'
+      })
+
+      expect(result.project.id).toBe('github:stablyai/orca')
+      expect(result.repo.path).toBe(tempRoot)
+      expect(result.setup).toMatchObject({
+        projectId: 'github:stablyai/orca',
+        path: tempRoot,
+        setupMethod: 'imported-existing-folder'
+      })
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
   })
 
   it('defaults runtime createRepo badgeColor to DEFAULT_REPO_BADGE_COLOR', async () => {
