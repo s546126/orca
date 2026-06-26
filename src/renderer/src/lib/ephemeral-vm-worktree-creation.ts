@@ -58,6 +58,7 @@ export async function prepareRequestForCreate(
   const preparedRequest: WorktreeCreationRequest = {
     ...request,
     repoId: preparedTarget.setup.repo.id,
+    ...getEphemeralVmPortableBaseSelection(request),
     ephemeralVmRuntimeId: preparedTarget.runtimeId,
     workspaceRunContext: {
       kind: 'workspace-run',
@@ -77,6 +78,31 @@ export async function prepareRequestForCreate(
     request: preparedRequest
   })
   return preparedRequest
+}
+
+function getEphemeralVmPortableBaseSelection(
+  request: WorktreeCreationRequest
+): Pick<WorktreeCreationRequest, 'baseBranch' | 'compareBaseRef'> {
+  const keepBaseBranch =
+    request.linkedPR !== undefined ||
+    request.linkedGitLabMR !== undefined ||
+    request.linkedBitbucketPR !== undefined ||
+    request.linkedAzureDevOpsPR !== undefined ||
+    request.linkedGiteaPR !== undefined ||
+    Boolean(request.compareBaseRef) ||
+    Boolean(request.pushTarget) ||
+    Boolean(request.branchNameOverride)
+  if (keepBaseBranch) {
+    return {
+      ...(request.baseBranch ? { baseBranch: request.baseBranch } : {}),
+      ...(request.compareBaseRef ? { compareBaseRef: request.compareBaseRef } : {})
+    }
+  }
+  // Why: VM recipes switch from the source checkout to a freshly provisioned
+  // checkout. Source-repo default/pinned local branches may not exist there, so
+  // let the remote repo resolve its own default unless the user selected a
+  // provider-backed start point above.
+  return { baseBranch: undefined, compareBaseRef: undefined }
 }
 
 function appendProvisioningWarnings(

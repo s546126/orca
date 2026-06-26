@@ -236,6 +236,7 @@ describe('runBackgroundWorktreeCreation', () => {
           recipeId: 'cloud-sandbox',
           projectId: 'project-1'
         },
+        baseBranch: 'Jinwoo-H/setup-vercel-sandbox',
         worktreeCreateProgressMode: 'indeterminate'
       })
     )
@@ -255,11 +256,54 @@ describe('runBackgroundWorktreeCreation', () => {
     const createCall = store.createWorktree.mock.calls[0] as unknown[]
     expect(createCall[0]).toBe('repo-runtime')
     expect(createCall[1]).toBe('feature')
+    expect(createCall[2]).toBeUndefined()
     expect(createCall).toContain('creation-1')
     expect(window.api.ephemeralVm.attachWorkspace).toHaveBeenCalledWith({
       runtimeId: 'runtime-1',
       workspaceId: 'repo-runtime::/workspace/repo/worktree'
     })
+  })
+
+  it('preserves provider-backed VM start points after provisioning', async () => {
+    store.repos = [{ id: 'repo-1', connectionId: null }] as never
+    prepareEphemeralVmWorkspaceTargetMock.mockResolvedValue({
+      ok: true,
+      runtimeId: 'runtime-1',
+      environmentId: 'env-1',
+      stderr: '',
+      warnings: [],
+      setup: {
+        project: { id: 'project-1' },
+        setup: {
+          id: 'setup-runtime',
+          projectId: 'project-1',
+          hostId: 'runtime:env-1'
+        },
+        repo: { id: 'repo-runtime', path: '/workspace/repo' }
+      }
+    })
+    store.createWorktree.mockResolvedValue({
+      worktree: { id: 'repo-runtime::/workspace/repo/worktree', repoId: 'repo-runtime' }
+    })
+
+    runBackgroundWorktreeCreation(
+      makeRequest({
+        ephemeralVmRecipe: {
+          sourceRepoId: 'repo-1',
+          recipeId: 'cloud-sandbox',
+          projectId: 'github:stablyai/orca'
+        },
+        baseBranch: 'abc123',
+        compareBaseRef: 'refs/remotes/origin/main',
+        linkedPR: 42
+      })
+    )
+
+    await vi.waitFor(() => expect(store.createWorktree).toHaveBeenCalled())
+    const createCall = store.createWorktree.mock.calls[0] as unknown[]
+    expect(createCall[0]).toBe('repo-runtime')
+    expect(createCall[2]).toBe('abc123')
+    expect(createCall[24]).toBe('refs/remotes/origin/main')
   })
 
   it('appends stderr provisioning events for the active VM recipe create', async () => {
