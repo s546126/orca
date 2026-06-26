@@ -103,6 +103,12 @@ export type ProjectProviderIdentity = {
   repo: string
 }
 
+export type GitRemoteIdentity = {
+  canonicalKey: string
+  remoteName: string
+  remoteUrl: string
+}
+
 export type Project = {
   id: string
   displayName: string
@@ -258,6 +264,8 @@ export type Repo = {
   issueSourcePreference?: IssueSourcePreference
   /** Controls Orca's fork-default-branch sync offer for repos with upstream metadata. */
   forkSyncMode?: ForkSyncMode
+  /** Canonical identity for the repo remote Orca should use for provider-level grouping. */
+  gitRemoteIdentity?: GitRemoteIdentity | null
   /** Controls whether worktrees Orca did not create appear in the sidebar. */
   externalWorktreeVisibility?: ExternalWorktreeVisibility
   /** True when the repo predates hidden-by-default external worktrees. */

@@ -534,6 +534,23 @@ function startDesktopFirstWindowStartupServices(): Promise<void> {
   return firstWindowStartupServicesReady
 }
 
+async function startServeAgentHookServer(): Promise<void> {
+  if (!isAgentStatusHooksEnabled(store?.getSettings())) {
+    return
+  }
+  try {
+    await agentHookServer.start({
+      env: app.isPackaged ? 'production' : 'development',
+      userDataPath: app.getPath('userData'),
+      endpointNamespace: devAgentHookEndpointNamespace
+    })
+  } catch (error) {
+    // Why: remote hook callbacks enrich agent status only. A headless runtime
+    // should still serve terminals if the loopback receiver cannot bind.
+    console.error('[agent-hooks] Failed to start serve hook server:', error)
+  }
+}
+
 function prepareCodexRuntimeHomeForLaunch(target?: CodexAccountSelectionTarget): string | null {
   const runtimeHomePath = codexRuntimeHome!.prepareForCodexLaunch(target)
   const hooksEnabled = isAgentStatusHooksEnabled(store?.getSettings())
@@ -1415,7 +1432,9 @@ app.whenReady().then(async () => {
     },
     // Why: hook-reported agent status is the same source the desktop sidebar
     // reads. worktree.ps pulls it at query time so mobile shows the same agents.
-    getAgentStatusSnapshot: () => agentHookServer.getStatusSnapshot()
+    getAgentStatusSnapshot: () => agentHookServer.getStatusSnapshot(),
+    buildAgentHookPtyEnv: () =>
+      isAgentStatusHooksEnabled(store?.getSettings()) ? agentHookServer.buildPtyEnv() : {}
   })
   runtime = runtimeService
   automations = new AutomationService(store, {
@@ -1677,6 +1696,7 @@ app.whenReady().then(async () => {
   }
 
   if (serveOptions) {
+    await startServeAgentHookServer()
     registerHeadlessPtyRuntime(
       runtime,
       prepareCodexRuntimeHomeForLaunch,
