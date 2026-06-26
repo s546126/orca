@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
-import { ChevronRight, Eye } from 'lucide-react'
+import { ChevronRight, Eye, EyeOff } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import type { NewExternalWorktreeInboxPreview } from './new-external-worktrees-inbox-candidates'
@@ -31,6 +32,15 @@ export default function NewExternalWorktreesInboxLine({
 }: NewExternalWorktreesInboxLineProps): React.JSX.Element | null {
   const [isExpanded, setIsExpanded] = useState(false)
   const inboxCount = inboxWorktrees.length
+  const suppressLabel = translate(
+    'auto.components.sidebar.NewExternalWorktreesInboxLine.c3e8a1f4b2',
+    "Don't show again"
+  )
+  const suppressAriaLabel = translate(
+    'auto.components.sidebar.NewExternalWorktreesInboxLine.9f2d4c8b17',
+    'Hide external worktrees permanently for {{value0}}',
+    { value0: repoDisplayName }
+  )
 
   if (inboxCount === 0) {
     return null
@@ -43,7 +53,7 @@ export default function NewExternalWorktreesInboxLine({
     >
       <div
         className={cn(
-          'flex min-h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-[11px] leading-none text-muted-foreground transition-colors',
+          'group flex min-h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-[11px] leading-none text-muted-foreground transition-colors',
           'hover:bg-worktree-sidebar-accent hover:text-worktree-sidebar-accent-foreground'
         )}
       >
@@ -81,8 +91,36 @@ export default function NewExternalWorktreesInboxLine({
             'New externally-created worktrees'
           )}
         </span>
-        <span className="inline-flex h-[18px] shrink-0 items-center rounded-full border border-border px-1.5 text-[10px] font-medium leading-none text-muted-foreground">
-          {inboxCount}
+        <span className="relative inline-grid size-6 shrink-0 place-items-center">
+          <span
+            className={cn(
+              'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full border border-border px-1.5 text-[10px] font-medium leading-none text-muted-foreground transition-opacity',
+              onSuppress &&
+                'can-hover:group-hover:opacity-0 can-hover:group-focus-within:opacity-0 [@media(hover:none)]:opacity-0'
+            )}
+          >
+            {inboxCount}
+          </span>
+          {onSuppress ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  disabled={pending}
+                  aria-label={suppressAriaLabel}
+                  onClick={onSuppress}
+                  className="absolute inset-0 text-muted-foreground hover:bg-worktree-sidebar-accent hover:text-worktree-sidebar-accent-foreground can-hover:pointer-events-none can-hover:opacity-0 can-hover:group-hover:pointer-events-auto can-hover:group-hover:opacity-100 can-hover:group-focus-within:pointer-events-auto can-hover:group-focus-within:opacity-100"
+                >
+                  <EyeOff className="size-3" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={4}>
+                {suppressLabel}
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
         </span>
       </div>
 
@@ -156,21 +194,6 @@ export default function NewExternalWorktreesInboxLine({
                 </Button>
               ) : null}
             </div>
-            {onSuppress ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                disabled={pending}
-                onClick={onSuppress}
-                className="justify-start font-normal text-muted-foreground hover:text-worktree-sidebar-accent-foreground"
-              >
-                {translate(
-                  'auto.components.sidebar.NewExternalWorktreesInboxLine.c3e8a1f4b2',
-                  "Don't show again"
-                )}
-              </Button>
-            ) : null}
           </div>
         </div>
       ) : null}
