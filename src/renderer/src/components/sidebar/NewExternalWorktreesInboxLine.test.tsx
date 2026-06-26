@@ -30,6 +30,7 @@ async function renderLine(): Promise<HTMLDivElement> {
           {
             id: 'external-1',
             displayName: 'payments-refactor',
+            branch: 'refs/heads/payments-refactor',
             path: '/worktrees/orca/payments-refactor'
           }
         ]}
