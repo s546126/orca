@@ -2,6 +2,7 @@ import { toast } from 'sonner'
 import { useAppStore } from '@/store'
 import { prepareEphemeralVmWorkspaceTarget } from '@/lib/ephemeral-vm-workspace-target'
 import type { WorktreeCreationRequest } from '@/lib/pending-worktree-creation'
+import type { Repo } from '../../../shared/types'
 
 const MAX_PROVISIONING_LOG_CHARS = 12_000
 
@@ -25,10 +26,14 @@ export async function prepareRequestForCreate(
   })
   let preparedTarget: Awaited<ReturnType<typeof prepareEphemeralVmWorkspaceTarget>>
   try {
+    const sourceRepo = store.repos.find(
+      (repo) => repo.id === request.ephemeralVmRecipe?.sourceRepoId
+    )
     preparedTarget = await prepareEphemeralVmWorkspaceTarget({
       repoId: request.ephemeralVmRecipe.sourceRepoId,
       recipeId: request.ephemeralVmRecipe.recipeId,
-      projectId: request.ephemeralVmRecipe.projectId,
+      projectId:
+        resolvePortableEphemeralVmProjectId(sourceRepo) ?? request.ephemeralVmRecipe.projectId,
       workspaceName: request.name,
       provisionId: creationId,
       setupExistingFolder: store.setupProjectExistingFolder
@@ -118,6 +123,67 @@ export async function attachEphemeralVmRuntimeToWorkspace(
   } catch (error) {
     console.error('Failed to attach ephemeral VM runtime to workspace:', error)
   }
+}
+
+function resolvePortableEphemeralVmProjectId(repo: Repo | undefined): string | null {
+  const identity = resolveGitHubIdentity(repo)
+  if (!identity) {
+    return null
+  }
+  return `github:${identity.owner.toLowerCase()}/${identity.repo.toLowerCase()}`
+}
+
+function resolveGitHubIdentity(repo: Repo | undefined): { owner: string; repo: string } | null {
+  const upstreamOwner = repo?.upstream?.owner?.trim()
+  const upstreamRepo = repo?.upstream?.repo?.trim()
+  if (upstreamOwner && upstreamRepo) {
+    return { owner: upstreamOwner, repo: upstreamRepo }
+  }
+  if (repo?.repoIcon?.type === 'image' && repo.repoIcon.source === 'github') {
+    const [owner, name, ...rest] = (repo.repoIcon.label ?? '').split('/')
+    if (owner?.trim() && name?.trim() && rest.length === 0) {
+      return { owner: owner.trim(), repo: name.trim() }
+    }
+  }
+  const remoteIdentity = readGitRemoteIdentity(repo)
+  if (remoteIdentity?.canonicalKey?.startsWith('github.com/')) {
+    const [, owner, name, ...rest] = remoteIdentity.canonicalKey.split('/')
+    if (owner?.trim() && name?.trim() && rest.length === 0) {
+      return { owner: owner.trim(), repo: name.trim() }
+    }
+  }
+  const remoteUrlIdentity = parseGitHubRemoteUrl(remoteIdentity?.remoteUrl)
+  return remoteUrlIdentity
+}
+
+function readGitRemoteIdentity(
+  repo: Repo | undefined
+): { canonicalKey?: string; remoteUrl?: string } | null {
+  const value = (repo as unknown as { gitRemoteIdentity?: unknown } | undefined)?.gitRemoteIdentity
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+  const identity = value as { canonicalKey?: unknown; remoteUrl?: unknown }
+  return {
+    ...(typeof identity.canonicalKey === 'string' ? { canonicalKey: identity.canonicalKey } : {}),
+    ...(typeof identity.remoteUrl === 'string' ? { remoteUrl: identity.remoteUrl } : {})
+  }
+}
+
+function parseGitHubRemoteUrl(
+  remoteUrl: string | undefined
+): { owner: string; repo: string } | null {
+  const trimmed = remoteUrl?.trim()
+  if (!trimmed) {
+    return null
+  }
+  const match =
+    trimmed.match(/^git@github\.com:([^/]+)\/(.+?)(?:\.git)?$/i) ??
+    trimmed.match(/^https:\/\/github\.com\/([^/]+)\/(.+?)(?:\.git)?$/i)
+  if (!match?.[1] || !match[2]) {
+    return null
+  }
+  return { owner: match[1], repo: match[2] }
 }
 
 export async function cleanupEphemeralVmRuntimeForFailedCreate(

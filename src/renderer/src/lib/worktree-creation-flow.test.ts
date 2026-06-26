@@ -198,6 +198,17 @@ describe('runBackgroundWorktreeCreation', () => {
   })
 
   it('shows a VM provisioning phase and creates the worktree on the prepared runtime repo', async () => {
+    store.repos = [
+      {
+        id: 'repo-1',
+        connectionId: null,
+        gitRemoteIdentity: {
+          canonicalKey: 'github.com/stablyai/orca',
+          remoteName: 'origin',
+          remoteUrl: 'git@github.com:stablyai/orca.git'
+        }
+      } as never
+    ]
     prepareEphemeralVmWorkspaceTargetMock.mockResolvedValue({
       ok: true,
       runtimeId: 'runtime-1',
@@ -236,7 +247,7 @@ describe('runBackgroundWorktreeCreation', () => {
     expect(prepareEphemeralVmWorkspaceTargetMock).toHaveBeenCalledWith({
       repoId: 'repo-1',
       recipeId: 'cloud-sandbox',
-      projectId: 'project-1',
+      projectId: 'github:stablyai/orca',
       workspaceName: 'feature',
       provisionId: 'creation-1',
       setupExistingFolder: store.setupProjectExistingFolder
