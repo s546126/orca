@@ -533,7 +533,9 @@ export class PtyHandler {
       cols,
       rows,
       cwd,
-      env: { ...spawnEnv, ...shellLaunch.env }
+      // Why: relay shells inherit process.env; never let an ambient Orca marker
+      // enable shell-ready behavior unless this spawn explicitly requested it.
+      env: { ...spawnEnv, ORCA_SHELL_READY_MARKER: '0', ...shellLaunch.env }
     })
 
     // Why: capture the renderer-supplied paneKey on the managed entry so the
@@ -864,7 +866,9 @@ export class PtyHandler {
         cols: entry.cols,
         rows: entry.rows,
         cwd: entry.cwd,
-        env: { ...spawnEnv, ...shellLaunch.env }
+        // Why: revived shells should not inherit an ambient shell-ready marker
+        // because no provider-delivered startup command is waiting on it.
+        env: { ...spawnEnv, ORCA_SHELL_READY_MARKER: '0', ...shellLaunch.env }
       })
       this.wireAndStore({
         id: entry.id,
