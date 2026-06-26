@@ -12356,11 +12356,10 @@ export class OrcaRuntimeService {
         throw new Error(`Base ref "${baseBranch}" was not found after fetching.`)
       }
     } else if (!(await hasLocalCommitObject(repo.path, baseBranch))) {
-      const remote = baseBranch.includes('/') ? baseBranch.split('/')[0] : 'origin'
       // Why: local bases keep legacy best-effort fetch behavior. Verified PR
       // SHA bases already have the commit object needed by `git worktree add`.
       try {
-        await this.fetchRemoteWithCache(repo.path, remote, ...localWorktreeGitOptionArgs)
+        await this.fetchRemoteWithCache(repo.path, 'origin', ...localWorktreeGitOptionArgs)
       } catch {
         // Why: belt-and-suspenders. fetchRemoteWithCache already logs and does
         // not throw; the outer try/catch guarantees create-path tolerance even
