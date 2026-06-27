@@ -87,14 +87,15 @@ export function TerminalThemeCatalogSection({
           'auto.components.settings.TerminalThemeSections.catalog_description',
           'Choose terminal themes and divider colors for dark and light mode.'
         )}
+        action={
+          showThemeImport ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <WarpThemeImportButton warpThemes={warpThemes} />
+              <YamlThemeImportButton warpThemes={warpThemes} />
+            </div>
+          ) : null
+        }
       />
-
-      {showThemeImport ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <WarpThemeImportButton warpThemes={warpThemes} />
-          <YamlThemeImportButton warpThemes={warpThemes} />
-        </div>
-      ) : null}
 
       <div className="grid gap-6">
         <div>
