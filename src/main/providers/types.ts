@@ -232,6 +232,11 @@ export type IGitProvider = {
     options?: { deleteBranch?: boolean; forceBranchDelete?: boolean }
   ): Promise<RemoveWorktreeResult>
   renameCurrentBranch?(worktreePath: string, newBranch: string): Promise<void>
+  forceDeletePreservedBranch?(
+    repoPath: string,
+    branchName: string,
+    expectedHead: string
+  ): Promise<void>
   isGitRepo(path: string): boolean
   isGitRepoAsync(dirPath: string): Promise<{ isRepo: boolean; rootPath: string | null }>
   exec(

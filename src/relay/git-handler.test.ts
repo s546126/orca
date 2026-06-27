@@ -129,6 +129,7 @@ describe('GitHandler', () => {
     expect(methods).toContain('git.worktreeIsClean')
     expect(methods).toContain('git.refreshLocalBaseRefForWorktreeCreate')
     expect(methods).toContain('git.renameCurrentBranch')
+    expect(methods).toContain('git.forceDeletePreservedBranch')
     expect(methods).toContain('git.exec')
     expect(methods).toContain('git.clone')
     expect(methods).toContain('git.isGitRepo')
@@ -262,6 +263,66 @@ describe('GitHandler', () => {
           newBranch: '-bad'
         })
       ).rejects.toThrow('Branch name must not start with "-"')
+    })
+  })
+
+  describe('forceDeletePreservedBranch', () => {
+    function headOf(cwd: string, ref: string): string {
+      return execFileSync('git', ['rev-parse', ref], { cwd, encoding: 'utf-8' }).trim()
+    }
+
+    it('deletes a preserved branch at its expected head through the narrow RPC', async () => {
+      gitInit(tmpDir)
+      writeFileSync(path.join(tmpDir, 'file.txt'), 'hello')
+      gitCommit(tmpDir, 'initial')
+      execFileSync('git', ['branch', 'feature/preserved'], { cwd: tmpDir, stdio: 'pipe' })
+      const head = headOf(tmpDir, 'refs/heads/feature/preserved')
+
+      await dispatcher.callRequest('git.forceDeletePreservedBranch', {
+        repoPath: tmpDir,
+        branchName: 'feature/preserved',
+        expectedHead: head
+      })
+
+      const refs = execFileSync('git', ['branch', '--list', 'feature/preserved'], {
+        cwd: tmpDir,
+        encoding: 'utf-8'
+      }).trim()
+      expect(refs).toBe('')
+    })
+
+    it('refuses to delete when the branch moved past the expected head', async () => {
+      gitInit(tmpDir)
+      writeFileSync(path.join(tmpDir, 'file.txt'), 'hello')
+      gitCommit(tmpDir, 'initial')
+      const staleHead = headOf(tmpDir, 'HEAD')
+      execFileSync('git', ['checkout', '-b', 'feature/preserved'], { cwd: tmpDir, stdio: 'pipe' })
+      // Advance the branch so the saved (stale) head no longer matches its tip.
+      gitCommit(tmpDir, 'second')
+      execFileSync('git', ['checkout', '-'], { cwd: tmpDir, stdio: 'pipe' })
+
+      await expect(
+        dispatcher.callRequest('git.forceDeletePreservedBranch', {
+          repoPath: tmpDir,
+          branchName: 'feature/preserved',
+          expectedHead: staleHead
+        })
+      ).rejects.toThrow('changed after the workspace was deleted')
+      const refs = execFileSync('git', ['branch', '--list', 'feature/preserved'], {
+        cwd: tmpDir,
+        encoding: 'utf-8'
+      }).trim()
+      expect(refs).toContain('feature/preserved')
+    })
+
+    it('rejects an empty repoPath at the RPC boundary', async () => {
+      await expect(
+        dispatcher.callRequest('git.forceDeletePreservedBranch', {
+          repoPath: '',
+          branchName: 'feature/preserved',
+          expectedHead: 'abc123'
+        })
+      ).rejects.toThrow('Invalid preserved branch force-delete request.')
     })
   })
 
