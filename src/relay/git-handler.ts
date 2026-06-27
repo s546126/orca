@@ -94,10 +94,12 @@ type RelayRepoLocation = { topLevel: string; commonDir: string }
 function parseRelayRepoLocation(repoPath: string, output: string): RelayRepoLocation | undefined {
   // Old git (pre `--path-format`) echoes the unrecognized flag to stdout and
   // exits 0 rather than erroring, so drop any echoed `-`-prefixed lines and
-  // read the two trailing path lines (toplevel, then git-common-dir).
+  // read the two trailing path lines (toplevel, then git-common-dir). Strip only
+  // the trailing CR, not surrounding spaces — git paths may legitimately start
+  // or end with a space.
   const lines = output
     .split('\n')
-    .map((line) => line.trim())
+    .map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line))
     .filter((line) => line.length > 0 && !line.startsWith('-'))
   if (lines.length < 2) {
     return undefined

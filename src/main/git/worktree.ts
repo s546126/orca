@@ -14,7 +14,8 @@ import type {
   RemoveWorktreeResult
 } from '../../shared/types'
 import { parseGitRevListAheadBehindCounts } from '../../shared/git-rev-list-output'
-import { gitExecFileAsync, parseWslPath, toLinuxPath, translateWslOutputPaths } from './runner'
+import { parseWslUncPath } from '../../shared/wsl-paths'
+import { gitExecFileAsync, translateWslOutputPaths } from './runner'
 import { resolveGitDir } from './status'
 import { hasWorktreeBaseCommitRef } from './worktree-base-ref-probe'
 
@@ -370,10 +371,12 @@ type RepoLocation = { topLevel: string; commonDir: string }
 function parseRepoLocation(repoPath: string, output: string): RepoLocation | undefined {
   // Old git (pre `--path-format`) echoes the unrecognized flag to stdout and
   // exits 0 rather than erroring, so drop any echoed `-`-prefixed lines and
-  // read the two trailing path lines (toplevel, then git-common-dir).
+  // read the two trailing path lines (toplevel, then git-common-dir). Strip only
+  // the trailing CR, not surrounding spaces — git paths may legitimately start
+  // or end with a space.
   const lines = output
     .split('\n')
-    .map((line) => line.trim())
+    .map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line))
     .filter((line) => line.length > 0 && !line.startsWith('-'))
   if (lines.length < 2) {
     return undefined
@@ -423,8 +426,10 @@ async function normalizeMainWorktreePath(
   // Compare in the Git-output space: under WSL the porcelain/rev-parse paths are
   // Linux while repoPath is a UNC path, so without translating, a UNC repoPath
   // never matches the early-return and fires a needless rev-parse on every poll.
-  // The runner still receives the original repoPath so its WSL routing is intact.
-  const comparablePath = parseWslPath(repoPath) ? toLinuxPath(repoPath) : repoPath
+  // Use the platform-independent UNC parser so the comparison holds regardless
+  // of host OS; the runner still receives the original repoPath for WSL routing.
+  const wslRepo = parseWslUncPath(repoPath)
+  const comparablePath = wslRepo ? wslRepo.linuxPath : repoPath
   if (!mainWorktree || areWorktreePathsEqual(mainWorktree.path, comparablePath)) {
     return worktrees
   }
