@@ -15,6 +15,7 @@ import type {
   RemoveWorktreeResult,
   WorktreeLineage,
   WorkspaceLineage,
+  ProjectHostSetup,
   WorktreeMeta
 } from '../../../../shared/types'
 import type { RuntimeWorktreeListResult } from '../../../../shared/runtime-types'
@@ -321,11 +322,25 @@ function toVisibleWorktree(worktree: DetectedWorktreeListResult['worktrees'][num
 // with the repo's execution host so per-worktree host resolution doesn't route
 // remote terminals to the local machine. Local-owned repos are left untouched,
 // so an explicit local worktree still overrides a runtime repo owner.
-function withRepoHostId<T extends { hostId?: ExecutionHostId }>(
-  worktree: T,
-  hostId: ExecutionHostId
-): T {
-  return hostId === LOCAL_EXECUTION_HOST_ID ? worktree : { ...worktree, hostId }
+function withRepoHostOwnership<
+  T extends { hostId?: ExecutionHostId; projectId?: string; projectHostSetupId?: string }
+>(worktree: T, hostId: ExecutionHostId, setup?: ProjectHostSetup): T {
+  const nextHostId = hostId === LOCAL_EXECUTION_HOST_ID ? worktree.hostId : hostId
+  const projectId = worktree.projectId ?? setup?.projectId
+  const projectHostSetupId = worktree.projectHostSetupId ?? setup?.id
+  if (
+    nextHostId === worktree.hostId &&
+    projectId === worktree.projectId &&
+    projectHostSetupId === worktree.projectHostSetupId
+  ) {
+    return worktree
+  }
+  return {
+    ...worktree,
+    ...(nextHostId ? { hostId: nextHostId } : {}),
+    ...(projectId ? { projectId } : {}),
+    ...(projectHostSetupId ? { projectHostSetupId } : {})
+  }
 }
 
 function repoHostId(
@@ -339,12 +354,23 @@ function repoHostId(
 
 function toVisibleWorktrees(
   result: DetectedWorktreeListResult,
-  hostId: ExecutionHostId
+  hostId: ExecutionHostId,
+  setup?: ProjectHostSetup
 ): Worktree[] {
   return result.worktrees
     .filter((worktree) => worktree.visible)
     .map(toVisibleWorktree)
-    .map((worktree) => withRepoHostId(worktree, hostId))
+    .map((worktree) => withRepoHostOwnership(worktree, hostId, setup))
+}
+
+function getProjectHostSetupForRepoHost(
+  state: Partial<Pick<AppState, 'projectHostSetups'>>,
+  repoId: string,
+  hostId: ExecutionHostId
+): ProjectHostSetup | undefined {
+  return state.projectHostSetups?.find(
+    (setup) => setup.repoId === repoId && setup.hostId === hostId
+  )
 }
 
 function getHydratedSessionWorktreeIdsForRepo(state: AppState, repoId: string): string[] {
@@ -447,9 +473,12 @@ function mergeDetectedWorktreesForHost(
   current: DetectedWorktreeListResult | undefined,
   refreshed: DetectedWorktreeListResult,
   hostId: ExecutionHostId,
+  setup?: ProjectHostSetup,
   options?: WorktreeHostMatchOptions
 ): DetectedWorktreeListResult {
-  const refreshedForHost = refreshed.worktrees.map((worktree) => withRepoHostId(worktree, hostId))
+  const refreshedForHost = refreshed.worktrees.map((worktree) =>
+    withRepoHostOwnership(worktree, hostId, setup)
+  )
   return {
     ...refreshed,
     worktrees: mergeWorktreesForHost(current?.worktrees, refreshedForHost, hostId, options)
@@ -985,7 +1014,7 @@ function applyWorktreeLineageUpdate(
           ? s.worktreesByRepo
           : replaceWorktreeInRepoLists(
               s.worktreesByRepo,
-              withRepoHostId(
+              withRepoHostOwnership(
                 result.updatedRemoteWorktree,
                 repoHostId(s, getRepoIdFromWorktreeId(result.updatedRemoteWorktree.id))
               )
@@ -1746,6 +1775,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
     try {
       const ownerState = get()
       const hostId = repoHostId(ownerState, repoId)
+      const setup = getProjectHostSetupForRepoHost(ownerState, repoId, hostId)
       const result = await listDetectedWorktreesForRepoCoalesced(
         settingsForRepoOwner(ownerState, repoId, hostId),
         repoId,
@@ -1758,6 +1788,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
           s.detectedWorktreesByRepo[repoId],
           result,
           hostId,
+          setup,
           worktreeHostMatchOptions(s, repoId, hostId)
         )
         return areDetectedWorktreeResultsEqual(s.detectedWorktreesByRepo[repoId], mergedDetected)
@@ -1775,6 +1806,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
     try {
       const ownerState = get()
       const hostId = repoHostId(ownerState, repoId)
+      const setup = getProjectHostSetupForRepoHost(ownerState, repoId, hostId)
       const settings = settingsForRepoOwner(ownerState, repoId, hostId)
       const detected = await listDetectedWorktreesForRepoCoalesced(settings, repoId, {
         executionHostId: hostId,
@@ -1783,7 +1815,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
       if (options?.requireAuthoritative && !detected.authoritative) {
         return false
       }
-      const worktrees = toVisibleWorktrees(detected, hostId)
+      const worktrees = toVisibleWorktrees(detected, hostId, setup)
       const current = get().worktreesByRepo[repoId]
       const currentMatchOptions = worktreeHostMatchOptions(get(), repoId, hostId)
       const currentForHost = (current ?? []).filter((worktree) =>
@@ -1802,6 +1834,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
             s.detectedWorktreesByRepo[repoId],
             detected,
             hostId,
+            setup,
             matchOptions
           )
           const mergedWorktrees = mergeWorktreesForHost(
@@ -1850,6 +1883,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
               s.detectedWorktreesByRepo[repoId],
               detected,
               hostId,
+              setup,
               worktreeHostMatchOptions(s, repoId, hostId)
             )
           }
@@ -1873,6 +1907,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
           s.detectedWorktreesByRepo[repoId],
           detected,
           hostId,
+          setup,
           matchOptions
         )
 
@@ -1903,11 +1938,12 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
     if (get().hasHydratedWorktreePurge) {
       await mapReposForWorktreeRefresh(repos, async (r) => {
         const hostId = getRepoExecutionHostId(r)
+        const setup = getProjectHostSetupForRepoHost(get(), r.id, hostId)
         const settings = settingsForKnownRepoOwner(get().settings, r)
         const detected = await listDetectedWorktreesForRepoCoalesced(settings, r.id, {
           executionHostId: hostId
         })
-        const worktrees = toVisibleWorktrees(detected, hostId)
+        const worktrees = toVisibleWorktrees(detected, hostId, setup)
         set((s) => {
           const matchOptions = worktreeHostMatchOptions(s, r.id, hostId)
           const removedIds = getRemovedWorktreeIdsAfterAuthoritativeScan(s, r.id, detected, hostId)
@@ -1921,6 +1957,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
             s.detectedWorktreesByRepo[r.id],
             detected,
             hostId,
+            setup,
             matchOptions
           )
           if (
@@ -1962,12 +1999,13 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
       > => {
         try {
           const hostId = getRepoExecutionHostId(r)
+          const setup = getProjectHostSetupForRepoHost(get(), r.id, hostId)
           const detected = await listDetectedWorktreesForRepoCoalesced(
             settingsForKnownRepoOwner(get().settings, r),
             r.id,
             { executionHostId: hostId }
           )
-          const list = toVisibleWorktrees(detected, hostId)
+          const list = toVisibleWorktrees(detected, hostId, setup)
           const current = get().worktreesByRepo[r.id]
           const currentMatchOptions = worktreeHostMatchOptions(get(), r.id, hostId)
           const currentForHost = (current ?? []).filter((worktree) =>
@@ -1990,6 +2028,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
                     s.detectedWorktreesByRepo[r.id],
                     detected,
                     hostId,
+                    setup,
                     matchOptions
                   )
                 },
@@ -2004,6 +2043,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
                   s.detectedWorktreesByRepo[r.id],
                   detected,
                   hostId,
+                  setup,
                   worktreeHostMatchOptions(s, r.id, hostId)
                 )
               }
@@ -2331,7 +2371,12 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
           // then produces a duplicate entry in worktreesByRepo, which gives
           // React duplicate keys and can corrupt terminal DOM containers.
           set((s) => {
-            const createdWorktree = withRepoHostId(result.worktree, repoHostId(s, repoId))
+            const hostId = repoHostId(s, repoId)
+            const createdWorktree = withRepoHostOwnership(
+              result.worktree,
+              hostId,
+              getProjectHostSetupForRepoHost(s, repoId, hostId)
+            )
             const current = s.worktreesByRepo[repoId] ?? []
             const alreadyPresent = current.some((w) => w.id === createdWorktree.id)
             const nextWorktrees = alreadyPresent

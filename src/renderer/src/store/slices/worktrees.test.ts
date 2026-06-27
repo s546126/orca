@@ -1106,6 +1106,68 @@ describe('fetchWorktrees', () => {
     ])
   })
 
+  it('stamps runtime worktrees with the owning project host setup', async () => {
+    const store = createTestStore()
+    const remote = makeWorktree({
+      id: 'repo-remote::/vercel/sandbox/orca',
+      repoId: 'repo-remote',
+      path: '/vercel/sandbox/orca',
+      branch: 'refs/heads/Jinwoo-H/vm-improve-2',
+      hostId: 'local'
+    })
+    store.setState({
+      repos: [
+        {
+          id: 'repo-remote',
+          path: '/vercel/sandbox/orca',
+          displayName: 'orca',
+          badgeColor: '#000',
+          addedAt: 0,
+          executionHostId: 'runtime:env-1'
+        }
+      ],
+      projectHostSetups: [
+        {
+          id: 'repo-remote',
+          projectId: 'github:stablyai/orca',
+          hostId: 'runtime:env-1',
+          repoId: 'repo-remote',
+          path: '/vercel/sandbox/orca',
+          displayName: 'orca',
+          setupState: 'ready',
+          setupMethod: 'imported-existing-folder',
+          createdAt: 1,
+          updatedAt: 1
+        }
+      ]
+    } as Partial<AppState>)
+    runtimeEnvironmentCall.mockResolvedValue({
+      id: 'rpc-runtime-worktree',
+      ok: true,
+      result: makeDetectedResult('repo-remote', [remote]),
+      _meta: { runtimeId: 'runtime-remote' }
+    })
+
+    await store.getState().fetchWorktrees('repo-remote')
+
+    expect(store.getState().worktreesByRepo['repo-remote']).toEqual([
+      {
+        ...remote,
+        hostId: 'runtime:env-1',
+        projectId: 'github:stablyai/orca',
+        projectHostSetupId: 'repo-remote'
+      }
+    ])
+    expect(store.getState().detectedWorktreesByRepo['repo-remote']?.worktrees).toEqual([
+      expect.objectContaining({
+        id: remote.id,
+        hostId: 'runtime:env-1',
+        projectId: 'github:stablyai/orca',
+        projectHostSetupId: 'repo-remote'
+      })
+    ])
+  })
+
   it('falls back to legacy remote worktree.list when detectedList is unavailable', async () => {
     const store = createTestStore()
     const remote = makeWorktree({
