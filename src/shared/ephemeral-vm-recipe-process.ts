@@ -38,6 +38,7 @@ export async function runRecipeCommand(args: {
     try {
       child = spawnCommand(args.command, {
         cwd: args.repoPath,
+        detached: process.platform !== 'win32',
         env: buildRecipeEnv(args.env, args.mode, args.context),
         shell: true,
         windowsHide: true
@@ -54,7 +55,7 @@ export async function runRecipeCommand(args: {
       if (settled) {
         return
       }
-      child.kill()
+      killRecipeProcess(child)
     }
 
     args.signal?.addEventListener('abort', abort, { once: true })
@@ -86,6 +87,19 @@ export async function runRecipeCommand(args: {
       child.stdin.end()
     }
   })
+}
+
+function killRecipeProcess(child: ChildProcessWithoutNullStreams): void {
+  if (process.platform !== 'win32' && child.pid) {
+    try {
+      // Recipes run through a shell; kill the process group so shell children do not linger.
+      process.kill(-child.pid, 'SIGTERM')
+      return
+    } catch {
+      // Fall back to killing the direct child if the process group is already gone.
+    }
+  }
+  child.kill()
 }
 
 function buildRecipeEnv(
