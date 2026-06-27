@@ -491,7 +491,7 @@ describe('TerminalAppearanceSection ghostty import wiring', () => {
     expect(findButtons(element).some((button) => button.text === 'Import from Ghostty')).toBe(true)
   })
 
-  it('opens advanced typography for advanced terminal typography searches', () => {
+  it('opens typography advanced inside the typography section for advanced searches', () => {
     mockSettingsSearchQuery = 'line height'
 
     const element = TerminalAppearanceSection({
@@ -504,7 +504,7 @@ describe('TerminalAppearanceSection ghostty import wiring', () => {
     })
 
     expect(findComponentByTypeName(element, 'TerminalAdvancedTypographyControls')).not.toBeNull()
-    expect(findComponentByTypeName(element, 'TerminalFontSizeSetting')).toBeNull()
+    expect(findComponentByTypeName(element, 'TerminalFontSizeSetting')).not.toBeNull()
   })
 
   it('hides the theme import affordance on paired web clients', () => {

@@ -99,9 +99,8 @@ export function TerminalAppearanceSection({
   const lightThemeTargetScore = scoreThemeTargetIntent(searchQuery, lightThemeSearchEntries)
   const preferredThemeTarget = getPreferredThemeTarget(darkThemeTargetScore, lightThemeTargetScore)
 
-  // Why: cursor / pane / window / typography knobs are low-frequency. The
-  // Advanced disclosure force-opens during search; render each group only when
-  // its own search matches so an active query never leaves a dangling header.
+  // Why: low-frequency knobs are force-opened during search; render each group
+  // only when its own search matches so an active query never leaves a dangling header.
   const typographyMatches = matchesSettingsSearch(
     searchQuery,
     getTerminalAdvancedTypographySearchEntries()
@@ -117,29 +116,15 @@ export function TerminalAppearanceSection({
   )
   const ghosttyImportMatches = matchesSettingsSearch(searchQuery, ghosttyImportEntries)
   const showPrimaryTypography =
-    !isSearching || forceVisiblePrimary || primaryTypographyMatches || ghosttyImportMatches
+    !isSearching ||
+    forceVisiblePrimary ||
+    primaryTypographyMatches ||
+    typographyMatches ||
+    ghosttyImportMatches
   const showGhosttyImport = !isSearching || forceVisiblePrimary || ghosttyImportMatches
+  const showTypographyAdvancedDisclosure = !isSearching || typographyMatches
 
   const advancedGroups = [
-    typographyMatches
-      ? {
-          key: 'typography',
-          node: (
-            <>
-              <SettingsSubsectionHeader
-                title={translate(
-                  'auto.components.settings.TerminalAppearanceSection.typographyAdvanced',
-                  'Typography'
-                )}
-              />
-              <TerminalAdvancedTypographyControls
-                settings={settings}
-                updateSettings={updateSettings}
-              />
-            </>
-          )
-        }
-      : null,
     cursorMatches
       ? {
           key: 'cursor',
@@ -230,6 +215,17 @@ export function TerminalAppearanceSection({
               />
             </SearchableSetting>
           </div>
+
+          {showTypographyAdvancedDisclosure ? (
+            <div className="ml-4">
+              <AppearanceAdvancedDisclosure showTopBorder={false}>
+                <TerminalAdvancedTypographyControls
+                  settings={settings}
+                  updateSettings={updateSettings}
+                />
+              </AppearanceAdvancedDisclosure>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
