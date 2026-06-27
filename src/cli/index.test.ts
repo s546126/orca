@@ -1874,8 +1874,8 @@ describe('orca cli worktree awareness', () => {
           'vmRecipes:',
           '  - id: cloud-sandbox',
           '    name: Cloud Sandbox',
-          '    command: ./scripts/orca-vm/start.sh',
-          '    cleanup: ./scripts/orca-vm/cleanup.sh'
+          '    create: ./scripts/orca-vm/start.sh',
+          '    destroy: ./scripts/orca-vm/cleanup.sh'
         ].join('\n')
       )
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -1894,8 +1894,8 @@ describe('orca cli worktree awareness', () => {
         expect.arrayContaining([
           expect.objectContaining({ id: 'orca_yaml.parse', status: 'pass' }),
           expect.objectContaining({ id: 'recipe.exists', status: 'pass' }),
-          expect.objectContaining({ id: 'recipe.command', status: 'pass' }),
-          expect.objectContaining({ id: 'recipe.cleanup', status: 'pass' })
+          expect.objectContaining({ id: 'recipe.create', status: 'pass' }),
+          expect.objectContaining({ id: 'recipe.destroy', status: 'pass' })
         ])
       )
       expect(callMock).not.toHaveBeenCalled()
@@ -1915,7 +1915,7 @@ describe('orca cli worktree awareness', () => {
           'vmRecipes:',
           '  - id: manual-sandbox',
           '    name: Manual Sandbox',
-          '    command: ./scripts/orca-vm/start.sh'
+          '    create: ./scripts/orca-vm/start.sh'
         ].join('\n')
       )
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -1932,9 +1932,9 @@ describe('orca cli worktree awareness', () => {
       expect(output.ok).toBe(true)
       expect(output.checks).toContainEqual(
         expect.objectContaining({
-          id: 'recipe.cleanup',
+          id: 'recipe.destroy',
           status: 'warn',
-          remediation: 'Add cleanup or explicitly set cleanup: none.'
+          remediation: 'Add destroy or explicitly set destroy: none.'
         })
       )
     } finally {
@@ -1977,8 +1977,8 @@ describe('orca cli worktree awareness', () => {
           'vmRecipes:',
           '  - id: cloud-sandbox',
           '    name: Cloud Sandbox',
-          `    command: ${JSON.stringify(`${process.execPath} ./scripts/orca-vm/start.js`)}`,
-          `    cleanup: ${JSON.stringify(`${process.execPath} ./scripts/orca-vm/cleanup.js`)}`
+          `    create: ${JSON.stringify(`${process.execPath} ./scripts/orca-vm/start.js`)}`,
+          `    destroy: ${JSON.stringify(`${process.execPath} ./scripts/orca-vm/cleanup.js`)}`
         ].join('\n')
       )
       const { EventEmitter } = await import('events')
@@ -2043,7 +2043,7 @@ describe('orca cli worktree awareness', () => {
           expect.objectContaining({ id: 'recipe.provision', status: 'pass' }),
           expect.objectContaining({ id: 'recipe.result.endpoint.public_ws', status: 'warn' }),
           expect.objectContaining({ id: 'recipe.result.project_root', status: 'pass' }),
-          expect.objectContaining({ id: 'recipe.cleanup.run', status: 'pass' })
+          expect.objectContaining({ id: 'recipe.destroy.run', status: 'pass' })
         ])
       )
       const cleanupPayload = JSON.parse(

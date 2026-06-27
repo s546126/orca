@@ -200,17 +200,17 @@ function getRecipeCommandDisplay(command: string): string {
   return quoted?.[1] ?? trimmed.split(/\s+/)[0] ?? trimmed
 }
 
-function getRecipeCleanupLabel(recipe: EphemeralVmRecipeOption): string {
-  if (recipe.cleanupDisabled) {
-    return translate('auto.components.NewWorkspaceComposerCard.cleanupDisabled', 'cleanup disabled')
+function getRecipeDestroyLabel(recipe: EphemeralVmRecipeOption): string {
+  if (recipe.destroyDisabled) {
+    return translate('auto.components.NewWorkspaceComposerCard.destroyDisabled', 'destroy disabled')
   }
-  if (recipe.cleanup) {
+  if (recipe.destroy) {
     return translate(
-      'auto.components.NewWorkspaceComposerCard.cleanupConfigured',
-      'cleanup configured'
+      'auto.components.NewWorkspaceComposerCard.destroyConfigured',
+      'destroy configured'
     )
   }
-  return translate('auto.components.NewWorkspaceComposerCard.noCleanupConfigured', 'no cleanup')
+  return translate('auto.components.NewWorkspaceComposerCard.noDestroyConfigured', 'no destroy')
 }
 
 type WorkspaceRunTargetComboboxProps = {
@@ -381,8 +381,8 @@ function WorkspaceRunTargetCombobox({
                           <div className="min-w-0 flex-1">
                             <div className="truncate text-sm">{recipe.name}</div>
                             <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                              {getRecipeCommandDisplay(recipe.command)} ·{' '}
-                              {getRecipeCleanupLabel(recipe)}
+                              {getRecipeCommandDisplay(recipe.create)} ·{' '}
+                              {getRecipeDestroyLabel(recipe)}
                             </div>
                             {recipe.description ? (
                               <div className="truncate text-[11px] text-muted-foreground">

@@ -21,7 +21,7 @@ export async function runRecipeCommand(args: {
   command: string
   repoPath: string
   context: EphemeralVmRecipeContext
-  mode: 'create' | 'cleanup'
+  mode: 'create' | 'suspend' | 'resume' | 'destroy'
   stdin?: string
   env?: NodeJS.ProcessEnv
   maxCaptureBytes?: number
@@ -90,7 +90,7 @@ export async function runRecipeCommand(args: {
 
 function buildRecipeEnv(
   env: NodeJS.ProcessEnv | undefined,
-  mode: 'create' | 'cleanup',
+  mode: 'create' | 'suspend' | 'resume' | 'destroy',
   context: EphemeralVmRecipeContext
 ): NodeJS.ProcessEnv {
   return {

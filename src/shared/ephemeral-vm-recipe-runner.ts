@@ -77,7 +77,7 @@ export type EphemeralVmRecipeCleanupResult = {
 
 export type EphemeralVmRecipeCleanupPayload = {
   schemaVersion: 1
-  mode: 'cleanup'
+  mode: 'destroy'
   recipeId: string
   instanceId?: string
   projectId?: string
@@ -92,7 +92,7 @@ export async function runEphemeralVmRecipeStart(
   validateRepoPath(args.repoPath)
   const context = buildRecipeContext(args.recipe, args.repoPath, args.context)
   const processResult = await runRecipeCommand({
-    command: args.recipe.command,
+    command: args.recipe.create,
     repoPath: args.repoPath,
     context,
     mode: 'create',
@@ -136,16 +136,16 @@ export async function runEphemeralVmRecipeCleanup(
   args: EphemeralVmRecipeCleanupArgs
 ): Promise<EphemeralVmRecipeCleanupResult> {
   validateRepoPath(args.repoPath)
-  if (args.recipe.cleanupDisabled || !args.recipe.cleanup) {
+  if (args.recipe.destroyDisabled || !args.recipe.destroy) {
     return { ok: true, skipped: true, stdout: '', stderr: '', exitCode: null, signal: null }
   }
 
   const payload = buildEphemeralVmRecipeCleanupPayload(args)
   const processResult = await runRecipeCommand({
-    command: args.recipe.cleanup,
+    command: args.recipe.destroy,
     repoPath: args.repoPath,
     context: args.context,
-    mode: 'cleanup',
+    mode: 'destroy',
     stdin: `${JSON.stringify(payload)}\n`,
     env: args.env,
     maxCaptureBytes: args.maxCaptureBytes,
@@ -159,7 +159,7 @@ export async function runEphemeralVmRecipeCleanup(
     return {
       ok: false,
       skipped: false,
-      error: `Cleanup exited with code ${processResult.exitCode ?? 'unknown'}.`,
+      error: `Destroy exited with code ${processResult.exitCode ?? 'unknown'}.`,
       ...processResult
     }
   }
@@ -174,7 +174,7 @@ export function buildEphemeralVmRecipeCleanupPayload(args: {
 }): EphemeralVmRecipeCleanupPayload {
   return {
     schemaVersion: 1,
-    mode: 'cleanup',
+    mode: 'destroy',
     recipeId: args.recipe.id,
     instanceId: args.context.instanceId,
     projectId: args.context.projectId,
@@ -185,7 +185,7 @@ export function buildEphemeralVmRecipeCleanupPayload(args: {
 }
 
 export function buildEphemeralVmRecipeCleanupCommand(args: {
-  cleanupCommand: string
+  destroyCommand: string
   payload: EphemeralVmRecipeCleanupPayload
 }): string {
   const payloadBase64 = Buffer.from(`${JSON.stringify(args.payload)}\n`, 'utf8').toString('base64')
@@ -196,7 +196,7 @@ export function buildEphemeralVmRecipeCleanupCommand(args: {
       `process.stdout.write(Buffer.from(${JSON.stringify(payloadBase64)}, 'base64').toString('utf8'))`
     ),
     '|',
-    args.cleanupCommand
+    args.destroyCommand
   ].join(' ')
 }
 

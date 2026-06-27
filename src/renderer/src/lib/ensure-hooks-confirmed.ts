@@ -41,11 +41,13 @@ function getVmRecipeTrustContent(yamlHooks: OrcaHooks | null): string {
         `# vmRecipes.${recipe.id}`,
         `name: ${recipe.name}`,
         recipe.description ? `description: ${recipe.description}` : null,
-        `command: ${recipe.command}`,
-        recipe.cleanupDisabled
-          ? 'cleanup: none'
-          : recipe.cleanup
-            ? `cleanup: ${recipe.cleanup}`
+        `create: ${recipe.create}`,
+        recipe.suspend ? `suspend: ${recipe.suspend}` : null,
+        recipe.resume ? `resume: ${recipe.resume}` : null,
+        recipe.destroyDisabled
+          ? 'destroy: none'
+          : recipe.destroy
+            ? `destroy: ${recipe.destroy}`
             : null
       ]
         .filter((entry): entry is string => entry !== null)

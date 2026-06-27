@@ -154,23 +154,23 @@ async function doctorRecipeWithProvision(
   })
   if (cleanup.skipped) {
     checks.push({
-      id: 'recipe.cleanup.run',
+      id: 'recipe.destroy.run',
       status: 'warn',
-      message: 'Cleanup was skipped because cleanup is disabled or missing.',
+      message: 'Destroy was skipped because destroy is disabled or missing.',
       remediation: 'Destroy any provider resources created by the doctor run manually.'
     })
   } else if (cleanup.ok) {
     checks.push({
-      id: 'recipe.cleanup.run',
+      id: 'recipe.destroy.run',
       status: 'pass',
-      message: 'Cleanup hook ran successfully after provisioning.'
+      message: 'Destroy action ran successfully after provisioning.'
     })
   } else {
     checks.push({
-      id: 'recipe.cleanup.run',
+      id: 'recipe.destroy.run',
       status: 'fail',
-      message: cleanup.error ?? 'Cleanup hook failed after provisioning.',
-      remediation: 'Destroy provider resources manually, then fix the cleanup hook.'
+      message: cleanup.error ?? 'Destroy action failed after provisioning.',
+      remediation: 'Destroy provider resources manually, then fix the destroy action.'
     })
   }
 

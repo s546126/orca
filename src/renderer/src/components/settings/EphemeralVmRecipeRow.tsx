@@ -22,11 +22,11 @@ export function EphemeralVmRecipeRow({
   onDoctor: () => void
   onUse: () => void
 }): React.JSX.Element {
-  const cleanupLabel = recipe.cleanupDisabled
-    ? 'cleanup disabled'
-    : recipe.cleanup
-      ? 'cleanup configured'
-      : 'no cleanup'
+  const destroyLabel = recipe.destroyDisabled
+    ? 'destroy disabled'
+    : recipe.destroy
+      ? 'destroy configured'
+      : 'no destroy'
   return (
     <div className="flex items-center gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
@@ -35,7 +35,7 @@ export function EphemeralVmRecipeRow({
           <span className="shrink-0 text-[11px] text-muted-foreground">{entry.repoName}</span>
         </div>
         <p className="truncate font-mono text-xs text-muted-foreground">
-          {recipe.id} · {recipe.command} · {cleanupLabel}
+          {recipe.id} · {recipe.create} · {destroyLabel}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1">

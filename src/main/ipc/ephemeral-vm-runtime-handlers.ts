@@ -111,19 +111,19 @@ export function registerEphemeralVmRuntimeHandlers(store: Store): void {
         recipeResult: resolved.runtime.recipeResult
       })
       const payloadJson = JSON.stringify(payload, null, 2)
-      if (resolved.recipe.cleanupDisabled || !resolved.recipe.cleanup) {
+      if (resolved.recipe.destroyDisabled || !resolved.recipe.destroy) {
         return {
           runtimeId: resolved.runtime.id,
           command: null,
           payloadJson,
           cleanupDisabled: true,
-          message: 'Cleanup is disabled for this recipe.'
+          message: 'Destroy is disabled for this recipe.'
         }
       }
       return {
         runtimeId: resolved.runtime.id,
         command: buildEphemeralVmRecipeCleanupCommand({
-          cleanupCommand: resolved.recipe.cleanup,
+          destroyCommand: resolved.recipe.destroy,
           payload
         }),
         payloadJson,

@@ -92,8 +92,8 @@ describe('registerEphemeralVmHandlers', () => {
         'vmRecipes:',
         '  - id: cloud-sandbox',
         '    name: Cloud Sandbox',
-        '    command: ./scripts/start.sh',
-        '    cleanup: none'
+        '    create: ./scripts/start.sh',
+        '    destroy: none'
       ].join('\n')
     )
 
@@ -111,8 +111,8 @@ describe('registerEphemeralVmHandlers', () => {
         {
           id: 'cloud-sandbox',
           name: 'Cloud Sandbox',
-          command: './scripts/start.sh',
-          cleanupDisabled: true
+          create: './scripts/start.sh',
+          destroyDisabled: true
         }
       ]
     })
@@ -126,8 +126,8 @@ describe('registerEphemeralVmHandlers', () => {
         'vmRecipes:',
         '  - id: cloud-sandbox',
         '    name: Cloud Sandbox',
-        '    command: ./scripts/start.sh',
-        '    cleanup: none'
+        '    create: ./scripts/start.sh',
+        '    destroy: none'
       ].join('\n')
     )
 
@@ -144,8 +144,8 @@ describe('registerEphemeralVmHandlers', () => {
           {
             id: 'cloud-sandbox',
             name: 'Cloud Sandbox',
-            command: './scripts/start.sh',
-            cleanupDisabled: true
+            create: './scripts/start.sh',
+            destroyDisabled: true
           }
         ]
       }
@@ -175,8 +175,8 @@ describe('registerEphemeralVmHandlers', () => {
         'vmRecipes:',
         '  - id: cloud-sandbox',
         '    name: Cloud Sandbox',
-        `    command: ${JSON.stringify(nodeCommand(startPath))}`,
-        '    cleanup: none'
+        `    create: ${JSON.stringify(nodeCommand(startPath))}`,
+        '    destroy: none'
       ].join('\n')
     )
 
@@ -247,8 +247,8 @@ describe('registerEphemeralVmHandlers', () => {
         'vmRecipes:',
         '  - id: cloud-sandbox',
         '    name: Cloud Sandbox',
-        `    command: ${JSON.stringify(nodeCommand(startPath))}`,
-        `    cleanup: ${JSON.stringify(nodeCommand(cleanupPath))}`
+        `    create: ${JSON.stringify(nodeCommand(startPath))}`,
+        `    destroy: ${JSON.stringify(nodeCommand(cleanupPath))}`
       ].join('\n')
     )
 
@@ -295,8 +295,8 @@ describe('registerEphemeralVmHandlers', () => {
         'vmRecipes:',
         '  - id: cloud-sandbox',
         '    name: Cloud Sandbox',
-        `    command: ${JSON.stringify(nodeCommand(startPath))}`,
-        '    cleanup: none'
+        `    create: ${JSON.stringify(nodeCommand(startPath))}`,
+        '    destroy: none'
       ].join('\n')
     )
 
@@ -346,8 +346,8 @@ describe('registerEphemeralVmHandlers', () => {
         'vmRecipes:',
         '  - id: cloud-sandbox',
         '    name: Cloud Sandbox',
-        `    command: ${JSON.stringify(nodeCommand(startPath))}`,
-        '    cleanup: none'
+        `    create: ${JSON.stringify(nodeCommand(startPath))}`,
+        '    destroy: none'
       ].join('\n')
     )
 

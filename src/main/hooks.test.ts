@@ -200,8 +200,10 @@ describe('parseOrcaYaml', () => {
       '  - id: cloud-sandbox',
       '    name: Cloud Sandbox',
       '    description: Starts a per-workspace VM.',
-      '    command: ./scripts/orca-vm/start-cloud-sandbox.sh',
-      '    cleanup: ./scripts/orca-vm/cleanup-cloud-sandbox.sh'
+      '    create: ./scripts/orca-vm/start-cloud-sandbox.sh',
+      '    suspend: ./scripts/orca-vm/suspend-cloud-sandbox.sh',
+      '    resume: ./scripts/orca-vm/resume-cloud-sandbox.sh',
+      '    destroy: ./scripts/orca-vm/destroy-cloud-sandbox.sh'
     ].join('\n')
 
     expect(parseOrcaYaml(yaml)).toEqual({
@@ -211,14 +213,16 @@ describe('parseOrcaYaml', () => {
           id: 'cloud-sandbox',
           name: 'Cloud Sandbox',
           description: 'Starts a per-workspace VM.',
-          command: './scripts/orca-vm/start-cloud-sandbox.sh',
-          cleanup: './scripts/orca-vm/cleanup-cloud-sandbox.sh'
+          create: './scripts/orca-vm/start-cloud-sandbox.sh',
+          suspend: './scripts/orca-vm/suspend-cloud-sandbox.sh',
+          resume: './scripts/orca-vm/resume-cloud-sandbox.sh',
+          destroy: './scripts/orca-vm/destroy-cloud-sandbox.sh'
         }
       ]
     })
   })
 
-  it('parses vmRecipes with cleanup explicitly disabled', () => {
+  it('parses legacy vmRecipes command and cleanup aliases', () => {
     const yaml = [
       'vmRecipes:',
       '  - id: manual-sandbox',
@@ -233,8 +237,8 @@ describe('parseOrcaYaml', () => {
         {
           id: 'manual-sandbox',
           name: 'Manual Sandbox',
-          command: './scripts/orca-vm/start-manual-sandbox.sh',
-          cleanupDisabled: true
+          create: './scripts/orca-vm/start-manual-sandbox.sh',
+          destroyDisabled: true
         }
       ]
     })
@@ -245,17 +249,17 @@ describe('parseOrcaYaml', () => {
       'vmRecipes:',
       '  - id: cloud-sandbox',
       '    name: Cloud Sandbox',
-      '    command: ./scripts/orca-vm/start-cloud-sandbox.sh',
+      '    create: ./scripts/orca-vm/start-cloud-sandbox.sh',
       '  - id: cloud-sandbox',
       '    name: Duplicate Cloud Sandbox',
-      '    command: ./scripts/orca-vm/start-duplicate.sh',
-      '  - id: missing-command',
-      '    name: Missing Command',
+      '    create: ./scripts/orca-vm/start-duplicate.sh',
+      '  - id: missing-create',
+      '    name: Missing Create',
       '  - name: Missing Id',
-      '    command: ./scripts/orca-vm/start-missing-id.sh',
+      '    create: ./scripts/orca-vm/start-missing-id.sh',
       '  - id: "Cloud Sandbox"',
       '    name: Unsafe Id',
-      '    command: ./scripts/orca-vm/start-unsafe-id.sh',
+      '    create: ./scripts/orca-vm/start-unsafe-id.sh',
       '  - 42'
     ].join('\n')
 
@@ -265,7 +269,7 @@ describe('parseOrcaYaml', () => {
         {
           id: 'cloud-sandbox',
           name: 'Cloud Sandbox',
-          command: './scripts/orca-vm/start-cloud-sandbox.sh'
+          create: './scripts/orca-vm/start-cloud-sandbox.sh'
         }
       ],
       vmRecipeDiagnostics: [
@@ -274,7 +278,7 @@ describe('parseOrcaYaml', () => {
           field: 'id',
           message: 'Duplicate recipe id "cloud-sandbox". Recipe ids must be unique.'
         },
-        { index: 2, field: 'command', message: 'Recipe "missing-command" is missing command.' },
+        { index: 2, field: 'create', message: 'Recipe "missing-create" is missing create.' },
         { index: 3, field: 'id', message: 'Recipe id is required.' },
         {
           index: 4,
@@ -329,7 +333,7 @@ describe('hasUnrecognizedOrcaYamlKeys', () => {
         'vmRecipes:',
         '  - id: cloud-sandbox',
         '    name: Cloud Sandbox',
-        '    command: ./scripts/orca-vm/start-cloud-sandbox.sh'
+        '    create: ./scripts/orca-vm/start-cloud-sandbox.sh'
       ].join('\n')
     )
 

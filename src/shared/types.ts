@@ -1921,10 +1921,12 @@ export type OrcaDefaultTabTemplate = {
 export type OrcaVmRecipe = {
   id: string
   name: string
-  command: string
+  create: string
   description?: string
-  cleanup?: string
-  cleanupDisabled?: boolean
+  suspend?: string
+  resume?: string
+  destroy?: string
+  destroyDisabled?: boolean
 }
 
 export type OrcaVmRecipeDiagnostic = {

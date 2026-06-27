@@ -45,22 +45,22 @@ export function doctorEphemeralVmRecipe(args: {
     return buildDoctorResult(args.recipeId, args.repoPath, checks)
   }
 
-  checks.push(checkCommandPath(args.repoPath, recipe.command, 'recipe.command'))
-  if (recipe.cleanupDisabled) {
+  checks.push(checkCommandPath(args.repoPath, recipe.create, 'recipe.create'))
+  if (recipe.destroyDisabled) {
     checks.push({
-      id: 'recipe.cleanup',
+      id: 'recipe.destroy',
       status: 'warn',
-      message: 'Cleanup is explicitly disabled.',
-      remediation: 'Only use cleanup: none when provider resources are cleaned up elsewhere.'
+      message: 'Destroy is explicitly disabled.',
+      remediation: 'Only use destroy: none when provider resources are cleaned up elsewhere.'
     })
-  } else if (recipe.cleanup) {
-    checks.push(checkCommandPath(args.repoPath, recipe.cleanup, 'recipe.cleanup'))
+  } else if (recipe.destroy) {
+    checks.push(checkCommandPath(args.repoPath, recipe.destroy, 'recipe.destroy'))
   } else {
     checks.push({
-      id: 'recipe.cleanup',
+      id: 'recipe.destroy',
       status: 'warn',
-      message: 'No cleanup hook is configured.',
-      remediation: 'Add cleanup or explicitly set cleanup: none.'
+      message: 'No destroy action is configured.',
+      remediation: 'Add destroy or explicitly set destroy: none.'
     })
   }
 

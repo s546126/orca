@@ -97,8 +97,8 @@ export async function provisionEphemeralVmRuntime(
     ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     ...(args.workspaceName ? { workspaceName: args.workspaceName } : {}),
     status: 'running',
-    cleanupStatus: args.recipe.cleanupDisabled ? 'disabled' : 'not_started',
-    ...(args.recipe.cleanupDisabled ? { cleanupDisabled: true } : {}),
+    cleanupStatus: args.recipe.destroyDisabled ? 'disabled' : 'not_started',
+    ...(args.recipe.destroyDisabled ? { cleanupDisabled: true } : {}),
     createdAt: now,
     updatedAt: now,
     recipeResult: start.result
@@ -120,7 +120,7 @@ export async function cleanupEphemeralVmRuntime(
   const now = args.now ?? Date.now()
   const running = updateEphemeralVmRuntimeStatus(args.userDataPath, existing.id, {
     status: 'cleanup_pending',
-    cleanupStatus: args.recipe.cleanupDisabled ? 'disabled' : 'running',
+    cleanupStatus: args.recipe.destroyDisabled ? 'disabled' : 'running',
     cleanupLastAttemptAt: now,
     cleanupLastError: null,
     updatedAt: now
@@ -139,10 +139,10 @@ export async function cleanupEphemeralVmRuntime(
     const failed = updateEphemeralVmRuntimeStatus(args.userDataPath, existing.id, {
       status: 'cleanup_failed',
       cleanupStatus: 'failed',
-      cleanupLastError: cleanup.error ?? 'Cleanup failed.',
+      cleanupLastError: cleanup.error ?? 'Destroy failed.',
       updatedAt: Date.now()
     })
-    return { ok: false, runtime: failed, error: cleanup.error ?? 'Cleanup failed.' }
+    return { ok: false, runtime: failed, error: cleanup.error ?? 'Destroy failed.' }
   }
 
   const cleaned = updateEphemeralVmRuntimeStatus(args.userDataPath, existing.id, {

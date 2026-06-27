@@ -61,7 +61,7 @@ describe('runEphemeralVmRecipeStart', () => {
       recipe: {
         id: 'cloud-sandbox',
         name: 'Cloud Sandbox',
-        command: nodeCommand(scriptPath)
+        create: nodeCommand(scriptPath)
       }
     })
 
@@ -86,7 +86,7 @@ describe('runEphemeralVmRecipeStart', () => {
       recipe: {
         id: 'cloud-sandbox',
         name: 'Cloud Sandbox',
-        command: nodeCommand(scriptPath)
+        create: nodeCommand(scriptPath)
       },
       context: { instanceId: 'orca-test-instance' }
     })
@@ -114,7 +114,7 @@ describe('runEphemeralVmRecipeStart', () => {
       recipe: {
         id: 'cloud-sandbox',
         name: 'Cloud Sandbox',
-        command: nodeCommand(scriptPath)
+        create: nodeCommand(scriptPath)
       }
     })
 
@@ -134,8 +134,8 @@ describe('runEphemeralVmRecipeCleanup', () => {
     const recipe: OrcaVmRecipe = {
       id: 'cloud-sandbox',
       name: 'Cloud Sandbox',
-      command: 'unused',
-      cleanup: './scripts/orca-vm/cleanup.sh'
+      create: 'unused',
+      destroy: './scripts/orca-vm/destroy.sh'
     }
     const payload = buildEphemeralVmRecipeCleanupPayload({
       recipe,
@@ -154,7 +154,7 @@ describe('runEphemeralVmRecipeCleanup', () => {
 
     expect(payload).toMatchObject({
       schemaVersion: 1,
-      mode: 'cleanup',
+      mode: 'destroy',
       recipeId: 'cloud-sandbox',
       instanceId: 'orca-test-instance',
       workspaceName: 'fix-login-race',
@@ -162,10 +162,10 @@ describe('runEphemeralVmRecipeCleanup', () => {
     })
     expect(
       buildEphemeralVmRecipeCleanupCommand({
-        cleanupCommand: recipe.cleanup!,
+        destroyCommand: recipe.destroy!,
         payload
       })
-    ).toContain('| ./scripts/orca-vm/cleanup.sh')
+    ).toContain('| ./scripts/orca-vm/destroy.sh')
   })
 
   it('passes cleanup context and recipe result on stdin', async () => {
@@ -192,8 +192,8 @@ describe('runEphemeralVmRecipeCleanup', () => {
     const recipe: OrcaVmRecipe = {
       id: 'cloud-sandbox',
       name: 'Cloud Sandbox',
-      command: 'unused',
-      cleanup: nodeCommand(cleanupPath)
+      create: 'unused',
+      destroy: nodeCommand(cleanupPath)
     }
 
     const result = await runEphemeralVmRecipeCleanup({
@@ -217,11 +217,11 @@ describe('runEphemeralVmRecipeCleanup', () => {
     }
     expect(result.skipped).toBe(false)
     expect(JSON.parse(result.stdout)).toEqual({
-      mode: 'cleanup',
+      mode: 'destroy',
       recipeId: 'cloud-sandbox',
       instanceId: 'orca-test-instance',
       projectRoot: '/workspace/repo',
-      envMode: 'cleanup',
+      envMode: 'destroy',
       envWorkspace: 'fix-login-race'
     })
   })
@@ -234,8 +234,8 @@ describe('runEphemeralVmRecipeCleanup', () => {
       recipe: {
         id: 'manual-sandbox',
         name: 'Manual Sandbox',
-        command: 'unused',
-        cleanupDisabled: true
+        create: 'unused',
+        destroyDisabled: true
       },
       context: {
         recipeId: 'manual-sandbox',

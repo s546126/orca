@@ -72,7 +72,7 @@ function normalizeVmRecipes(value: unknown): VmRecipeParseResult {
       }
       const id = asTrimmedString(record.id)
       const name = asTrimmedString(record.name)
-      const command = asTrimmedString(record.command)
+      const create = asTrimmedString(record.create) ?? asTrimmedString(record.command)
       if (!id) {
         diagnostics.push({ index, field: 'id', message: 'Recipe id is required.' })
         return null
@@ -97,21 +97,25 @@ function normalizeVmRecipes(value: unknown): VmRecipeParseResult {
         diagnostics.push({ index, field: 'name', message: `Recipe "${id}" is missing name.` })
         return null
       }
-      if (!command) {
-        diagnostics.push({ index, field: 'command', message: `Recipe "${id}" is missing command.` })
+      if (!create) {
+        diagnostics.push({ index, field: 'create', message: `Recipe "${id}" is missing create.` })
         return null
       }
       seenIds.add(id)
       const description = asTrimmedString(record.description)
-      const cleanupValue = asTrimmedString(record.cleanup)
-      const cleanupDisabled = cleanupValue === 'none'
+      const suspend = asTrimmedString(record.suspend)
+      const resume = asTrimmedString(record.resume)
+      const destroyValue = asTrimmedString(record.destroy) ?? asTrimmedString(record.cleanup)
+      const destroyDisabled = destroyValue === 'none'
       return {
         id,
         name,
-        command,
+        create,
         ...(description ? { description } : {}),
-        ...(cleanupValue && !cleanupDisabled ? { cleanup: cleanupValue } : {}),
-        ...(cleanupDisabled ? { cleanupDisabled: true } : {})
+        ...(suspend ? { suspend } : {}),
+        ...(resume ? { resume } : {}),
+        ...(destroyValue && !destroyDisabled ? { destroy: destroyValue } : {}),
+        ...(destroyDisabled ? { destroyDisabled: true } : {})
       }
     })
     .filter((entry): entry is OrcaVmRecipe => entry !== null)

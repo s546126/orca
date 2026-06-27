@@ -83,8 +83,8 @@ describe('ephemeral VM runtime service', () => {
     const recipe: OrcaVmRecipe = {
       id: 'cloud-sandbox',
       name: 'Cloud Sandbox',
-      command: nodeCommand(startPath),
-      cleanup: nodeCommand(cleanupPath)
+      create: nodeCommand(startPath),
+      destroy: nodeCommand(cleanupPath)
     }
 
     const provisioned = await provisionEphemeralVmRuntime({
@@ -146,7 +146,7 @@ describe('ephemeral VM runtime service', () => {
       recipe: {
         id: 'cloud-sandbox',
         name: 'Cloud Sandbox',
-        command: nodeCommand(startPath)
+        create: nodeCommand(startPath)
       }
     })
 

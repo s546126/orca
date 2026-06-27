@@ -311,9 +311,9 @@ describe('NewWorkspaceComposerCard folder task source mode', () => {
         {
           id: 'vercel',
           name: 'Vercel Sandbox',
-          command: './scripts/orca-vm/vercel.start.sh',
-          cleanup: './scripts/orca-vm/vercel.cleanup.sh',
-          cleanupDisabled: false
+          create: './scripts/orca-vm/vercel.start.sh',
+          destroy: './scripts/orca-vm/vercel.cleanup.sh',
+          destroyDisabled: false
         }
       ] as never,
       onEphemeralVmRecipeChange: (recipeId) => recipeChanges.push(recipeId)
@@ -368,8 +368,8 @@ describe('NewWorkspaceComposerCard folder task source mode', () => {
         {
           id: 'vercel',
           name: 'Vercel Sandbox',
-          command: './scripts/orca-vm/vercel.start.sh',
-          cleanupDisabled: true
+          create: './scripts/orca-vm/vercel.start.sh',
+          destroyDisabled: true
         }
       ] as never,
       selectedEphemeralVmRecipeId: 'vercel',
