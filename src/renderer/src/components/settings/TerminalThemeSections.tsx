@@ -237,7 +237,7 @@ export function TerminalThemeCatalogSection({
           </div>
         </div>
 
-        {advancedContent ? <div>{advancedContent}</div> : null}
+        {advancedContent ? <div className="-mt-4">{advancedContent}</div> : null}
 
         <TerminalSettingsPreview
           title={

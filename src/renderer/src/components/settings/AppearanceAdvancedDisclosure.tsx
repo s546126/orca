@@ -10,6 +10,7 @@ type AppearanceAdvancedDisclosureProps = {
   /** Optional override label; defaults to "Advanced". */
   label?: string
   showTopBorder?: boolean
+  className?: string
   children: React.ReactNode
 }
 
@@ -19,6 +20,7 @@ type AppearanceAdvancedDisclosureProps = {
 export function AppearanceAdvancedDisclosure({
   label,
   showTopBorder = true,
+  className,
   children
 }: AppearanceAdvancedDisclosureProps): React.JSX.Element {
   const searchQuery = useAppStore((state) => state.settingsSearchQuery)
@@ -27,7 +29,7 @@ export function AppearanceAdvancedDisclosure({
   const expanded = open || isSearching
 
   return (
-    <div className={cn('mt-3 pt-2', showTopBorder && 'border-t border-border/50')}>
+    <div className={cn('mt-3 pt-2', showTopBorder && 'border-t border-border/50', className)}>
       <button
         type="button"
         aria-expanded={expanded}
