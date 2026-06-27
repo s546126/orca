@@ -151,8 +151,8 @@ export function TerminalAppearanceSection({
   ].filter((group): group is { key: string; node: React.JSX.Element } => group !== null)
   const showAdvancedDisclosure = !isSearching || advancedGroups.length > 0
   const previewAdvancedContent = showAdvancedDisclosure ? (
-    <AppearanceAdvancedDisclosure>
-      <div className="ml-4 pt-3">
+    <AppearanceAdvancedDisclosure showTopBorder={false}>
+      <div className="ml-4">
         {advancedGroups.map((group, index) => (
           <div
             key={group.key}

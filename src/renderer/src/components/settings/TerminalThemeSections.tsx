@@ -96,7 +96,7 @@ export function TerminalThemeCatalogSection({
       />
 
       <div className="ml-4 grid gap-4">
-        <div>
+        <div className={advancedContent ? 'border-b border-border/40' : undefined}>
           <div className="space-y-3">
             <SearchableSetting
               title={translate(
