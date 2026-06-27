@@ -152,11 +152,11 @@ export function TerminalAppearanceSection({
   const showAdvancedDisclosure = !isSearching || advancedGroups.length > 0
   const previewAdvancedContent = showAdvancedDisclosure ? (
     <AppearanceAdvancedDisclosure showTopBorder={false} className="mt-0 pt-2">
-      <div className="ml-4">
+      <div className="ml-4 pt-3">
         {advancedGroups.map((group, index) => (
           <div
             key={group.key}
-            className={index > 0 ? 'mt-4 border-t border-border/60 pt-4' : undefined}
+            className={index > 0 ? 'mt-2 border-t border-border/60 pt-4' : undefined}
           >
             {group.node}
           </div>
