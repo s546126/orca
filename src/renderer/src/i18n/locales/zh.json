@@ -9129,6 +9129,8 @@
                   "2d8f185fbc": "在提交部分暂存的文件之前暂存所有更改",
                   "a6457b46a7": "提交前解决冲突",
                   "484f45c439": "{{value0}} 正在进行中...",
+                  "6f7a8b9c0d": "Remote operation in progress…",
+                  "7f8a9b0c1d": "Remote operation in progress — try again once it finishes",
                   "74fc171e99": "强制推送正在进行中...",
                   "16aee3a5c1": "正在进行中……",
                   "e61b0d7a3c": "请先检出分支再发布 commits。",
@@ -9148,6 +9150,7 @@
                   "d8a4c0e369": "Authenticate before creating a {{value0}}.",
                   "e9b5d1f470": "Check out a branch before creating a {{value0}}.",
                   "f0c6e2a581": "This branch is not ready for a {{value0}} yet.",
+                  "8f9a0b1c2d": "Nothing to commit. Branch is up to date.",
                   "h3i4j5k607": "Checking whether this branch can create a {{value0}}…"
                 }
               }

@@ -2624,11 +2624,12 @@ export default function SessionScreen() {
     }
     void (async () => {
       if (client && created !== '1') {
-        // Why: desktop reveal can be slow on cold/busy hosts, but mobile
-        // session tabs are addressed by worktree id and can load immediately.
+        // Why: mobile needs host-owned tabs hydrated for this route, but should
+        // not pull other paired clients, especially desktop, into this worktree.
         void client
           .sendRequest('worktree.activate', {
-            worktree: `id:${worktreeId}`
+            worktree: `id:${worktreeId}`,
+            notifyClients: false
           })
           .catch(() => null)
       }
@@ -2653,7 +2654,8 @@ export default function SessionScreen() {
           void (async () => {
             await client
               .sendRequest('worktree.activate', {
-                worktree: `id:${worktreeId}`
+                worktree: `id:${worktreeId}`,
+                notifyClients: false
               })
               .catch(() => null)
             if (disposed) {
@@ -2802,7 +2804,8 @@ export default function SessionScreen() {
           void client
             .sendRequest('session.tabs.activate', {
               worktree: `id:${worktreeId}`,
-              tabId: matchingTab.id
+              tabId: matchingTab.id,
+              notifyClients: false
             })
             .catch(() => {})
         }
@@ -2834,7 +2837,8 @@ export default function SessionScreen() {
           void client
             .sendRequest('session.tabs.activate', {
               worktree: `id:${worktreeId}`,
-              tabId: tab.id
+              tabId: tab.id,
+              notifyClients: false
             })
             .catch(() => {})
         }
@@ -2857,7 +2861,8 @@ export default function SessionScreen() {
         void client
           .sendRequest('session.tabs.activate', {
             worktree: `id:${worktreeId}`,
-            tabId: tab.id
+            tabId: tab.id,
+            notifyClients: false
           })
           .catch(() => {})
       }
@@ -4137,7 +4142,8 @@ export default function SessionScreen() {
       .sendRequest('session.tabs.activate', {
         worktree: `id:${worktreeId}`,
         tabId: activePendingTerminalTab.id,
-        leafId: activePendingTerminalTab.leafId
+        leafId: activePendingTerminalTab.leafId,
+        notifyClients: false
       })
       .then((response) => {
         if (!response.ok) {

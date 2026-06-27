@@ -81,7 +81,7 @@ import { normalizeHostedReviewHeadRef } from '../../../../shared/hosted-review-r
 import { getHostedReviewCacheKey, refreshHostedReviewCard } from '@/store/slices/hosted-review'
 import { toast } from 'sonner'
 import { useConfirmationDialog } from '@/components/confirmation-dialog'
-import { type ChecksPanelReview, gitHubPRToChecksPanelReview } from './checks-panel-review'
+import { type ChecksPanelReview, selectChecksPanelReview } from './checks-panel-review'
 import {
   checksPanelAsyncResultKey,
   checksPanelHostedReviewAsyncResultKey,
@@ -607,7 +607,8 @@ export default function ChecksPanel(): React.JSX.Element {
           branch,
           settings,
           repo.connectionId,
-          repo.executionHostId
+          repo.executionHostId,
+          true
         )
       : ''
   const hostedReviewCacheKey =
@@ -618,7 +619,8 @@ export default function ChecksPanel(): React.JSX.Element {
           settings,
           repo.id,
           repo.connectionId,
-          repo.executionHostId
+          repo.executionHostId,
+          true
         )
       : ''
   const refreshContextKey = `${activeWorktreeId ?? ''}::${prCacheKey}::${branch}`
@@ -645,10 +647,14 @@ export default function ChecksPanel(): React.JSX.Element {
   const linkedBitbucketPR = activeWorktree?.linkedBitbucketPR ?? null
   const linkedAzureDevOpsPR = activeWorktree?.linkedAzureDevOpsPR ?? null
   const linkedGiteaPR = activeWorktree?.linkedGiteaPR ?? null
-  const gitLabHostedReview = hostedReview?.provider === 'gitlab' ? hostedReview : null
-  const activeReview: ChecksPanelReview | null =
-    gitLabHostedReview ??
-    (linkedGitLabMR !== null ? null : pr ? gitHubPRToChecksPanelReview(pr) : null)
+  const activeReview: ChecksPanelReview | null = selectChecksPanelReview({
+    hostedReview,
+    pr,
+    linkedGitLabMR,
+    linkedBitbucketPR,
+    linkedAzureDevOpsPR,
+    linkedGiteaPR
+  })
   const activeGitLabReview = isGitLabChecksPanelReview(activeReview) ? activeReview : null
   const isGitLabReviewContext = Boolean(activeGitLabReview || linkedGitLabMR !== null)
   const activeConflictReview = activeReview?.mergeable === 'CONFLICTING' ? activeReview : null
@@ -722,7 +728,8 @@ export default function ChecksPanel(): React.JSX.Element {
           prChecksCacheSuffix(prNumber, pr?.prRepo),
           settings,
           repo.connectionId,
-          repo.executionHostId
+          repo.executionHostId,
+          true
         )
       : ''
   const commentsCacheKey =
@@ -733,7 +740,8 @@ export default function ChecksPanel(): React.JSX.Element {
           prCommentsCacheSuffix(prNumber, pr?.prRepo),
           settings,
           repo.connectionId,
-          repo.executionHostId
+          repo.executionHostId,
+          true
         )
       : ''
   const checksFetchedAt = useAppStore((s) =>

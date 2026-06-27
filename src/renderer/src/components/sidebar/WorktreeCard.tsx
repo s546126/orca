@@ -36,7 +36,8 @@ import type {
   Worktree,
   Repo,
   IssueInfo,
-  LinearIssue
+  LinearIssue,
+  PRInfo
 } from '../../../../shared/types'
 import { CONFLICT_OPERATION_LABELS } from './WorktreeCardHelpers'
 import {
@@ -150,6 +151,20 @@ function formatSparseDirectoryPreview(directories: string[]): string {
 
 function isWebClient(): boolean {
   return Boolean((window as unknown as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__)
+}
+
+function isCachedMergedBranchPRCurrentForWorktree(
+  cachedPR: PRInfo | null | undefined,
+  worktree: Worktree
+): boolean {
+  return (
+    cachedPR?.state === 'merged' &&
+    typeof cachedPR.headSha === 'string' &&
+    cachedPR.headSha.length > 0 &&
+    typeof worktree.head === 'string' &&
+    worktree.head.length > 0 &&
+    cachedPR.headSha === worktree.head
+  )
 }
 
 function getDirectoryName(folderPath: string): string {
@@ -397,7 +412,8 @@ const WorktreeCard = React.memo(function WorktreeCard({
           settings,
           repo.id,
           repo.connectionId,
-          repo.executionHostId
+          repo.executionHostId,
+          true
         )
       : ''
   const prCacheKey =
@@ -408,7 +424,8 @@ const WorktreeCard = React.memo(function WorktreeCard({
           branch,
           settings,
           repo.connectionId,
-          repo.executionHostId
+          repo.executionHostId,
+          true
         )
       : ''
   const issueCacheKey =
@@ -419,7 +436,8 @@ const WorktreeCard = React.memo(function WorktreeCard({
           worktree.linkedIssue,
           settings,
           repo.connectionId,
-          repo.executionHostId
+          repo.executionHostId,
+          true
         )
       : ''
   // Why: use 'all' to fetch from all Linear workspaces. The issue might belong
@@ -459,17 +477,23 @@ const WorktreeCard = React.memo(function WorktreeCard({
     linkedGiteaPR !== null
   // Why: ChecksPanel can discover a branch PR before hosted-review metadata
   // warms, and transient older hosted-review misses can race with that cache.
-  // Newer hosted-review misses still win so stale PR cache cannot resurrect.
+  // A newer miss only yields to merged PR cache when the stored worktree head
+  // proves the cached PR still describes the checked-out commit.
   const cachedBranchPR = prCacheEntry?.data
   const cachedBranchPRFetchedAt = prCacheEntry?.fetchedAt
+  const cachedMergedBranchPRMatchesCurrentHead = isCachedMergedBranchPRCurrentForWorktree(
+    cachedBranchPR,
+    worktree
+  )
   const useCachedBranchReview =
     cachedBranchPR !== undefined &&
     cachedBranchPR !== null &&
     !hasNonGitHubLinkedReview &&
     (hostedReview === undefined ||
       (hostedReview === null &&
-        cachedBranchPRFetchedAt !== undefined &&
-        cachedBranchPRFetchedAt > (hostedReviewEntry?.fetchedAt ?? 0)))
+        ((cachedBranchPRFetchedAt !== undefined &&
+          cachedBranchPRFetchedAt > (hostedReviewEntry?.fetchedAt ?? 0)) ||
+          cachedMergedBranchPRMatchesCurrentHead)))
   const cachedBranchReview = useCachedBranchReview
     ? hostedReviewInfoFromGitHubPRInfo(cachedBranchPR)
     : hostedReview
