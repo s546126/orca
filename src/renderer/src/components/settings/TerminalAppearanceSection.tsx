@@ -25,7 +25,6 @@ import { SettingsRow, SettingsSubsectionHeader } from './SettingsFormControls'
 import { SearchableSetting } from './SearchableSetting'
 import { FontAutocomplete } from './SettingsFormControls'
 import { TerminalFontSizeSetting } from './TerminalFontSizeSetting'
-import { TerminalSettingsPreview } from './TerminalSettingsPreview'
 import { TerminalAdvancedTypographyControls } from './TerminalAdvancedTypographyControls'
 import { TerminalThemeCatalogSection } from './TerminalThemeSections'
 import { TerminalWindowSection } from './TerminalWindowSection'
@@ -235,32 +234,19 @@ export function TerminalAppearanceSection({
       ) : null}
 
       {showThemeCatalog ? (
-        <>
-          <TerminalThemeCatalogSection
-            key={`theme-catalog-${preferredThemeTarget ?? 'manual'}`}
-            settings={settings}
-            systemPrefersDark={systemPrefersDark}
-            themeSearch={themeSearch}
-            setThemeSearch={setThemeSearch}
-            updateSettings={updateSettings}
-            previewFontFamily={previewFontFamily}
-            importedHighlightSignal={warpThemes.importSignal}
-            warpThemes={warpThemes}
-            showThemeImport={showWarpThemeImport}
-            preferredTarget={preferredThemeTarget}
-          />
-
-          <TerminalSettingsPreview
-            title={translate(
-              'auto.components.settings.TerminalAppearanceSection.70beb1bbc7',
-              'Preview'
-            )}
-            settings={settings}
-            systemPrefersDark={systemPrefersDark}
-            previewFontFamily={previewFontFamily}
-            showThemeToggle
-          />
-        </>
+        <TerminalThemeCatalogSection
+          key={`theme-catalog-${preferredThemeTarget ?? 'manual'}`}
+          settings={settings}
+          systemPrefersDark={systemPrefersDark}
+          themeSearch={themeSearch}
+          setThemeSearch={setThemeSearch}
+          updateSettings={updateSettings}
+          previewFontFamily={previewFontFamily}
+          importedHighlightSignal={warpThemes.importSignal}
+          warpThemes={warpThemes}
+          showThemeImport={showWarpThemeImport}
+          preferredTarget={preferredThemeTarget}
+        />
       ) : null}
 
       {showAdvancedDisclosure ? (
