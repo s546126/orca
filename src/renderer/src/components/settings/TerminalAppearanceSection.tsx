@@ -172,7 +172,7 @@ export function TerminalAppearanceSection({
           narrower than the xl breakpoint, so the preview grids inside the
           theme catalog already stack full-width below their controls. */}
       {showPrimaryTypography ? (
-        <section className="space-y-3">
+        <section className="space-y-3 pt-2">
           <SettingsSubsectionHeader
             title={translate(
               'auto.components.settings.TerminalAppearanceSection.048aac8a64',
@@ -196,7 +196,7 @@ export function TerminalAppearanceSection({
             }
           />
 
-          <div className="divide-y divide-border/40 pl-4">
+          <div className="ml-4 divide-y divide-border/40 border-b border-border/40">
             <TerminalFontSizeSetting
               settings={settings}
               updateSettings={updateSettings}

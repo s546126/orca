@@ -92,7 +92,7 @@ export function TerminalThemeCatalogSection({
         }
       />
 
-      <div className="grid gap-6 pl-4">
+      <div className="ml-4 grid gap-6">
         <div>
           <div className="space-y-3">
             <SearchableSetting
