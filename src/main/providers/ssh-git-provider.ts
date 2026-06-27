@@ -712,6 +712,8 @@ export class SshGitProvider implements IGitProvider {
       })
     } catch (error) {
       if (isJsonRpcMethodNotFoundError(error)) {
+        // Why: older SSH relays predate git.forceDeletePreservedBranch; surface
+        // a reconnect prompt instead of a raw JSON-RPC method-not-found error.
         throw new Error(
           'This SSH host is running an older Orca relay that cannot delete preserved branches. Reconnect to deploy the latest relay, then try again.'
         )
