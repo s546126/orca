@@ -78,7 +78,7 @@ export function TerminalThemeCatalogSection({
   return (
     <section className="space-y-5">
       <SettingsSubsectionHeader
-        className="border-b border-border/50 pb-2"
+        className="items-center rounded-md border border-border/50 bg-muted/20 px-3 py-2.5"
         title={translate(
           'auto.components.settings.TerminalThemeSections.catalog_title',
           'Terminal Themes'
