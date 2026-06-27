@@ -1,4 +1,4 @@
-import { useState, type Dispatch, type SetStateAction } from 'react'
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import type { GlobalSettings } from '../../../../shared/types'
 import {
   ColorField,
@@ -29,6 +29,7 @@ type TerminalThemeCatalogSectionProps = {
   warpThemes: UseWarpThemeImportReturn
   showThemeImport: boolean
   preferredTarget?: TerminalThemeTarget
+  advancedContent?: ReactNode
 }
 
 export function TerminalThemeCatalogSection({
@@ -41,7 +42,8 @@ export function TerminalThemeCatalogSection({
   importedHighlightSignal,
   warpThemes,
   showThemeImport,
-  preferredTarget
+  preferredTarget,
+  advancedContent
 }: TerminalThemeCatalogSectionProps): React.JSX.Element {
   const [target, setTarget] = useState<TerminalThemeTarget>(preferredTarget ?? 'dark')
   const themeOptions = getAvailableTerminalThemeOptions(settings)
@@ -234,6 +236,8 @@ export function TerminalThemeCatalogSection({
             </div>
           </div>
         </div>
+
+        {advancedContent ? <div>{advancedContent}</div> : null}
 
         <TerminalSettingsPreview
           title={

@@ -109,7 +109,8 @@ export function TerminalAppearanceSection({
   const paneMatches = matchesSettingsSearch(searchQuery, getTerminalPaneAppearanceSearchEntries())
   const windowMatches = matchesSettingsSearch(searchQuery, getTerminalWindowSearchEntries())
   const themeCatalogMatches = matchesSettingsSearch(searchQuery, themeCatalogSearchEntries)
-  const showThemeCatalog = !isSearching || themeCatalogMatches
+  const previewAdvancedMatches = cursorMatches || paneMatches || windowMatches
+  const showThemeCatalog = !isSearching || themeCatalogMatches || previewAdvancedMatches
   const primaryTypographyMatches = matchesSettingsSearch(
     searchQuery,
     terminalTypographyEntries.slice(0, 2)
@@ -149,6 +150,18 @@ export function TerminalAppearanceSection({
       : null
   ].filter((group): group is { key: string; node: React.JSX.Element } => group !== null)
   const showAdvancedDisclosure = !isSearching || advancedGroups.length > 0
+  const previewAdvancedContent = showAdvancedDisclosure ? (
+    <AppearanceAdvancedDisclosure>
+      <div className="ml-4 space-y-6">
+        {advancedGroups.map((group, index) => (
+          <div key={group.key} className="space-y-3">
+            {index > 0 ? <div className="h-px bg-border/60" aria-hidden="true" /> : null}
+            {group.node}
+          </div>
+        ))}
+      </div>
+    </AppearanceAdvancedDisclosure>
+  ) : null
 
   return (
     <div className="space-y-5">
@@ -219,10 +232,12 @@ export function TerminalAppearanceSection({
           {showTypographyAdvancedDisclosure ? (
             <div className="ml-4">
               <AppearanceAdvancedDisclosure showTopBorder={false}>
-                <TerminalAdvancedTypographyControls
-                  settings={settings}
-                  updateSettings={updateSettings}
-                />
+                <div className="ml-4">
+                  <TerminalAdvancedTypographyControls
+                    settings={settings}
+                    updateSettings={updateSettings}
+                  />
+                </div>
               </AppearanceAdvancedDisclosure>
             </div>
           ) : null}
@@ -242,20 +257,8 @@ export function TerminalAppearanceSection({
           warpThemes={warpThemes}
           showThemeImport={showWarpThemeImport}
           preferredTarget={preferredThemeTarget}
+          advancedContent={previewAdvancedContent}
         />
-      ) : null}
-
-      {showAdvancedDisclosure ? (
-        <AppearanceAdvancedDisclosure>
-          <div className="space-y-6">
-            {advancedGroups.map((group, index) => (
-              <div key={group.key} className="space-y-3">
-                {index > 0 ? <div className="h-px bg-border/60" aria-hidden="true" /> : null}
-                {group.node}
-              </div>
-            ))}
-          </div>
-        </AppearanceAdvancedDisclosure>
       ) : null}
 
       <GhosttyImportModal

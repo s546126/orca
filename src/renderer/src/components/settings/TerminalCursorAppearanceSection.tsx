@@ -28,7 +28,7 @@ export function TerminalCursorAppearanceSection({
         )}
       />
 
-      <div className="divide-y divide-border/40">
+      <div className="ml-4 divide-y divide-border/40">
         <SearchableSetting
           title={translate(
             'auto.components.settings.TerminalAppearanceSection.db270cc9a9',
