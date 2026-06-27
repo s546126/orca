@@ -95,7 +95,7 @@ export function TerminalThemeCatalogSection({
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-6">
         <div>
           <div className="space-y-3">
             <SearchableSetting

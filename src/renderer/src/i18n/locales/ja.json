@@ -4573,10 +4573,18 @@
             "tintOpacity": "色合いの強さ",
             "tintOpacityDescription": "サイドバーに色合いをどの程度強く混ぜるかを調整します。"
           },
-          "workspaceCardLayoutGuidance": "ワークスペースサイドバーのオプションメニュー > カードレイアウト > コンパクト を使用します。",
+          "workspaceCardLayoutGuidance": "ワークスペースサイドバーで管理されます。",
           "872af9556e": "システムトレイ",
           "2edf606c46": "閉じるときにトレイへ最小化",
-          "b707773a0d": "有効にすると、ウィンドウを閉じてもOrcaは終了せず、システムトレイで実行を続けます。"
+          "b707773a0d": "有効にすると、ウィンドウを閉じてもOrcaは終了せず、システムトレイで実行を続けます。",
+          "interfaceDefaultFont": "デフォルトフォント",
+          "terminalDefaultFont": "デフォルトフォント",
+          "interfaceTitle": "インターフェイス",
+          "terminalTitle": "ターミナル",
+          "windowSidebarTitle": "ウィンドウとサイドバー",
+          "windowSidebarSummary": "サイドバー、ステータスバー、ファイルエクスプローラー",
+          "statusBarCount": "{{value0}} 個のインジケーターが表示中。",
+          "gitIgnoredGlossary": ".gitignore に一致するファイル。"
         },
         "AutoRenameBranchFromWorkSetting": {
           "1626524572": "Nautilus",
@@ -6221,7 +6229,9 @@
           "4415beb958": "無効",
           "4e7d41a9f0": "有効",
           "e90afcc44f": "オフ",
-          "16c471ee03": "の上"
+          "16c471ee03": "の上",
+          "typographyAdvanced": "タイポグラフィ",
+          "dimUnfocusedPanes": "フォーカスされていないペインを暗くします。"
         },
         "TerminalFontSizeSetting": {
           "9b5252c85a": "ピクセル",
@@ -6749,7 +6759,7 @@
             },
             "workspaceCardLayout": {
               "title": "ワークスペースカードのレイアウト",
-              "description": "ワークスペースサイドバーのオプションメニューから、コンパクト表示と詳細表示のワークスペースカードを切り替えます。",
+              "description": "ワークスペースカードはコンパクトまたは詳細レイアウトを使用できます。",
               "compact": "コンパクト",
               "compactDisplay": "コンパクト表示",
               "workspaceCards": "ワークスペースカード",
@@ -8346,6 +8356,9 @@
           "wslUnavailable": "WSL is not available on this machine.",
           "distroRequired": "Choose a WSL distro before projects can inherit WSL.",
           "wslDescription": "Detect and launch agents in {{value0}} via WSL for projects that do not override their runtime."
+        },
+        "AppearanceAdvancedDisclosure": {
+          "advanced": "詳細設定"
         }
       },
       "right": {

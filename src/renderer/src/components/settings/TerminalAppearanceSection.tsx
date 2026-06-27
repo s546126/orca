@@ -2,32 +2,43 @@ import { useState } from 'react'
 import type { GlobalSettings } from '../../../../shared/types'
 import {
   matchesSettingsSearch,
+  normalizeSettingsSearchQuery,
   scoreSettingsSearch,
   type SettingsSearchEntry
 } from './settings-search'
 import { useAppStore } from '../../store'
 import {
+  getTerminalAdvancedTypographySearchEntries,
   getTerminalCursorSearchEntries,
   getTerminalDarkThemeSearchEntries,
   getTerminalGhosttyImportSearchEntries,
   getTerminalLightThemeSearchEntries,
   getTerminalPaneAppearanceSearchEntries,
   getTerminalThemeTargetSearchEntries,
-  getTerminalTypographySearchEntries,
   getTerminalWarpImportSearchEntries,
-  getTerminalWindowSearchEntries,
-  getTerminalYamlImportSearchEntries
+  getTerminalYamlImportSearchEntries,
+  getTerminalTypographySearchEntries,
+  getTerminalWindowSearchEntries
 } from './terminal-search'
+import { Button } from '../ui/button'
+import { SettingsRow, SettingsSubsectionHeader } from './SettingsFormControls'
+import { SearchableSetting } from './SearchableSetting'
+import { FontAutocomplete } from './SettingsFormControls'
+import { TerminalFontSizeSetting } from './TerminalFontSizeSetting'
+import { TerminalSettingsPreview } from './TerminalSettingsPreview'
+import { TerminalAdvancedTypographyControls } from './TerminalAdvancedTypographyControls'
 import { TerminalThemeCatalogSection } from './TerminalThemeSections'
 import { TerminalWindowSection } from './TerminalWindowSection'
-import { TerminalTypographyAppearanceSection } from './TerminalTypographyAppearanceSection'
 import { TerminalCursorAppearanceSection } from './TerminalCursorAppearanceSection'
 import { TerminalPaneAppearanceSection } from './TerminalPaneAppearanceSection'
+import { AppearanceAdvancedDisclosure } from './AppearanceAdvancedDisclosure'
 import { GhosttyImportModal } from './GhosttyImportModal'
 import type { UseGhosttyImportReturn } from './useGhosttyImport'
 import { WarpThemeImportModal } from './WarpThemeImportModal'
 import type { UseWarpThemeImportReturn } from './useWarpThemeImport'
 import { isWebClientLocation } from '@/hooks/useSettingsNavigationMetadata'
+import ghosttyIcon from '../../../../../resources/ghostty.svg'
+import { translate } from '@/i18n/i18n'
 
 type TerminalAppearanceSectionProps = {
   settings: GlobalSettings
@@ -36,6 +47,7 @@ type TerminalAppearanceSectionProps = {
   terminalFontSuggestions: string[]
   ghostty: UseGhosttyImportReturn
   warpThemes: UseWarpThemeImportReturn
+  forceVisiblePrimary?: boolean
 }
 
 type TerminalThemeTarget = 'dark' | 'light'
@@ -64,88 +76,206 @@ export function TerminalAppearanceSection({
   systemPrefersDark,
   terminalFontSuggestions,
   ghostty,
-  warpThemes
+  warpThemes,
+  forceVisiblePrimary = false
 }: TerminalAppearanceSectionProps): React.JSX.Element {
   const searchQuery = useAppStore((state) => state.settingsSearchQuery)
+  const isSearching = normalizeSettingsSearchQuery(searchQuery).length > 0
   const [themeSearch, setThemeSearch] = useState('')
   const [previewFontFamily, setPreviewFontFamily] = useState<string | null>(null)
   const showWarpThemeImport = !isWebClientLocation()
   const darkThemeSearchEntries = getTerminalDarkThemeSearchEntries()
   const lightThemeSearchEntries = getTerminalLightThemeSearchEntries()
-  const darkThemeSearchScore = scoreSettingsSearch(searchQuery, darkThemeSearchEntries)
-  const lightThemeSearchScore = scoreSettingsSearch(searchQuery, lightThemeSearchEntries)
+  const terminalTypographyEntries = getTerminalTypographySearchEntries()
+  const ghosttyImportEntries = getTerminalGhosttyImportSearchEntries()
+  const themeCatalogSearchEntries = [
+    ...getTerminalThemeTargetSearchEntries(),
+    ...darkThemeSearchEntries,
+    ...lightThemeSearchEntries,
+    ...(showWarpThemeImport
+      ? [...getTerminalWarpImportSearchEntries(), ...getTerminalYamlImportSearchEntries()]
+      : [])
+  ]
   const darkThemeTargetScore = scoreThemeTargetIntent(searchQuery, darkThemeSearchEntries)
   const lightThemeTargetScore = scoreThemeTargetIntent(searchQuery, lightThemeSearchEntries)
-  const darkThemeMatches = darkThemeSearchScore > 0
-  const lightThemeMatches = lightThemeSearchScore > 0
-  const themeTargetMatches = matchesSettingsSearch(
-    searchQuery,
-    getTerminalThemeTargetSearchEntries()
-  )
-  const themeImportMatches =
-    showWarpThemeImport &&
-    (matchesSettingsSearch(searchQuery, getTerminalWarpImportSearchEntries()) ||
-      matchesSettingsSearch(searchQuery, getTerminalYamlImportSearchEntries()))
-  const showTerminalThemeCatalog =
-    darkThemeMatches || lightThemeMatches || themeTargetMatches || themeImportMatches
   const preferredThemeTarget = getPreferredThemeTarget(darkThemeTargetScore, lightThemeTargetScore)
 
-  const visibleSections = [
-    matchesSettingsSearch(searchQuery, getTerminalGhosttyImportSearchEntries()) ||
-    matchesSettingsSearch(searchQuery, getTerminalTypographySearchEntries()) ? (
-      <TerminalTypographyAppearanceSection
-        key="typography"
-        settings={settings}
-        updateSettings={updateSettings}
-        systemPrefersDark={systemPrefersDark}
-        terminalFontSuggestions={terminalFontSuggestions}
-        ghostty={ghostty}
-        previewFontFamily={previewFontFamily}
-        setPreviewFontFamily={setPreviewFontFamily}
-      />
-    ) : null,
-    matchesSettingsSearch(searchQuery, getTerminalCursorSearchEntries()) ? (
-      <TerminalCursorAppearanceSection
-        key="cursor"
-        settings={settings}
-        updateSettings={updateSettings}
-      />
-    ) : null,
-    matchesSettingsSearch(searchQuery, getTerminalPaneAppearanceSearchEntries()) ? (
-      <TerminalPaneAppearanceSection
-        key="pane-appearance"
-        settings={settings}
-        updateSettings={updateSettings}
-      />
-    ) : null,
-    matchesSettingsSearch(searchQuery, getTerminalWindowSearchEntries()) ? (
-      <TerminalWindowSection key="window" settings={settings} updateSettings={updateSettings} />
-    ) : null,
-    showTerminalThemeCatalog ? (
-      <TerminalThemeCatalogSection
-        key={`theme-catalog-${preferredThemeTarget ?? 'manual'}`}
-        settings={settings}
-        systemPrefersDark={systemPrefersDark}
-        themeSearch={themeSearch}
-        setThemeSearch={setThemeSearch}
-        updateSettings={updateSettings}
-        previewFontFamily={previewFontFamily}
-        importedHighlightSignal={warpThemes.importSignal}
-        warpThemes={warpThemes}
-        showThemeImport={showWarpThemeImport}
-        preferredTarget={preferredThemeTarget}
-      />
-    ) : null
-  ].filter(Boolean)
+  // Why: cursor / pane / window / typography knobs are low-frequency. The
+  // Advanced disclosure force-opens during search; render each group only when
+  // its own search matches so an active query never leaves a dangling header.
+  const typographyMatches = matchesSettingsSearch(
+    searchQuery,
+    getTerminalAdvancedTypographySearchEntries()
+  )
+  const cursorMatches = matchesSettingsSearch(searchQuery, getTerminalCursorSearchEntries())
+  const paneMatches = matchesSettingsSearch(searchQuery, getTerminalPaneAppearanceSearchEntries())
+  const windowMatches = matchesSettingsSearch(searchQuery, getTerminalWindowSearchEntries())
+  const themeCatalogMatches = matchesSettingsSearch(searchQuery, themeCatalogSearchEntries)
+  const showThemeCatalog = !isSearching || themeCatalogMatches
+  const primaryTypographyMatches = matchesSettingsSearch(
+    searchQuery,
+    terminalTypographyEntries.slice(0, 2)
+  )
+  const ghosttyImportMatches = matchesSettingsSearch(searchQuery, ghosttyImportEntries)
+  const showPrimaryTypography =
+    !isSearching || forceVisiblePrimary || primaryTypographyMatches || ghosttyImportMatches
+  const showGhosttyImport = !isSearching || forceVisiblePrimary || ghosttyImportMatches
+
+  const advancedGroups = [
+    typographyMatches
+      ? {
+          key: 'typography',
+          node: (
+            <>
+              <SettingsSubsectionHeader
+                title={translate(
+                  'auto.components.settings.TerminalAppearanceSection.typographyAdvanced',
+                  'Typography'
+                )}
+              />
+              <TerminalAdvancedTypographyControls
+                settings={settings}
+                updateSettings={updateSettings}
+              />
+            </>
+          )
+        }
+      : null,
+    cursorMatches
+      ? {
+          key: 'cursor',
+          node: (
+            <TerminalCursorAppearanceSection settings={settings} updateSettings={updateSettings} />
+          )
+        }
+      : null,
+    paneMatches
+      ? {
+          key: 'pane',
+          node: (
+            <TerminalPaneAppearanceSection settings={settings} updateSettings={updateSettings} />
+          )
+        }
+      : null,
+    windowMatches
+      ? {
+          key: 'window',
+          node: <TerminalWindowSection settings={settings} updateSettings={updateSettings} />
+        }
+      : null
+  ].filter((group): group is { key: string; node: React.JSX.Element } => group !== null)
+  const showAdvancedDisclosure = !isSearching || advancedGroups.length > 0
 
   return (
-    <div className="space-y-6">
-      {visibleSections.map((section, index) => (
-        <div key={index} className="space-y-6">
-          {index > 0 ? <div className="h-px bg-border/60" /> : null}
-          {section}
-        </div>
-      ))}
+    <div className="space-y-5">
+      {/* Primary: font + theme + previews. The expanded section column is far
+          narrower than the xl breakpoint, so the preview grids inside the
+          theme catalog already stack full-width below their controls. */}
+      {showPrimaryTypography ? (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <SettingsSubsectionHeader
+              title={translate(
+                'auto.components.settings.TerminalAppearanceSection.048aac8a64',
+                'Terminal Typography'
+              )}
+            />
+            {showGhosttyImport ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => void ghostty.handleClick()}
+              >
+                <img src={ghosttyIcon} alt="" aria-hidden="true" className="size-4" />
+                {translate(
+                  'auto.components.settings.TerminalAppearanceSection.855a76343a',
+                  'Import from Ghostty'
+                )}
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="divide-y divide-border/40">
+            <TerminalFontSizeSetting
+              settings={settings}
+              updateSettings={updateSettings}
+              forceVisible={forceVisiblePrimary}
+            />
+
+            <SearchableSetting
+              title={translate(
+                'auto.components.settings.TerminalAppearanceSection.a408266e67',
+                'Font Family'
+              )}
+              description={terminalTypographyEntries[1]?.description}
+              keywords={
+                terminalTypographyEntries[1]?.keywords ?? ['terminal', 'typography', 'font']
+              }
+              forceVisible={forceVisiblePrimary}
+            >
+              <SettingsRow
+                alignTop
+                label={translate(
+                  'auto.components.settings.TerminalAppearanceSection.a408266e67',
+                  'Font Family'
+                )}
+                control={
+                  <FontAutocomplete
+                    value={settings.terminalFontFamily}
+                    suggestions={terminalFontSuggestions}
+                    onChange={(value) => updateSettings({ terminalFontFamily: value })}
+                    onPreviewFontFamily={setPreviewFontFamily}
+                  />
+                }
+              />
+            </SearchableSetting>
+          </div>
+        </section>
+      ) : null}
+
+      {showThemeCatalog ? (
+        <>
+          <TerminalThemeCatalogSection
+            key={`theme-catalog-${preferredThemeTarget ?? 'manual'}`}
+            settings={settings}
+            systemPrefersDark={systemPrefersDark}
+            themeSearch={themeSearch}
+            setThemeSearch={setThemeSearch}
+            updateSettings={updateSettings}
+            previewFontFamily={previewFontFamily}
+            importedHighlightSignal={warpThemes.importSignal}
+            warpThemes={warpThemes}
+            showThemeImport={showWarpThemeImport}
+            preferredTarget={preferredThemeTarget}
+          />
+
+          <TerminalSettingsPreview
+            title={translate(
+              'auto.components.settings.TerminalAppearanceSection.70beb1bbc7',
+              'Preview'
+            )}
+            settings={settings}
+            systemPrefersDark={systemPrefersDark}
+            previewFontFamily={previewFontFamily}
+            showThemeToggle
+          />
+        </>
+      ) : null}
+
+      {showAdvancedDisclosure ? (
+        <AppearanceAdvancedDisclosure>
+          <div className="space-y-6">
+            {advancedGroups.map((group, index) => (
+              <div key={group.key} className="space-y-3">
+                {index > 0 ? <div className="h-px bg-border/60" aria-hidden="true" /> : null}
+                {group.node}
+              </div>
+            ))}
+          </div>
+        </AppearanceAdvancedDisclosure>
+      ) : null}
+
       <GhosttyImportModal
         open={ghostty.open}
         onOpenChange={ghostty.handleOpenChange}

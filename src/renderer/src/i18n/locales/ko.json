@@ -4576,7 +4576,15 @@
             "tintOpacity": "색조 강도",
             "tintOpacityDescription": "사이드바에 색조를 얼마나 강하게 섞을지 조절합니다."
           },
-          "workspaceCardLayoutGuidance": "워크스페이스 사이드바 옵션 메뉴 > 카드 레이아웃 > 컴팩트를 사용하세요."
+          "workspaceCardLayoutGuidance": "워크스페이스 사이드바에서 관리됩니다.",
+          "interfaceDefaultFont": "기본 글꼴",
+          "terminalDefaultFont": "기본 글꼴",
+          "interfaceTitle": "인터페이스",
+          "terminalTitle": "터미널",
+          "windowSidebarTitle": "창 및 사이드바",
+          "windowSidebarSummary": "사이드바, 상태 표시줄 및 파일 탐색기",
+          "statusBarCount": "{{value0}}개 표시기가 보입니다.",
+          "gitIgnoredGlossary": ".gitignore와 일치하는 파일."
         },
         "AutoRenameBranchFromWorkSetting": {
           "1626524572": "Nautilus",
@@ -6184,7 +6192,9 @@
           "4415beb958": "비활성",
           "4e7d41a9f0": "활성화됨",
           "e90afcc44f": "끔",
-          "16c471ee03": "켜짐"
+          "16c471ee03": "켜짐",
+          "typographyAdvanced": "타이포그래피",
+          "dimUnfocusedPanes": "포커스되지 않은 창을 흐리게 표시합니다."
         },
         "TerminalFontSizeSetting": {
           "9b5252c85a": "px",
@@ -6714,7 +6724,7 @@
             "4d5b9427b5": "활성화하면 창을 닫아도 Orca가 종료되지 않고 시스템 트레이에서 계속 실행됩니다.",
             "workspaceCardLayout": {
               "title": "워크스페이스 카드 레이아웃",
-              "description": "워크스페이스 사이드바 옵션 메뉴에서 워크스페이스 카드를 컴팩트 또는 상세 보기로 전환합니다.",
+              "description": "워크스페이스 카드는 컴팩트 또는 상세 레이아웃을 사용할 수 있습니다.",
               "compact": "컴팩트",
               "compactDisplay": "컴팩트 보기",
               "workspaceCards": "워크스페이스 카드",
@@ -8346,6 +8356,9 @@
           "wslUnavailable": "WSL is not available on this machine.",
           "distroRequired": "Choose a WSL distro before projects can inherit WSL.",
           "wslDescription": "Detect and launch agents in {{value0}} via WSL for projects that do not override their runtime."
+        },
+        "AppearanceAdvancedDisclosure": {
+          "advanced": "고급"
         }
       },
       "right": {

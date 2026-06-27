@@ -4588,10 +4588,18 @@
             "tintOpacity": "Intensidad del tinte",
             "tintOpacityDescription": "Controla con qué fuerza se mezcla el tinte en la barra lateral."
           },
-          "workspaceCardLayoutGuidance": "Usa el menú de opciones de la barra lateral de espacios de trabajo > Diseño de tarjeta > Compacto.",
+          "workspaceCardLayoutGuidance": "Gestionado desde la barra lateral del espacio de trabajo.",
           "872af9556e": "Bandeja del sistema",
           "2edf606c46": "Minimizar a la bandeja al cerrar",
-          "b707773a0d": "Cuando está activado, cerrar la ventana mantiene Orca en ejecución en la bandeja del sistema en lugar de salir."
+          "b707773a0d": "Cuando está activado, cerrar la ventana mantiene Orca en ejecución en la bandeja del sistema en lugar de salir.",
+          "interfaceDefaultFont": "Fuente predeterminada",
+          "terminalDefaultFont": "Fuente predeterminada",
+          "interfaceTitle": "Interfaz",
+          "terminalTitle": "Terminal",
+          "windowSidebarTitle": "Ventana y barra lateral",
+          "windowSidebarSummary": "Barra lateral, barra de estado y explorador de archivos",
+          "statusBarCount": "{{value0}} indicadores visibles.",
+          "gitIgnoredGlossary": "Archivos coincidentes con .gitignore."
         },
         "AutoRenameBranchFromWorkSetting": {
           "1626524572": "Nautilus",
@@ -6199,7 +6207,9 @@
           "4415beb958": "desactivado",
           "4e7d41a9f0": "activado",
           "e90afcc44f": "apagado",
-          "16c471ee03": "en"
+          "16c471ee03": "en",
+          "typographyAdvanced": "Tipografía",
+          "dimUnfocusedPanes": "Atenuar paneles sin foco."
         },
         "TerminalFontSizeSetting": {
           "9b5252c85a": "píxeles",
@@ -6727,7 +6737,7 @@
             },
             "workspaceCardLayout": {
               "title": "Diseño de tarjetas de espacios de trabajo",
-              "description": "Cambia entre tarjetas de espacios de trabajo compactas y detalladas desde el menú de opciones de la barra lateral de espacios de trabajo.",
+              "description": "Las tarjetas de espacios de trabajo pueden usar diseños compactos o detallados.",
               "compact": "compacto",
               "compactDisplay": "vista compacta",
               "workspaceCards": "tarjetas de espacios de trabajo",
@@ -8346,6 +8356,9 @@
           "wslUnavailable": "WSL is not available on this machine.",
           "distroRequired": "Choose a WSL distro before projects can inherit WSL.",
           "wslDescription": "Detect and launch agents in {{value0}} via WSL for projects that do not override their runtime."
+        },
+        "AppearanceAdvancedDisclosure": {
+          "advanced": "Avanzado"
         }
       },
       "right": {

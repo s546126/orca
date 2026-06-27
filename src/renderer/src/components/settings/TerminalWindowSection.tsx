@@ -188,10 +188,7 @@ export function TerminalWindowSection({
             'auto.components.settings.TerminalWindowSection.36b8402015',
             'Horizontal Padding'
           )}
-          description={translate(
-            'auto.components.settings.TerminalWindowSection.25e2f8e8e1',
-            'Horizontal padding around the terminal grid in pixels.'
-          )}
+          description=""
           value={settings.terminalPaddingX ?? 4}
           defaultValue={4}
           min={0}
@@ -218,10 +215,7 @@ export function TerminalWindowSection({
             'auto.components.settings.TerminalWindowSection.1afcc1d973',
             'Vertical Padding'
           )}
-          description={translate(
-            'auto.components.settings.TerminalWindowSection.1846f6ee6a',
-            'Vertical padding around the terminal grid in pixels.'
-          )}
+          description=""
           value={settings.terminalPaddingY ?? 4}
           defaultValue={4}
           min={0}
@@ -245,18 +239,14 @@ export function TerminalWindowSection({
         className="flex items-center justify-between gap-4 py-2"
       >
         <div className="space-y-0.5">
+          {/* Why: helper text dropped per copy audit — near-verbatim restatement
+              of the label; the search index keeps the longer phrasing. */}
           <Label>
             {translate(
               'auto.components.settings.TerminalWindowSection.3530908ef9',
               'Hide Mouse While Typing'
             )}
           </Label>
-          <p className="text-xs text-muted-foreground">
-            {translate(
-              'auto.components.settings.TerminalWindowSection.1d1920dc8a',
-              'Hide the mouse cursor when typing in the terminal.'
-            )}
-          </p>
         </div>
         <button
           role="switch"

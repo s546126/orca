@@ -4573,10 +4573,18 @@
             "tintOpacity": "色调强度",
             "tintOpacityDescription": "控制色调混入边栏的强度。"
           },
-          "workspaceCardLayoutGuidance": "使用工作区侧边栏选项菜单 > 卡片布局 > 紧凑。",
+          "workspaceCardLayoutGuidance": "从工作区侧边栏管理。",
           "872af9556e": "系统托盘",
           "2edf606c46": "关闭时最小化到托盘",
-          "b707773a0d": "启用后，关闭窗口会让 Orca 继续在系统托盘中运行，而不是退出。"
+          "b707773a0d": "启用后，关闭窗口会让 Orca 继续在系统托盘中运行，而不是退出。",
+          "interfaceDefaultFont": "默认字体",
+          "terminalDefaultFont": "默认字体",
+          "interfaceTitle": "界面",
+          "terminalTitle": "终端",
+          "windowSidebarTitle": "窗口和侧边栏",
+          "windowSidebarSummary": "侧边栏、状态栏和文件浏览器",
+          "statusBarCount": "显示 {{value0}} 个指示器。",
+          "gitIgnoredGlossary": "与 .gitignore 匹配的文件。"
         },
         "AutoRenameBranchFromWorkSetting": {
           "1626524572": "Nautilus",
@@ -6184,7 +6192,9 @@
           "4415beb958": "已禁用",
           "4e7d41a9f0": "已启用",
           "e90afcc44f": "关",
-          "16c471ee03": "开"
+          "16c471ee03": "开",
+          "typographyAdvanced": "排版",
+          "dimUnfocusedPanes": "调暗未聚焦的窗格。"
         },
         "TerminalFontSizeSetting": {
           "9b5252c85a": "像素",
@@ -6712,7 +6722,7 @@
             },
             "workspaceCardLayout": {
               "title": "工作区卡片布局",
-              "description": "从工作区侧边栏选项菜单在紧凑和详细工作区卡片之间切换。",
+              "description": "工作区卡片可以使用紧凑或详细布局。",
               "compact": "紧凑",
               "compactDisplay": "紧凑显示",
               "workspaceCards": "工作区卡片",
@@ -8346,6 +8356,9 @@
           "wslUnavailable": "WSL is not available on this machine.",
           "distroRequired": "Choose a WSL distro before projects can inherit WSL.",
           "wslDescription": "Detect and launch agents in {{value0}} via WSL for projects that do not override their runtime."
+        },
+        "AppearanceAdvancedDisclosure": {
+          "advanced": "高级"
         }
       },
       "right": {

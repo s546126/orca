@@ -4591,7 +4591,15 @@
             "tintOpacity": "Tint Strength",
             "tintOpacityDescription": "Controls how strongly the tint is mixed into the sidebar."
           },
-          "workspaceCardLayoutGuidance": "Use the workspace sidebar options menu > Card layout > Compact."
+          "workspaceCardLayoutGuidance": "Managed from the workspace sidebar.",
+          "interfaceDefaultFont": "Default font",
+          "terminalDefaultFont": "Default font",
+          "interfaceTitle": "Interface",
+          "terminalTitle": "Terminal",
+          "windowSidebarTitle": "Window & Sidebar",
+          "windowSidebarSummary": "Sidebar, status bar, and file explorer",
+          "statusBarCount": "{{value0}} indicators visible.",
+          "gitIgnoredGlossary": "Files matched by .gitignore."
         },
         "AutoRenameBranchFromWorkSetting": {
           "1626524572": "Nautilus",
@@ -6236,7 +6244,9 @@
           "4415beb958": "disabled",
           "4e7d41a9f0": "enabled",
           "e90afcc44f": "off",
-          "16c471ee03": "on"
+          "16c471ee03": "on",
+          "typographyAdvanced": "Typography",
+          "dimUnfocusedPanes": "Dim unfocused panes."
         },
         "TerminalFontSizeSetting": {
           "9b5252c85a": "px",
@@ -6766,7 +6776,7 @@
             },
             "workspaceCardLayout": {
               "title": "Workspace Card Layout",
-              "description": "Switch between compact and detailed workspace cards from the workspace sidebar options menu.",
+              "description": "Workspace cards can use compact or detailed layouts.",
               "compact": "compact",
               "compactDisplay": "compact display",
               "workspaceCards": "workspace cards",
@@ -8346,6 +8356,9 @@
           "wslUnavailable": "WSL is not available on this machine.",
           "distroRequired": "Choose a WSL distro before projects can inherit WSL.",
           "wslDescription": "Detect and launch agents in {{value0}} via WSL for projects that do not override their runtime."
+        },
+        "AppearanceAdvancedDisclosure": {
+          "advanced": "Advanced"
         }
       },
       "right": {
