@@ -4584,7 +4584,8 @@
           "windowSidebarTitle": "窗口和侧边栏",
           "windowSidebarSummary": "侧边栏、状态栏和文件浏览器",
           "statusBarCount": "显示 {{value0}} 个指示器。",
-          "gitIgnoredGlossary": "与 .gitignore 匹配的文件。"
+          "gitIgnoredGlossary": "与 .gitignore 匹配的文件。",
+          "statusBarDescription": "Choose which indicators appear in the status bar."
         },
         "AutoRenameBranchFromWorkSetting": {
           "1626524572": "Nautilus",

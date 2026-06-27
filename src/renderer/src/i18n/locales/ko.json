@@ -4584,7 +4584,8 @@
           "windowSidebarTitle": "창 및 사이드바",
           "windowSidebarSummary": "사이드바, 상태 표시줄 및 파일 탐색기",
           "statusBarCount": "{{value0}}개 표시기가 보입니다.",
-          "gitIgnoredGlossary": ".gitignore와 일치하는 파일."
+          "gitIgnoredGlossary": ".gitignore와 일치하는 파일.",
+          "statusBarDescription": "Choose which indicators appear in the status bar."
         },
         "AutoRenameBranchFromWorkSetting": {
           "1626524572": "Nautilus",

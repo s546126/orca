@@ -4599,7 +4599,8 @@
           "windowSidebarTitle": "Ventana y barra lateral",
           "windowSidebarSummary": "Barra lateral, barra de estado y explorador de archivos",
           "statusBarCount": "{{value0}} indicadores visibles.",
-          "gitIgnoredGlossary": "Archivos coincidentes con .gitignore."
+          "gitIgnoredGlossary": "Archivos coincidentes con .gitignore.",
+          "statusBarDescription": "Choose which indicators appear in the status bar."
         },
         "AutoRenameBranchFromWorkSetting": {
           "1626524572": "Nautilus",

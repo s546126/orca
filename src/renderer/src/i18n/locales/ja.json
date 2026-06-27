@@ -4584,7 +4584,8 @@
           "windowSidebarTitle": "ウィンドウとサイドバー",
           "windowSidebarSummary": "サイドバー、ステータスバー、ファイルエクスプローラー",
           "statusBarCount": "{{value0}} 個のインジケーターが表示中。",
-          "gitIgnoredGlossary": ".gitignore に一致するファイル。"
+          "gitIgnoredGlossary": ".gitignore に一致するファイル。",
+          "statusBarDescription": "Choose which indicators appear in the status bar."
         },
         "AutoRenameBranchFromWorkSetting": {
           "1626524572": "Nautilus",
