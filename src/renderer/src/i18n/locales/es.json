@@ -4598,7 +4598,7 @@
           "terminalTitle": "Terminal",
           "windowSidebarTitle": "Ventana y barra lateral",
           "windowSidebarSummary": "Barra lateral, barra de estado y explorador de archivos",
-          "statusBarCount": "{{value0}} indicadores visibles.",
+          "statusBarCount": "Indicadores visibles: {{value0}}.",
           "gitIgnoredGlossary": "Archivos coincidentes con .gitignore.",
           "statusBarDescription": "Choose which indicators appear in the status bar."
         },
@@ -6208,7 +6208,7 @@
           "4415beb958": "desactivado",
           "4e7d41a9f0": "activado",
           "e90afcc44f": "apagado",
-          "16c471ee03": "en",
+          "16c471ee03": "activado",
           "typographyAdvanced": "Tipografía",
           "dimUnfocusedPanes": "Atenuar paneles sin foco."
         },
