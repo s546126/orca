@@ -217,7 +217,7 @@ export function TerminalThemeCatalogSection({
               >
                 <ColorField
                   label={dividerTitle}
-                  description={dividerDescription}
+                  description=""
                   value={
                     isLightTarget
                       ? settings.terminalDividerColorLight
