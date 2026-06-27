@@ -76,9 +76,13 @@ export function SettingsRow({
 }: SettingsRowProps): React.JSX.Element {
   return (
     <div
-      className={cn('flex gap-4 py-2', alignTop ? 'items-start' : 'items-center justify-between')}
+      className={cn(
+        'flex gap-4',
+        description ? 'py-3' : 'py-2',
+        alignTop ? 'items-start' : 'items-center justify-between'
+      )}
     >
-      <div className="min-w-0 flex-1 space-y-0.5">
+      <div className={cn('min-w-0 flex-1', description ? 'space-y-1' : 'space-y-0.5')}>
         <Label id={labelId}>{label}</Label>
         {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
       </div>
