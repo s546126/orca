@@ -133,6 +133,12 @@ export default function WorktreeCreationPanel({
               )}
             </button>
           </div>
+        ) : entry.phase === 'provisioning-vm' ? (
+          <VmProvisioningStatus
+            elapsedLabel={elapsedLabel}
+            log={entry.provisioningLog ?? ''}
+            cleanupLabel={provisioningCleanupLabel}
+          />
         ) : (
           <div className="flex min-h-0 max-w-3xl flex-col gap-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-2">
@@ -140,16 +146,55 @@ export default function WorktreeCreationPanel({
               <span>{getCreationProgressLabel(entry)}</span>
               <span className="text-muted-foreground/70">{elapsedLabel}</span>
             </div>
-            {provisioningCleanupLabel ? (
-              <div className="text-[11px] text-muted-foreground">{provisioningCleanupLabel}</div>
-            ) : null}
-            {entry.phase === 'provisioning-vm' && entry.provisioningLog ? (
-              <pre className="scrollbar-sleek max-h-48 overflow-auto whitespace-pre-wrap rounded-sm border border-border bg-muted/30 p-2 font-mono text-[11px] leading-4 text-muted-foreground">
-                {entry.provisioningLog}
-              </pre>
-            ) : null}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function VmProvisioningStatus({
+  elapsedLabel,
+  log,
+  cleanupLabel
+}: {
+  elapsedLabel: string
+  log: string
+  cleanupLabel: string | null
+}): React.JSX.Element {
+  return (
+    <div className="flex min-h-full justify-center pt-12">
+      <div className="flex w-full max-w-2xl flex-col gap-4">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+            <span>
+              {translate(
+                'auto.components.worktree.creation.WorktreeCreationPanel.vmProvisioningTitle',
+                'Provisioning VM'
+              )}
+            </span>
+            <span className="text-xs font-normal text-muted-foreground">{elapsedLabel}</span>
+          </div>
+          {cleanupLabel ? (
+            <div className="text-xs text-muted-foreground">{cleanupLabel}</div>
+          ) : null}
+        </div>
+        <section className="overflow-hidden rounded-md border border-border bg-card shadow-xs">
+          <div className="flex h-8 items-center border-b border-border px-3 text-[11px] font-medium uppercase tracking-[0.05em] text-muted-foreground">
+            {translate(
+              'auto.components.worktree.creation.WorktreeCreationPanel.vmProvisioningLogTitle',
+              'Recipe output'
+            )}
+          </div>
+          <pre className="scrollbar-sleek max-h-72 min-h-36 overflow-auto whitespace-pre-wrap bg-muted/30 p-3 font-mono text-[11px] leading-4 text-muted-foreground">
+            {log ||
+              translate(
+                'auto.components.worktree.creation.WorktreeCreationPanel.vmProvisioningLogEmpty',
+                'Waiting for recipe output…'
+              )}
+          </pre>
+        </section>
       </div>
     </div>
   )
