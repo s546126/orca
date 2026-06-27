@@ -126,13 +126,13 @@ export function AppearanceWindowSidebarSection({
 
       {showAdvanced ? (
         <AppearanceAdvancedDisclosure>
-          <div className="space-y-4">
+          <div className="ml-4 space-y-4">
             {showSidebarAdvanced ? (
               <div className="space-y-3">
                 <SettingsSubsectionHeader
                   title={translate('auto.components.settings.AppearancePane.dc29f3cc0d', 'Sidebar')}
                 />
-                <div className="divide-y divide-border/40">
+                <div className="ml-4 divide-y divide-border/40">
                   {/* Why: this setting lives with the sidebar layout controls; Settings only
                   names that ownership so we do not create a second stateful control. */}
                   <SearchableSetting
@@ -231,7 +231,7 @@ export function AppearanceWindowSidebarSection({
                     'File Explorer'
                   )}
                 />
-                <div className="divide-y divide-border/40">
+                <div className="ml-4 divide-y divide-border/40">
                   <SearchableSetting
                     title={
                       layoutEntries[0]?.title ??
