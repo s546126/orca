@@ -197,7 +197,7 @@ export function TerminalAppearanceSection({
             }
           />
 
-          <div className="ml-4 divide-y divide-border/40 border-b border-border/40">
+          <div className="ml-4 divide-y divide-border/40 border-y border-border/40">
             <TerminalFontSizeSetting
               settings={settings}
               updateSettings={updateSettings}
@@ -216,7 +216,6 @@ export function TerminalAppearanceSection({
               forceVisible={forceVisiblePrimary}
             >
               <SettingsRow
-                alignTop
                 label={translate(
                   'auto.components.settings.TerminalAppearanceSection.a408266e67',
                   'Font Family'

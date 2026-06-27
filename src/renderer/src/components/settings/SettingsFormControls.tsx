@@ -83,8 +83,12 @@ export function SettingsRow({
       )}
     >
       <div className={cn('min-w-0 flex-1', description ? 'space-y-1' : 'space-y-0.5')}>
-        <Label id={labelId}>{label}</Label>
-        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
+        <Label id={labelId} className="select-text">
+          {label}
+        </Label>
+        {description ? (
+          <p className="select-text text-xs text-muted-foreground">{description}</p>
+        ) : null}
       </div>
       <div className="shrink-0">{control}</div>
     </div>
