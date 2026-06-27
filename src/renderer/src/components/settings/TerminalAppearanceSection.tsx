@@ -173,28 +173,29 @@ export function TerminalAppearanceSection({
           theme catalog already stack full-width below their controls. */}
       {showPrimaryTypography ? (
         <section className="space-y-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <SettingsSubsectionHeader
-              title={translate(
-                'auto.components.settings.TerminalAppearanceSection.048aac8a64',
-                'Terminal Typography'
-              )}
-            />
-            {showGhosttyImport ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                onClick={() => void ghostty.handleClick()}
-              >
-                <img src={ghosttyIcon} alt="" aria-hidden="true" className="size-4" />
-                {translate(
-                  'auto.components.settings.TerminalAppearanceSection.855a76343a',
-                  'Import from Ghostty'
-                )}
-              </Button>
-            ) : null}
-          </div>
+          <SettingsSubsectionHeader
+            className="border-b border-border/50 pb-2"
+            title={translate(
+              'auto.components.settings.TerminalAppearanceSection.048aac8a64',
+              'Terminal Typography'
+            )}
+            action={
+              showGhosttyImport ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => void ghostty.handleClick()}
+                >
+                  <img src={ghosttyIcon} alt="" aria-hidden="true" className="size-4" />
+                  {translate(
+                    'auto.components.settings.TerminalAppearanceSection.855a76343a',
+                    'Import from Ghostty'
+                  )}
+                </Button>
+              ) : null
+            }
+          />
 
           <div className="divide-y divide-border/40">
             <TerminalFontSizeSetting

@@ -97,8 +97,8 @@ vi.mock('./SettingsFormControls', () => ({
   }) {
     return options?.map((option) => option.label) ?? null
   },
-  SettingsSubsectionHeader: function SettingsSubsectionHeader() {
-    return null
+  SettingsSubsectionHeader: function SettingsSubsectionHeader({ action }: { action?: unknown }) {
+    return action ?? null
   },
   SettingsSwitchRow: function SettingsSwitchRow() {
     return null

@@ -222,16 +222,18 @@ type SettingsSubsectionHeaderProps = {
   title: React.ReactNode
   description?: React.ReactNode
   action?: React.ReactNode
+  className?: string
 }
 
 /** Consistent subsection header: h3 text-sm font-semibold + optional muted description. */
 export function SettingsSubsectionHeader({
   title,
   description,
-  action
+  action,
+  className
 }: SettingsSubsectionHeaderProps): React.JSX.Element {
   return (
-    <div className="flex items-start justify-between gap-3">
+    <div className={cn('flex items-start justify-between gap-3', className)}>
       <div className="space-y-1">
         <h3 className="text-sm font-semibold">{title}</h3>
         {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
