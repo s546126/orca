@@ -29,7 +29,7 @@ export default function SuppressExternalWorktreeInboxDialog({
 }: SuppressExternalWorktreeInboxDialogProps): React.JSX.Element {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
             {translate(
