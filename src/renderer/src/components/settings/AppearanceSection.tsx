@@ -57,11 +57,22 @@ export function AppearanceSection({
           )}
         />
       </button>
-      {open ? (
-        <div id={contentId} role="region" className="border-t border-border/50 px-4 pt-1 pb-4">
-          {children}
+      <div
+        className={cn(
+          'grid overflow-hidden transition-[grid-template-rows,opacity,border-color] duration-200 ease-out motion-reduce:transition-none',
+          open
+            ? 'grid-rows-[1fr] border-t border-border/50 opacity-100'
+            : 'grid-rows-[0fr] border-t border-transparent opacity-0'
+        )}
+        aria-hidden={!open}
+        inert={!open}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div id={contentId} role="region" className="px-4 pt-1 pb-4">
+            {children}
+          </div>
         </div>
-      ) : null}
+      </div>
     </div>
   )
 }

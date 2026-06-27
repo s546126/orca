@@ -136,7 +136,6 @@ export function AppearanceInterfaceSection({
         forceVisible={forceVisiblePrimary}
       >
         <SettingsRow
-          alignTop
           label={translate('auto.components.settings.AppearancePane.102d6b5f9b', 'IDE Font')}
           control={
             <FontAutocomplete
@@ -152,7 +151,7 @@ export function AppearanceInterfaceSection({
       </SearchableSetting>
 
       {showAdvanced ? (
-        <AppearanceAdvancedDisclosure>
+        <AppearanceAdvancedDisclosure showTopBorder={false}>
           <div className="divide-y divide-border/40">
             {SHOW_UI_LANGUAGE_SETTING ? (
               <SearchableSetting
