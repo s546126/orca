@@ -10,6 +10,13 @@ import type { GlobalSettings } from '../../../../shared/types'
 
 const mocks = vi.hoisted(() => ({
   state: {
+    availableStatusBarToggles: [] as {
+      description: string
+      id: 'ports'
+      keywords: string[]
+      title: string
+      toggleDescription: string
+    }[],
     settingsSearchQuery: 'automations',
     statusBarItems: [],
     toggleStatusBarItem: vi.fn(),
@@ -27,7 +34,7 @@ vi.mock('@/hooks/useShortcutLabel', () => ({
 }))
 
 vi.mock('../status-bar/use-available-status-bar-toggles', () => ({
-  useAvailableStatusBarToggles: () => []
+  useAvailableStatusBarToggles: () => mocks.state.availableStatusBarToggles
 }))
 
 vi.mock('./TerminalAppearanceSection', () => ({
@@ -163,6 +170,7 @@ describe('AppearancePane', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.state.availableStatusBarToggles = []
     mocks.state.settingsSearchQuery = 'automations'
     // UIZoomControl reads window.api.ui on mount; the inline-expansion pane can
     // render the full Interface section, so provide a minimal renderer bridge
@@ -338,6 +346,22 @@ describe('AppearancePane', () => {
     expect(container.textContent).toContain('Left Sidebar Appearance')
     expect(container.textContent).toContain('Status Bar')
     expect(container.textContent).not.toContain('Advanced')
+  })
+
+  it('expands status bar controls for a section-label search', async () => {
+    mocks.state.availableStatusBarToggles = [
+      {
+        id: 'ports',
+        title: 'Ports',
+        description: 'Show live workspace ports in the status bar.',
+        toggleDescription: 'Show Ports in the status bar.',
+        keywords: ['status bar', 'ports']
+      }
+    ]
+    mocks.state.settingsSearchQuery = 'status bar'
+    const container = await renderAppearancePane(getDefaultSettings('/tmp'))
+
+    expect(container.querySelector('button[role="switch"][aria-label="Ports"]')).not.toBeNull()
   })
 
   it('collapses sibling sections so only the Interface section is expanded by default', async () => {

@@ -58,6 +58,20 @@ export function AppearanceWindowSidebarSection({
   const sidebarEntries = getSidebarEntries()
   const workspaceCardLayoutEntry = getWorkspaceCardLayoutEntry()
   const layoutEntries = getLayoutEntries()
+  const statusBarTitle = translate(
+    'auto.components.settings.AppearancePane.3e4175e5c6',
+    'Status Bar'
+  )
+  const statusBarDescription = translate(
+    'auto.components.settings.AppearancePane.statusBarDescription',
+    'Choose which indicators appear in the status bar.'
+  )
+  const statusBarKeywords = ['status bar', 'indicators']
+  const statusBarSectionMatches = matchesSettingsSearch(searchQuery, {
+    title: statusBarTitle,
+    description: statusBarDescription,
+    keywords: statusBarKeywords
+  })
   const statusBarControlMatches = visibleStatusBarToggles.some((toggle) =>
     matchesSettingsSearch(searchQuery, {
       title: toggle.title,
@@ -70,7 +84,7 @@ export function AppearanceWindowSidebarSection({
     ...sidebarEntries
   ])
   const fileExplorerAdvancedMatches = matchesSettingsSearch(searchQuery, layoutEntries)
-  const showStatusBarControls = !isSearching || statusBarControlMatches
+  const showStatusBarControls = !isSearching || statusBarSectionMatches || statusBarControlMatches
   const showSidebarAdvanced = !isSearching || sidebarAdvancedMatches
   const showFileExplorerAdvanced = !isSearching || fileExplorerAdvancedMatches
   const showAdvanced = showSidebarAdvanced || showFileExplorerAdvanced
@@ -89,18 +103,11 @@ export function AppearanceWindowSidebarSection({
         </SearchableSetting>
 
         <SearchableSetting
-          title={translate('auto.components.settings.AppearancePane.3e4175e5c6', 'Status Bar')}
-          keywords={['status bar', 'indicators']}
-          forceVisible={forceVisiblePrimary || statusBarControlMatches}
+          title={statusBarTitle}
+          keywords={statusBarKeywords}
+          forceVisible={forceVisiblePrimary || statusBarSectionMatches || statusBarControlMatches}
         >
-          <SettingsRow
-            label={translate('auto.components.settings.AppearancePane.3e4175e5c6', 'Status Bar')}
-            description={translate(
-              'auto.components.settings.AppearancePane.statusBarDescription',
-              'Choose which indicators appear in the status bar.'
-            )}
-            control={null}
-          />
+          <SettingsRow label={statusBarTitle} description={statusBarDescription} control={null} />
           {showStatusBarControls ? (
             <div className="ml-4 divide-y divide-border/40 border-t border-border/40">
               {visibleStatusBarToggles.map((toggle) => {
