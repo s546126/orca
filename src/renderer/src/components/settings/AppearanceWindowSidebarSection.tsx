@@ -5,7 +5,12 @@ import type { FeatureInteractionId } from '../../../../shared/feature-interactio
 import { SearchableSetting } from './SearchableSetting'
 import { AppearanceAdvancedDisclosure } from './AppearanceAdvancedDisclosure'
 import { useAppStore } from '../../store'
-import { SettingsRow, SettingsSubsectionHeader, SettingsSwitchRow } from './SettingsFormControls'
+import {
+  SettingsRow,
+  SettingsSegmentedControl,
+  SettingsSubsectionHeader,
+  SettingsSwitchRow
+} from './SettingsFormControls'
 import { useAvailableStatusBarToggles } from '../status-bar/use-available-status-bar-toggles'
 import { getLayoutEntries, getSidebarEntries, getStatusBarToggles } from './appearance-search'
 import { LeftSidebarAppearanceSetting } from './LeftSidebarAppearanceSetting'
@@ -47,6 +52,7 @@ export function AppearanceWindowSidebarSection({
   const statusBarItems = useAppStore((state) => state.statusBarItems)
   const toggleStatusBarItem = useAppStore((state) => state.toggleStatusBarItem)
   const recordFeatureInteraction = useAppStore((state) => state.recordFeatureInteraction)
+  const setWorktreeCardMode = useAppStore((state) => state.setWorktreeCardMode)
   const visibleStatusBarToggles = useAvailableStatusBarToggles(getStatusBarToggles())
   const leftSidebarAppearanceEntry = getLeftSidebarAppearanceEntry()
   const sidebarEntries = getSidebarEntries()
@@ -142,11 +148,32 @@ export function AppearanceWindowSidebarSection({
                   >
                     <SettingsRow
                       label={workspaceCardLayoutEntry.title}
-                      description={translate(
-                        'auto.components.settings.AppearancePane.workspaceCardLayoutGuidance',
-                        'Managed from the workspace sidebar.'
-                      )}
-                      control={null}
+                      description={workspaceCardLayoutEntry.description}
+                      control={
+                        <SettingsSegmentedControl
+                          value={settings.compactWorktreeCards ? 'compact' : 'detailed'}
+                          onChange={(value) =>
+                            setWorktreeCardMode(value === 'compact' ? 'Compact' : 'Default')
+                          }
+                          ariaLabel={workspaceCardLayoutEntry.title}
+                          options={[
+                            {
+                              value: 'detailed',
+                              label: translate(
+                                'auto.components.sidebar.SidebarWorkspaceOptionsMenu.cc17bd443b',
+                                'Detailed'
+                              )
+                            },
+                            {
+                              value: 'compact',
+                              label: translate(
+                                'auto.components.sidebar.SidebarWorkspaceOptionsMenu.25105b28cb',
+                                'Compact'
+                              )
+                            }
+                          ]}
+                        />
+                      }
                     />
                   </SearchableSetting>
 
