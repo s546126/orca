@@ -174,7 +174,6 @@ export function TerminalAppearanceSection({
       {showPrimaryTypography ? (
         <section className="space-y-3">
           <SettingsSubsectionHeader
-            className="items-center rounded-md border border-border/50 bg-muted/20 px-3 py-2.5"
             title={translate(
               'auto.components.settings.TerminalAppearanceSection.048aac8a64',
               'Terminal Typography'
@@ -197,7 +196,7 @@ export function TerminalAppearanceSection({
             }
           />
 
-          <div className="divide-y divide-border/40">
+          <div className="divide-y divide-border/40 pl-4">
             <TerminalFontSizeSetting
               settings={settings}
               updateSettings={updateSettings}

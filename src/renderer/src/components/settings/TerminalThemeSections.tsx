@@ -78,14 +78,9 @@ export function TerminalThemeCatalogSection({
   return (
     <section className="space-y-5">
       <SettingsSubsectionHeader
-        className="items-center rounded-md border border-border/50 bg-muted/20 px-3 py-2.5"
         title={translate(
           'auto.components.settings.TerminalThemeSections.catalog_title',
           'Terminal Themes'
-        )}
-        description={translate(
-          'auto.components.settings.TerminalThemeSections.catalog_description',
-          'Choose terminal themes and divider colors for dark and light mode.'
         )}
         action={
           showThemeImport ? (
@@ -97,7 +92,7 @@ export function TerminalThemeCatalogSection({
         }
       />
 
-      <div className="grid gap-6">
+      <div className="grid gap-6 pl-4">
         <div>
           <div className="space-y-3">
             <SearchableSetting
