@@ -52,10 +52,7 @@ export function AppearanceWindowSidebarSection({
   const sidebarEntries = getSidebarEntries()
   const workspaceCardLayoutEntry = getWorkspaceCardLayoutEntry()
   const layoutEntries = getLayoutEntries()
-  const enabledStatusBarCount = visibleStatusBarToggles.filter((toggle) =>
-    statusBarItems.includes(toggle.id)
-  ).length
-  const statusBarAdvancedMatches = visibleStatusBarToggles.some((toggle) =>
+  const statusBarControlMatches = visibleStatusBarToggles.some((toggle) =>
     matchesSettingsSearch(searchQuery, {
       title: toggle.title,
       description: toggle.description,
@@ -67,10 +64,10 @@ export function AppearanceWindowSidebarSection({
     ...sidebarEntries
   ])
   const fileExplorerAdvancedMatches = matchesSettingsSearch(searchQuery, layoutEntries)
-  const showStatusBarAdvanced = !isSearching || statusBarAdvancedMatches
+  const showStatusBarControls = !isSearching || statusBarControlMatches
   const showSidebarAdvanced = !isSearching || sidebarAdvancedMatches
   const showFileExplorerAdvanced = !isSearching || fileExplorerAdvancedMatches
-  const showAdvanced = showStatusBarAdvanced || showSidebarAdvanced || showFileExplorerAdvanced
+  const showAdvanced = showSidebarAdvanced || showFileExplorerAdvanced
 
   return (
     <div className="space-y-2">
@@ -88,60 +85,48 @@ export function AppearanceWindowSidebarSection({
         <SearchableSetting
           title={translate('auto.components.settings.AppearancePane.3e4175e5c6', 'Status Bar')}
           keywords={['status bar', 'indicators']}
-          forceVisible={forceVisiblePrimary}
+          forceVisible={forceVisiblePrimary || statusBarControlMatches}
         >
           <SettingsRow
             label={translate('auto.components.settings.AppearancePane.3e4175e5c6', 'Status Bar')}
-            // Why: a live count is the one piece the toggles below can't show at a
-            // glance; the per-item Advanced group makes "manage items" obvious.
             description={translate(
-              'auto.components.settings.AppearancePane.statusBarCount',
-              '{{value0}} indicators visible.',
-              { value0: enabledStatusBarCount }
+              'auto.components.settings.AppearancePane.statusBarDescription',
+              'Choose which indicators appear in the status bar.'
             )}
             control={null}
           />
+          {showStatusBarControls ? (
+            <div className="ml-4 divide-y divide-border/40 border-t border-border/40">
+              {visibleStatusBarToggles.map((toggle) => {
+                const enabled = statusBarItems.includes(toggle.id)
+                return (
+                  <SearchableSetting
+                    key={toggle.id}
+                    title={toggle.title}
+                    description={toggle.description}
+                    keywords={toggle.keywords}
+                  >
+                    <SettingsSwitchRow
+                      label={toggle.title}
+                      description={toggle.toggleDescription}
+                      checked={enabled}
+                      onChange={() => {
+                        recordStatusBarToggleInteraction(toggle.id, recordFeatureInteraction)
+                        toggleStatusBarItem(toggle.id)
+                      }}
+                      ariaLabel={toggle.title}
+                    />
+                  </SearchableSetting>
+                )
+              })}
+            </div>
+          ) : null}
         </SearchableSetting>
       </div>
 
       {showAdvanced ? (
         <AppearanceAdvancedDisclosure>
           <div className="space-y-4">
-            {showStatusBarAdvanced ? (
-              <div className="space-y-3">
-                <SettingsSubsectionHeader
-                  title={translate(
-                    'auto.components.settings.AppearancePane.3e4175e5c6',
-                    'Status Bar'
-                  )}
-                />
-                <div className="divide-y divide-border/40">
-                  {visibleStatusBarToggles.map((toggle) => {
-                    const enabled = statusBarItems.includes(toggle.id)
-                    return (
-                      <SearchableSetting
-                        key={toggle.id}
-                        title={toggle.title}
-                        description={toggle.description}
-                        keywords={toggle.keywords}
-                      >
-                        <SettingsSwitchRow
-                          label={toggle.title}
-                          description={toggle.toggleDescription}
-                          checked={enabled}
-                          onChange={() => {
-                            recordStatusBarToggleInteraction(toggle.id, recordFeatureInteraction)
-                            toggleStatusBarItem(toggle.id)
-                          }}
-                          ariaLabel={toggle.title}
-                        />
-                      </SearchableSetting>
-                    )
-                  })}
-                </div>
-              </div>
-            ) : null}
-
             {showSidebarAdvanced ? (
               <div className="space-y-3">
                 <SettingsSubsectionHeader
