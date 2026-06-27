@@ -174,6 +174,7 @@ export function TerminalAppearanceSection({
       {showPrimaryTypography ? (
         <section className="space-y-3 pt-2">
           <SettingsSubsectionHeader
+            className="items-center"
             title={translate(
               'auto.components.settings.TerminalAppearanceSection.048aac8a64',
               'Terminal Typography'
