@@ -151,17 +151,19 @@ export function TerminalAppearanceSection({
   ].filter((group): group is { key: string; node: React.JSX.Element } => group !== null)
   const showAdvancedDisclosure = !isSearching || advancedGroups.length > 0
   const previewAdvancedContent = showAdvancedDisclosure ? (
-    <AppearanceAdvancedDisclosure showTopBorder={false} className="mt-0 pt-2">
-      <div className="ml-4 pt-3">
-        {advancedGroups.map((group, index) => (
-          <div
-            key={group.key}
-            className={index > 0 ? 'mt-2 border-t border-border/60 pt-4' : undefined}
-          >
-            {group.node}
-          </div>
-        ))}
-      </div>
+    <AppearanceAdvancedDisclosure
+      showTopBorder={false}
+      className="mt-0 pt-2"
+      contentClassName="ml-4 pt-4"
+    >
+      {advancedGroups.map((group, index) => (
+        <div
+          key={group.key}
+          className={index > 0 ? 'mt-2 border-t border-border/60 pt-4' : undefined}
+        >
+          {group.node}
+        </div>
+      ))}
     </AppearanceAdvancedDisclosure>
   ) : null
 
@@ -233,13 +235,11 @@ export function TerminalAppearanceSection({
 
           {showTypographyAdvancedDisclosure ? (
             <div className="ml-4">
-              <AppearanceAdvancedDisclosure showTopBorder={false}>
-                <div className="ml-4">
-                  <TerminalAdvancedTypographyControls
-                    settings={settings}
-                    updateSettings={updateSettings}
-                  />
-                </div>
+              <AppearanceAdvancedDisclosure showTopBorder={false} contentClassName="ml-4">
+                <TerminalAdvancedTypographyControls
+                  settings={settings}
+                  updateSettings={updateSettings}
+                />
               </AppearanceAdvancedDisclosure>
             </div>
           ) : null}

@@ -11,6 +11,7 @@ type AppearanceAdvancedDisclosureProps = {
   label?: string
   showTopBorder?: boolean
   className?: string
+  contentClassName?: string
   children: React.ReactNode
 }
 
@@ -21,6 +22,7 @@ export function AppearanceAdvancedDisclosure({
   label,
   showTopBorder = true,
   className,
+  contentClassName,
   children
 }: AppearanceAdvancedDisclosureProps): React.JSX.Element {
   const searchQuery = useAppStore((state) => state.settingsSearchQuery)
@@ -48,7 +50,7 @@ export function AppearanceAdvancedDisclosure({
         {label ??
           translate('auto.components.settings.AppearanceAdvancedDisclosure.advanced', 'Advanced')}
       </button>
-      {expanded ? <div className="pt-1">{children}</div> : null}
+      {expanded ? <div className={cn('pt-1', contentClassName)}>{children}</div> : null}
     </div>
   )
 }

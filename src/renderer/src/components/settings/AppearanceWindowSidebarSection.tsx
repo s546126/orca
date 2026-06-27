@@ -125,8 +125,8 @@ export function AppearanceWindowSidebarSection({
       </div>
 
       {showAdvanced ? (
-        <AppearanceAdvancedDisclosure>
-          <div className="ml-4 space-y-4">
+        <AppearanceAdvancedDisclosure contentClassName="ml-4 pt-4">
+          <div className="space-y-4">
             {showSidebarAdvanced ? (
               <div className="space-y-3">
                 <SettingsSubsectionHeader
