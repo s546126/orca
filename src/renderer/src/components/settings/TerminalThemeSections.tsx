@@ -95,7 +95,7 @@ export function TerminalThemeCatalogSection({
         }
       />
 
-      <div className="ml-4 grid gap-6">
+      <div className="ml-4 grid gap-4">
         <div>
           <div className="space-y-3">
             <SearchableSetting
@@ -217,7 +217,7 @@ export function TerminalThemeCatalogSection({
               >
                 <ColorField
                   label={dividerTitle}
-                  description=""
+                  description={dividerDescription}
                   value={
                     isLightTarget
                       ? settings.terminalDividerColorLight
