@@ -23,17 +23,41 @@ import type { EmulatorBridgeOptions } from './emulator-bridge-types'
 import { sendEmulatorGestureSequence, type EmulatorGesturePoint } from './emulator-gesture-sender'
 import { parseServeSimDetachedSession } from './serve-sim-detached-session'
 import { EmulatorSessionRegistry } from './emulator-session-registry'
+import {
+  EmulatorSessionLifecycle,
+  type SessionTeardown
+} from './emulator-session-lifecycle'
+import type { MobileDeviceBridge } from './mobile-device-bridge'
 import { hideNativeSimulatorApp } from './simulator-app-visibility'
 
-export class EmulatorBridge {
-  private readonly sessionRegistry = new EmulatorSessionRegistry()
+export class EmulatorBridge implements MobileDeviceBridge {
+  private readonly sessionRegistry: EmulatorSessionRegistry
+  private readonly lifecycle: EmulatorSessionLifecycle
 
   private serveSimExecutable: ServeSimExecutable
   private readonly waitForEndpointReady: (endpoint: string) => Promise<boolean>
 
+  // Why: behavior-preserving teardown hook for the shared lifecycle. The
+  // conditional includeOrphaned key (vs always-present) is load-bearing — the
+  // destroy path historically omits it, stop/kill include it.
+  private readonly teardownSession: SessionTeardown = async (target, options) => {
+    const killOptions =
+      options.includeOrphaned === undefined
+        ? { helperPid: target.pid }
+        : { helperPid: target.pid, includeOrphaned: options.includeOrphaned }
+    await this.stopServeSimForDevice(target.deviceUdid, killOptions)
+    if (options.shutdownDevice) {
+      await (options.ignoreShutdownError
+        ? shutdownSimulatorDevice(target.deviceUdid).catch(() => {})
+        : shutdownSimulatorDevice(target.deviceUdid))
+    }
+  }
+
   constructor(options: EmulatorBridgeOptions = {}) {
     this.serveSimExecutable = resolveServeSimExecutable()
     this.waitForEndpointReady = options.waitForEndpointReady ?? waitForServeSimEndpointReady
+    this.sessionRegistry = options.registry ?? new EmulatorSessionRegistry()
+    this.lifecycle = new EmulatorSessionLifecycle(this.sessionRegistry, this.teardownSession, 'ios')
   }
 
   private async ensureUdid(deviceOrName: string): Promise<string> {
@@ -61,15 +85,15 @@ export class EmulatorBridge {
     info: EmulatorSessionInfo,
     options: { managed?: boolean } = {}
   ): void {
-    this.sessionRegistry.registerActive(worktreeId, info, options)
+    this.lifecycle.registerActive(worktreeId, info, options)
   }
 
   unregisterActiveEmulator(worktreeId: string): void {
-    this.sessionRegistry.unregisterWorktree(worktreeId)
+    this.lifecycle.unregisterWorktree(worktreeId)
   }
 
   getActiveForWorktree(worktreeId?: string): EmulatorSessionInfo | null {
-    return this.sessionRegistry.getActiveForWorktree(worktreeId)
+    return this.lifecycle.getActiveForWorktree(worktreeId)
   }
 
   async getReusableActiveForWorktree(
@@ -90,69 +114,22 @@ export class EmulatorBridge {
     worktreeId: string,
     options: { shutdownDevice?: boolean } = {}
   ): Promise<string | null> {
-    return this.stopActiveForWorktreeInternal(worktreeId, options)
+    return this.lifecycle.stopActiveForWorktree(worktreeId, { ...options, managedOnly: false })
   }
 
   async stopActiveManagedForWorktree(
     worktreeId: string,
     options: { shutdownDevice?: boolean } = {}
   ): Promise<string | null> {
-    return this.stopActiveForWorktreeInternal(worktreeId, { ...options, managedOnly: true })
-  }
-
-  private async stopActiveForWorktreeInternal(
-    worktreeId: string,
-    options: { shutdownDevice?: boolean; managedOnly?: boolean } = {}
-  ): Promise<string | null> {
-    const key = this.sessionRegistry.getActiveSessionKey(worktreeId)
-    if (!key) {
-      return null
-    }
-    const session = this.sessionRegistry.getSession(key)
-    this.sessionRegistry.unregisterWorktree(worktreeId)
-    if (!session || (options.managedOnly && !session.managed)) {
-      return null
-    }
-    await this.stopServeSimForDevice(session.deviceUdid, {
-      helperPid: session.pid,
-      includeOrphaned: !options.managedOnly
-    })
-    if (options.shutdownDevice) {
-      await shutdownSimulatorDevice(session.deviceUdid).catch(() => {})
-    }
-    this.sessionRegistry.clearSessionAndWorktrees(key)
-    return session.deviceUdid
+    return this.lifecycle.stopActiveForWorktree(worktreeId, { ...options, managedOnly: true })
   }
 
   async shutdownActiveManagedForWorktree(worktreeId: string): Promise<string | null> {
     return this.stopActiveManagedForWorktree(worktreeId, { shutdownDevice: true })
   }
 
-  private getTargetOrThrow(_opts?: { device?: string; emulator?: string; worktreeId?: string }): {
-    udid: string
-    worktreeId?: string
-  } {
-    void _opts?.worktreeId
-    if (_opts?.device) {
-      return { udid: _opts.device, worktreeId: _opts.worktreeId }
-    }
-    if (_opts?.emulator) {
-      return { udid: _opts.emulator, worktreeId: _opts.worktreeId }
-    }
-    if (_opts?.worktreeId) {
-      const active = this.getActiveForWorktree(_opts.worktreeId)
-      if (active) {
-        return { udid: active.deviceUdid, worktreeId: _opts.worktreeId }
-      }
-    }
-    throw new EmulatorError(
-      'emulator_no_active',
-      'No active emulator for this worktree — use orca emulator attach or open the pane'
-    )
-  }
-
   async tap(x: number, y: number, opts?: { device?: string; worktreeId?: string }): Promise<void> {
-    const target = this.getTargetOrThrow(opts)
+    const target = this.lifecycle.getTargetOrThrow(opts)
     const udid = await this.ensureUdid(target.udid)
     await this.execServeSim(['tap', x.toString(), y.toString(), '-d', udid])
   }
@@ -164,7 +141,7 @@ export class EmulatorBridge {
     if (points.length === 0) {
       return
     }
-    const target = this.getTargetOrThrow(opts)
+    const target = this.lifecycle.getTargetOrThrow(opts)
     const udid = await this.ensureUdid(target.udid)
     const session = this.sessionRegistry.getSession(udid)
     if (!session?.wsUrl) {
@@ -174,13 +151,13 @@ export class EmulatorBridge {
   }
 
   async type(text: string, opts?: { device?: string; worktreeId?: string }): Promise<void> {
-    const target = this.getTargetOrThrow(opts)
+    const target = this.lifecycle.getTargetOrThrow(opts)
     const udid = await this.ensureUdid(target.udid)
     await this.execServeSim(['type', text, '-d', udid])
   }
 
   async button(name: string, opts?: { device?: string; worktreeId?: string }): Promise<void> {
-    const target = this.getTargetOrThrow(opts)
+    const target = this.lifecycle.getTargetOrThrow(opts)
     const udid = await this.ensureUdid(target.udid)
     await this.execServeSim(['button', name, '-d', udid])
   }
@@ -189,7 +166,7 @@ export class EmulatorBridge {
     orientation: string,
     opts?: { device?: string; worktreeId?: string }
   ): Promise<void> {
-    const target = this.getTargetOrThrow(opts)
+    const target = this.lifecycle.getTargetOrThrow(opts)
     const udid = await this.ensureUdid(target.udid)
     await this.execServeSim(['rotate', orientation, '-d', udid])
   }
@@ -198,7 +175,7 @@ export class EmulatorBridge {
     command: string,
     opts?: { device?: string; emulator?: string; worktreeId?: string }
   ): Promise<unknown> {
-    const target = this.getTargetOrThrow(opts)
+    const target = this.lifecycle.getTargetOrThrow(opts)
     const udid = await this.ensureUdid(target.udid)
     const rawArgs = stripEmulatorTargetArgs(parseServeSimCommandArgs(command.trim()))
     const args = [...rawArgs, '-d', udid]
@@ -268,45 +245,27 @@ export class EmulatorBridge {
   }
 
   async kill(device?: string, worktreeId?: string): Promise<string> {
-    const target = device
-      ? { udid: await this.ensureUdid(device) }
-      : this.getTargetOrThrow({ worktreeId })
-    const udid = target.udid
-    await this.stopServeSimForDevice(udid, {
-      helperPid: this.sessionRegistry.getSession(udid)?.pid,
-      includeOrphaned: true
+    const udid = device
+      ? await this.ensureUdid(device)
+      : this.lifecycle.getTargetOrThrow({ worktreeId }).udid
+    return this.lifecycle.tearDownDevice(udid, {
+      shutdownDevice: false,
+      ignoreShutdownError: false
     })
-    this.sessionRegistry.clearSessionAndWorktrees(udid)
-    return udid
   }
 
   async shutdown(device?: string, worktreeId?: string): Promise<string> {
-    const target = device
-      ? { udid: await this.ensureUdid(device) }
-      : this.getTargetOrThrow({ worktreeId })
-    const udid = target.udid
-    await this.stopServeSimForDevice(udid, {
-      helperPid: this.sessionRegistry.getSession(udid)?.pid,
-      includeOrphaned: true
+    const udid = device
+      ? await this.ensureUdid(device)
+      : this.lifecycle.getTargetOrThrow({ worktreeId }).udid
+    return this.lifecycle.tearDownDevice(udid, {
+      shutdownDevice: true,
+      ignoreShutdownError: false
     })
-    await shutdownSimulatorDevice(udid)
-    this.sessionRegistry.clearSessionAndWorktrees(udid)
-    return udid
   }
 
   async destroyAllSessions(): Promise<void> {
-    const promises: Promise<unknown>[] = []
-    for (const session of this.sessionRegistry.listSessions()) {
-      if (session.managed) {
-        promises.push(
-          this.stopServeSimForDevice(session.deviceUdid, { helperPid: session.pid })
-            .catch(() => {})
-            .then(() => shutdownSimulatorDevice(session.deviceUdid).catch(() => {}))
-        )
-      }
-    }
-    await Promise.allSettled(promises)
-    this.sessionRegistry.clear()
+    await this.lifecycle.destroyAll()
   }
 
   async onAppQuit(): Promise<void> {

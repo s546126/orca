@@ -16,3 +16,9 @@ export type EmulatorErrorCode =
   | 'emulator_not_macos'
   | 'emulator_disabled'
   | 'emulator_error'
+  // Android/redroid capability codes. Gated on binder/adb/docker, never KVM:
+  // redroid is a host-kernel container (binder/binderfs), not a hardware VM.
+  | 'emulator_adb_unavailable'
+  | 'emulator_redroid_unreachable'
+  | 'emulator_android_kernel_unsupported'
+  | 'emulator_docker_unprivileged'

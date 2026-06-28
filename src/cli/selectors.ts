@@ -221,6 +221,7 @@ export type EmulatorCliTarget = {
   worktree?: string
   device?: string
   emulator?: string // Orca id from list
+  kind?: 'ios' | 'android'
 }
 
 export async function getEmulatorWorktreeSelector(
@@ -256,9 +257,11 @@ export async function getEmulatorCommandTarget(
 ): Promise<EmulatorCliTarget> {
   const device = getOptionalStringFlag(flags, 'device')
   const emulator = getOptionalStringFlag(flags, 'emulator')
+  const kindFlag = getOptionalStringFlag(flags, 'kind')
+  const kind = kindFlag === 'android' ? 'android' : kindFlag === 'ios' ? 'ios' : undefined
   const worktree = await getEmulatorWorktreeSelector(flags, cwd, client)
   if (device || emulator) {
-    return { device: device || undefined, emulator: emulator || undefined, worktree }
+    return { device: device || undefined, emulator: emulator || undefined, worktree, kind }
   }
-  return { worktree }
+  return { worktree, kind }
 }

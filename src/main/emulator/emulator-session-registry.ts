@@ -1,6 +1,13 @@
 import type { EmulatorSessionInfo } from './emulator-types'
 import type { EmulatorSessionState } from './emulator-bridge-types'
 
+// Why: two remote Android hosts can both expose 127.0.0.1:5555, so serials are
+// keyed by (hostId, serial). When hostId is undefined (all iOS sessions today)
+// the key is just the serial, preserving existing behavior exactly.
+function sessionKey(deviceUdid: string, hostId?: string): string {
+  return hostId ? `${hostId}::${deviceUdid}` : deviceUdid
+}
+
 export class EmulatorSessionRegistry {
   private readonly activeByWorktree = new Map<string, string>()
   private readonly sessions = new Map<string, EmulatorSessionState>()
@@ -10,7 +17,7 @@ export class EmulatorSessionRegistry {
     info: EmulatorSessionInfo,
     options: { managed?: boolean } = {}
   ): void {
-    const key = info.deviceUdid
+    const key = sessionKey(info.deviceUdid, info.hostId)
     this.sessions.set(key, {
       deviceUdid: info.deviceUdid,
       wsUrl: info.wsUrl,
@@ -18,7 +25,10 @@ export class EmulatorSessionRegistry {
       axUrl: info.axUrl,
       pid: info.helperPid,
       managed: options.managed === true,
-      initialized: true
+      initialized: true,
+      kind: info.kind ?? 'ios',
+      streamKind: info.streamKind,
+      hostId: info.hostId
     })
     this.activeByWorktree.set(worktreeId, key)
   }
@@ -72,6 +82,11 @@ function toSessionInfo(session: EmulatorSessionState): EmulatorSessionInfo {
     wsUrl: session.wsUrl,
     streamUrl: session.streamUrl,
     axUrl: session.axUrl,
-    helperPid: session.pid
+    helperPid: session.pid,
+    streamKind: session.streamKind,
+    hostId: session.hostId,
+    // Why: only emit kind when 'android' so iOS session info stays structurally
+    // identical to today (a defined kind:'ios' would break deep-equality tests).
+    ...(session.kind === 'android' ? { kind: 'android' as const } : {})
   }
 }

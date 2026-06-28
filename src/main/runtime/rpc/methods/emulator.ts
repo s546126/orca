@@ -2,8 +2,6 @@ import { defineMethod, type RpcMethod } from '../core'
 import { z } from 'zod'
 
 // Minimal schemas for emulator commands (loose for initial testing; can be tightened like browser-schemas).
-const WorktreeParam = z.object({ worktree: z.string().optional() }).partial()
-
 const TapParams = z.object({
   x: z.number().min(0).max(1),
   y: z.number().min(0).max(1),
@@ -64,7 +62,8 @@ const ExecParams = z.object({
 const AttachParams = z.object({
   device: z.string().optional(),
   worktree: z.string().optional(),
-  focus: z.boolean().optional()
+  focus: z.boolean().optional(),
+  kind: z.enum(['ios', 'android']).optional()
 })
 
 const KillParams = z.object({
@@ -77,7 +76,10 @@ const ShutdownParams = KillParams.extend({
   managedOnly: z.boolean().optional()
 })
 
-const ListParams = WorktreeParam
+const ListParams = z.object({
+  worktree: z.string().optional(),
+  kind: z.enum(['ios', 'android']).optional()
+})
 
 export const EMULATOR_METHODS: RpcMethod[] = [
   defineMethod({

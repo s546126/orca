@@ -88,14 +88,22 @@ function parseEmulatorGesturePoints(raw: string): EmulatorGesturePoint[] {
 export const EMULATOR_HANDLERS: Record<string, CommandHandler> = {
   'emulator list': async ({ flags, client, cwd, json }) => {
     const target = await getEmulatorCommandTarget(flags, cwd, client)
-    const res = await client.call('emulator.list', { worktree: target.worktree })
+    const res = await client.call('emulator.list', {
+      worktree: target.worktree,
+      kind: target.kind
+    })
     printResult(res, json, (v) => JSON.stringify(v, null, 2))
   },
   'emulator attach': async ({ flags, client, cwd, json }) => {
     const target = await getEmulatorCommandTarget(flags, cwd, client)
     const device = getOptionalStringFlag(flags, 'device')
     const focus = flags.get('focus') === true
-    const res = await client.call('emulator.attach', { device, worktree: target.worktree, focus })
+    const res = await client.call('emulator.attach', {
+      device,
+      worktree: target.worktree,
+      focus,
+      kind: target.kind
+    })
     printResult(res, json, (r: unknown) => {
       const result = r as EmulatorAttachResult
       const info = result.info ?? result

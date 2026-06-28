@@ -108,6 +108,9 @@ import {
 } from './ipc/pty'
 import { AgentBrowserBridge } from './browser/agent-browser-bridge'
 import { EmulatorBridge } from './emulator/emulator-bridge'
+import { EmulatorSessionRegistry } from './emulator/emulator-session-registry'
+import { AndroidBridge } from './emulator/android-bridge'
+import { RedroidDockerBackend } from './emulator/redroid-docker-backend'
 import { serveSimStateWatcher } from './emulator/serve-sim-state-watcher'
 import { browserManager } from './browser/browser-manager'
 import { OffscreenBrowserBackend } from './browser/offscreen-browser-backend'
@@ -1501,8 +1504,18 @@ app.whenReady().then(async () => {
   )
 
   // Emulator bridge (serve-sim). macOS-only feature (gated in CLI/runtime); always ship like agent-browser.
-  const emulatorBridge = new EmulatorBridge()
+  // One shared registry routes both bridges (iOS + Android sibling) by recorded kind.
+  const emulatorSessionRegistry = new EmulatorSessionRegistry()
+  const emulatorBridge = new EmulatorBridge({ registry: emulatorSessionRegistry })
   runtimeService.setEmulatorBridge(emulatorBridge)
+  // Android stays effectively disabled in Phase 1: the backend reports unavailable
+  // and every verb throws TODO. No process-global Android watcher is started.
+  const androidBridge = new AndroidBridge({
+    registry: emulatorSessionRegistry,
+    backend: new RedroidDockerBackend(),
+    resolveHost: () => ({ mode: 'local' })
+  })
+  runtimeService.setAndroidBridge(androidBridge)
   serveSimStateWatcher.start()
   serveSimStateWatcher.onDetected(({ worktreeId, info }) => {
     runtimeService.getEmulatorBridge()?.registerActiveEmulator(worktreeId, info, {

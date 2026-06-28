@@ -1,10 +1,12 @@
 import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 import { randomUUID } from 'crypto'
 import { MjpegFrameStream } from '../emulator/mjpeg-frame-stream'
+import type { FrameStream } from './frame-stream-contract'
 
 type FrameStreamSession = {
   owner: WebContents
-  stream: MjpegFrameStream
+  // Why: typed against FrameStream so the h264 stream can plug in unchanged.
+  stream: FrameStream
 }
 
 const sessions = new Map<string, FrameStreamSession>()

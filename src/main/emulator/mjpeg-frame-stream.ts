@@ -1,6 +1,7 @@
 import { request as httpRequest, type ClientRequest, type IncomingMessage } from 'http'
 import { request as httpsRequest } from 'https'
 import { extractJpegFrames } from './mjpeg-frame-parser'
+import type { FrameStream } from '../ipc/frame-stream-contract'
 
 const RECONNECT_DELAY_MS = 1_000
 const REQUEST_TIMEOUT_MS = 10_000
@@ -40,7 +41,7 @@ function requestForUrl(url: URL, response: (res: IncomingMessage) => void): Clie
   )
 }
 
-export class MjpegFrameStream {
+export class MjpegFrameStream implements FrameStream {
   private pending: Buffer<ArrayBufferLike> = Buffer.alloc(0)
   private reconnectTimer: NodeJS.Timeout | null = null
   private request: ClientRequest | null = null
