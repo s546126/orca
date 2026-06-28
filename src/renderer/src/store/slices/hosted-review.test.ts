@@ -3,7 +3,11 @@ hinted cache revalidation, provider discovery, and PR cache reconciliation. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { create } from 'zustand'
 import type { AppState } from '../types'
-import { createHostedReviewSlice, refreshHostedReviewCard } from './hosted-review'
+import {
+  createHostedReviewSlice,
+  getHostedReviewCacheKey,
+  refreshHostedReviewCard
+} from './hosted-review'
 import type { HostedReviewInfo } from '../../../../shared/hosted-review'
 
 const runtimeRpc = vi.hoisted(() => ({
@@ -510,5 +514,83 @@ describe('hosted review slice', () => {
     resolveBranchLookup(null)
     await expect(plainFetch).resolves.toBeNull()
     await expect(linkedFetch).resolves.toEqual(review)
+  })
+
+  it('refetches a fresh merged GitHub review when the worktree head advances', async () => {
+    const mergedAtHead: HostedReviewInfo = {
+      provider: 'github',
+      number: 7,
+      title: 'Merged at head',
+      state: 'merged',
+      url: 'https://github.com/acme/orca/pull/7',
+      status: 'success',
+      updatedAt: '2026-05-10T00:00:00.000Z',
+      mergeable: 'MERGEABLE',
+      headSha: 'aaaaaaa'
+    }
+    mockApi.hostedReview.forBranch.mockResolvedValueOnce(mergedAtHead).mockResolvedValueOnce(null)
+    const store = makeStore()
+
+    await expect(
+      store.getState().fetchHostedReviewForBranch('/repo', 'feature/merged', {
+        currentHeadOid: 'aaaaaaa'
+      })
+    ).resolves.toEqual(mergedAtHead)
+
+    // Worktree advanced off the merged head: the branch-scoped cache is fresh,
+    // but the merged review is no longer valid for the new head, so refetch.
+    await expect(
+      store.getState().fetchHostedReviewForBranch('/repo', 'feature/merged', {
+        currentHeadOid: 'bbbbbbb'
+      })
+    ).resolves.toBeNull()
+    expect(mockApi.hostedReview.forBranch).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not preserve a merged GitHub review after the worktree moves off its head', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const cacheKey = getHostedReviewCacheKey(
+      '/repo',
+      'feature/merged',
+      null,
+      'repo-1',
+      null,
+      null,
+      true
+    )
+    const store = makeStore()
+    store.setState({
+      hostedReviewCache: {
+        [cacheKey]: {
+          data: {
+            provider: 'github',
+            number: 7,
+            title: 'Merged at head',
+            state: 'merged',
+            url: 'https://github.com/acme/orca/pull/7',
+            status: 'success',
+            updatedAt: '2026-05-10T00:00:00.000Z',
+            mergeable: 'MERGEABLE',
+            headSha: 'aaaaaaa'
+          },
+          fetchedAt: Date.now(),
+          linkedReviewHintKey: ''
+        }
+      }
+    })
+    mockApi.hostedReview.forBranch.mockRejectedValueOnce(new Error('transient gh failure'))
+
+    try {
+      // Head advanced to bbbbbbb; a failed lookup must not preserve the stale
+      // merged review for the old head.
+      await expect(
+        store.getState().fetchHostedReviewForBranch('/repo', 'feature/merged', {
+          force: true,
+          currentHeadOid: 'bbbbbbb'
+        })
+      ).resolves.toBeNull()
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 })

@@ -96,6 +96,27 @@ function canReuseInflightHint(inflightHintKey: string, nextHintKey: string): boo
   return inflightHintKey === nextHintKey
 }
 
+function isStaleMergedGitHubReviewForHead(
+  cached: CacheEntry<HostedReviewInfo> | undefined,
+  currentHeadOid: string | null | undefined
+): boolean {
+  // Why: a merged GitHub PR is only shown when the worktree sits on its head.
+  // The cache key is branch-scoped, so a worktree that advanced off the merged
+  // head must not reuse (or, on failure, preserve) the now-stale merged review.
+  const head = typeof currentHeadOid === 'string' ? currentHeadOid.trim() : ''
+  if (head.length === 0) {
+    return false
+  }
+  const data = cached?.data
+  return (
+    data?.provider === 'github' &&
+    data.state === 'merged' &&
+    typeof data.headSha === 'string' &&
+    data.headSha.length > 0 &&
+    data.headSha !== head
+  )
+}
+
 function hasNewerHostedReviewCacheEntry(
   cache: HostedReviewSlice['hostedReviewCache'],
   cacheKey: string,
@@ -295,7 +316,14 @@ export const createHostedReviewSlice: StateCreator<AppState, [], [], HostedRevie
     const hintKey = linkedReviewHintKey(options)
     const linkedRefetch = shouldRefetchForLinkedHint(cached, hintKey)
     const scopedResultRefetch = shouldRefetchGitHubScopedResultForNoHint(cached, hintKey)
-    if (!options?.force && !linkedRefetch && !scopedResultRefetch && isFresh(cached)) {
+    const staleMergedHeadRefetch = isStaleMergedGitHubReviewForHead(cached, options?.currentHeadOid)
+    if (
+      !options?.force &&
+      !linkedRefetch &&
+      !scopedResultRefetch &&
+      !staleMergedHeadRefetch &&
+      isFresh(cached)
+    ) {
       return cached.data
     }
 
@@ -395,7 +423,13 @@ export const createHostedReviewSlice: StateCreator<AppState, [], [], HostedRevie
           // cache TTL. Preserve the last known review and let the next visible
           // poll retry instead.
           console.error('Failed to fetch hosted review:', error)
-          return get().hostedReviewCache[cacheKey]?.data ?? null
+          const preserved = get().hostedReviewCache[cacheKey]
+          // Why: don't preserve a merged GitHub review the worktree has moved
+          // off of; that PR is only valid while checked out at its head.
+          if (isStaleMergedGitHubReviewForHead(preserved, options?.currentHeadOid)) {
+            return null
+          }
+          return preserved?.data ?? null
         } finally {
           const activeRequest = inflightHostedReviewRequests.get(cacheKey)
           if (activeRequest?.generation === generation) {
