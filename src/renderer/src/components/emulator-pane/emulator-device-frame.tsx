@@ -26,9 +26,11 @@ import {
 } from './emulator-screen-gesture'
 import { PhoneHardwareButtons } from './emulator-phone-hardware-buttons'
 import { EmulatorScreenStreamContent } from './emulator-screen-stream-content'
-import { useEmulatorControlStream } from './use-emulator-control-stream'
+import {
+  useEmulatorPointerTransport,
+  type EmulatorPointerKind
+} from './emulator-pointer-transport'
 import { useEmulatorPaneSize } from './use-emulator-pane-size'
-import { useEmulatorScreenKeyboard } from './use-emulator-screen-keyboard'
 import { getEmulatorScreenAriaLabel } from './emulator-screen-aria-label'
 import { cn } from '@/lib/utils'
 
@@ -39,6 +41,9 @@ type EmulatorDeviceFrameProps = {
   deviceName?: string
   loading: boolean
   isLive: boolean
+  // Defaults to iOS; Android gates live-drag off and uses the discrete RPC path.
+  kind?: EmulatorPointerKind
+  streamKind?: 'mjpeg' | 'h264'
   onTap: (x: number, y: number) => void
   onGesture: (points: EmulatorGesturePoint[]) => void
 }
@@ -65,6 +70,8 @@ export function EmulatorDeviceFrame({
   deviceName,
   loading,
   isLive,
+  kind = 'ios',
+  streamKind,
   onTap,
   onGesture
 }: EmulatorDeviceFrameProps) {
@@ -78,16 +85,14 @@ export function EmulatorDeviceFrame({
   const [streamError, setStreamError] = useState(false)
   const [streamSize, setStreamSize] = useState<StreamSize | null>(null)
   const canInteract = isLive && !loading && !streamError
-  const { cancelKeyboardFrames, sendKeyboardFrames, sendTouch } = useEmulatorControlStream(
-    wsUrl,
-    canInteract
-  )
-  const { enableKeyboardCapture, handleBlur, handleKeyDown, handlePaste, keyboardCaptureActive } =
-    useEmulatorScreenKeyboard({
-      cancelKeyboardFrames,
-      canInteract,
-      sendKeyboardFrames
-    })
+  const {
+    enableKeyboardCapture,
+    handleBlur,
+    handleKeyDown,
+    handlePaste,
+    keyboardCaptureActive,
+    sendTouch
+  } = useEmulatorPointerTransport({ kind, wsUrl, canInteract })
 
   useEffect(() => {
     setStreamError(false)
@@ -401,6 +406,7 @@ export function EmulatorDeviceFrame({
               showStream={Boolean(showStream)}
               streamError={streamError}
               streamKey={streamKey}
+              streamKind={streamKind}
             />
           </div>
         </div>

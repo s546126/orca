@@ -24,6 +24,7 @@ import type { EmulatorGesturePoint } from './emulator-gesture-sender'
 import type { EmulatorSessionInfo } from './emulator-types'
 import type { MobileDeviceBridge, MobileDeviceTargetOptions } from './mobile-device-bridge'
 import type { SimulatorDevice } from './simctl-simulator-devices'
+import { androidStreamHandleRegistry } from '../ipc/android-stream-handle-registry'
 
 export type AndroidBridgeOptions = {
   // Why: shared with EmulatorBridge so the runtime routes from one registry.
@@ -36,14 +37,11 @@ export type AndroidBridgeOptions = {
   getExecutor?: (host: AndroidHost) => Promise<AdbCommandExecutor | null>
 }
 
-// Interim until Phase 4 supplies real stream dimensions: redroid's common default
-// portrait resolution. streamSizeBySerial must always hold NATURAL (rotation-0)
-// dimensions — effectiveSize() applies the current rotation when mapping taps, so
-// storing already-rotated dims here would double-swap.
+// Default tap-mapping resolution until the stream reports real dimensions.
+// streamSizeBySerial must always hold NATURAL (rotation-0) dimensions —
+// effectiveSize() applies the current rotation when mapping taps, so storing
+// already-rotated dims here would double-swap.
 const DEFAULT_STREAM_SIZE: StreamSize = { width: 1080, height: 1920 }
-// Non-functional placeholder so attach can register a session and input verbs can
-// resolve the serial from the shared registry; the real h264 stream lands Phase 4.
-const ANDROID_PLACEHOLDER_STREAM_URL = 'android-stream://pending'
 
 // Phase 1 scaffold: device-control verbs throw TODO; session/registry shells
 // delegate to the shared lifecycle so routing and app-quit never blow up.
@@ -56,8 +54,16 @@ export class AndroidBridge implements MobileDeviceBridge {
   // stream size defaults until Phase 4 reports real dimensions.
   private readonly rotationBySerial = new Map<string, DeviceRotation>()
   private readonly streamSizeBySerial = new Map<string, StreamSize>()
+  // serial -> live H.264 stream id, so session teardown stops the source (teardown
+  // wins over the renderer's frameStreamStop).
+  private readonly streamIdBySerial = new Map<string, string>()
 
   private readonly teardownSession: SessionTeardown = async (target, options) => {
+    const streamId = this.streamIdBySerial.get(target.deviceUdid)
+    if (streamId) {
+      androidStreamHandleRegistry.remove(streamId)
+      this.streamIdBySerial.delete(target.deviceUdid)
+    }
     const host = this.resolveHost()
     if (!host) {
       return
@@ -94,13 +100,17 @@ export class AndroidBridge implements MobileDeviceBridge {
       host
     })
     this.rotationBySerial.set(serial, 0)
-    // Why: Phase 4 supplies the real stream id/url + dimensions. The session here
-    // carries a non-functional placeholder stream so the runtime can register it
-    // and input verbs can resolve the serial via the shared registry.
+    // Main owns the H.264 byte source from here; register the live handle so the
+    // renderer-initiated frameStreamStart resolves it by streamId (no URL open).
+    const handle = await this.backend.startStream(serial, host)
+    androidStreamHandleRegistry.register(handle)
+    this.streamIdBySerial.set(serial, handle.streamId)
+    // streamUrl carries the streamId — the h264 frame-stream handler looks the
+    // handle up rather than opening a socket like the iOS mjpeg path does.
     return {
       deviceUdid: serial,
       wsUrl: '',
-      streamUrl: ANDROID_PLACEHOLDER_STREAM_URL,
+      streamUrl: handle.streamId,
       kind: 'android',
       streamKind: 'h264',
       hostId

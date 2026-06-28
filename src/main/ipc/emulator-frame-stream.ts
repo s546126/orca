@@ -1,6 +1,9 @@
 import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 import { randomUUID } from 'crypto'
-import { MjpegFrameStream } from '../emulator/mjpeg-frame-stream'
+import {
+  createMobileFrameStream,
+  type CreateMobileFrameStreamArgs
+} from './mobile-frame-stream-factory'
 import type { FrameStream } from './frame-stream-contract'
 
 type FrameStreamSession = {
@@ -20,16 +23,13 @@ function stopFrameStream(streamId: string): void {
   sessions.delete(streamId)
 }
 
-function frameToArrayBuffer(frame: Buffer<ArrayBufferLike>): ArrayBuffer {
-  const arrayBuffer = new ArrayBuffer(frame.byteLength)
-  new Uint8Array(arrayBuffer).set(frame)
-  return arrayBuffer
-}
-
 export function registerEmulatorFrameStreamHandlers(): void {
   ipcMain.handle(
     'emulator:frameStreamStart',
-    (event, args: { streamUrl: string; streamKey?: string }): { streamId: string } => {
+    (
+      event,
+      args: CreateMobileFrameStreamArgs
+    ): { streamId: string } => {
       const owner = event.sender
       const ownerWindow = BrowserWindow.fromWebContents(owner)
       if (!ownerWindow) {
@@ -37,27 +37,21 @@ export function registerEmulatorFrameStreamHandlers(): void {
       }
 
       const streamId = randomUUID()
-      // Why: Chromium's NetworkService can restart under long-lived MJPEG loads;
-      // the main process owns the socket so the renderer only receives JPEG bytes.
-      const stream = new MjpegFrameStream(
-        args.streamUrl,
-        {
-          onError: (message) => {
-            if (!owner.isDestroyed()) {
-              owner.send('emulator:frameStreamError', { streamId, message })
-            }
-          },
-          onFrame: (frame) => {
-            if (!owner.isDestroyed()) {
-              owner.send('emulator:frameStreamFrame', {
-                streamId,
-                bytes: frameToArrayBuffer(frame)
-              })
-            }
+      // Why: Chromium's NetworkService can restart under long-lived stream loads;
+      // the main process owns the socket so the renderer only receives decodable
+      // units. mjpeg sends JPEG bytes; h264 adds per-access-unit metadata.
+      const stream = createMobileFrameStream(args, {
+        onError: (message) => {
+          if (!owner.isDestroyed()) {
+            owner.send('emulator:frameStreamError', { streamId, message })
           }
         },
-        args.streamKey
-      )
+        onFrame: (bytes, meta) => {
+          if (!owner.isDestroyed()) {
+            owner.send('emulator:frameStreamFrame', { streamId, bytes, meta })
+          }
+        }
+      })
 
       sessions.set(streamId, { owner, stream })
       owner.once('destroyed', () => stopFrameStream(streamId))

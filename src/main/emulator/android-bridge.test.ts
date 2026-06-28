@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AndroidBridge } from './android-bridge'
 import { EmulatorSessionRegistry } from './emulator-session-registry'
-import type { AndroidDeviceBackend } from './android-device-backend'
+import type { AndroidDeviceBackend, AndroidStreamHandle } from './android-device-backend'
 import type { AdbCommandExecutor } from './adb-command-execution'
 import type { EmulatorSessionInfo } from './emulator-types'
+import { androidStreamHandleRegistry } from '../ipc/android-stream-handle-registry'
 
 function iosSession(deviceUdid: string): EmulatorSessionInfo {
   return {
@@ -28,11 +29,22 @@ function recordingExecutor(): { executor: AdbCommandExecutor; calls: string[][] 
   return { executor, calls }
 }
 
+let nextStreamId = 0
+function fakeStreamHandle(): AndroidStreamHandle {
+  return {
+    streamId: `android-stream-${nextStreamId++}`,
+    streamKind: 'h264',
+    units: async function* () {},
+    stop: vi.fn()
+  }
+}
+
 // Backend whose provision yields a fixed serial; input is backend-agnostic, so
-// only provision/teardown matter to the bridge here.
+// only provision/teardown/startStream matter to the bridge here.
 function provisioningBackend(): AndroidDeviceBackend {
   return {
     provision: vi.fn(async () => ({ serial: SERIAL, host: { mode: 'local' }, hostId: 'local' })),
+    startStream: vi.fn(async () => fakeStreamHandle()),
     teardown: vi.fn(async () => {})
   } as unknown as AndroidDeviceBackend
 }
@@ -96,7 +108,7 @@ describe('AndroidBridge re-attach reuse', () => {
 })
 
 describe('AndroidBridge input wiring', () => {
-  it('provisions and registers an android h264 session with a placeholder stream', async () => {
+  it('provisions, starts a real h264 stream, and registers the handle by streamId', async () => {
     const { executor } = recordingExecutor()
     const bridge = new AndroidBridge({
       registry: new EmulatorSessionRegistry(),
@@ -111,7 +123,25 @@ describe('AndroidBridge input wiring', () => {
       streamKind: 'h264',
       hostId: 'local'
     })
-    expect(info.streamUrl).toContain('pending')
+    // streamUrl carries the streamId; the handle is resolvable from the registry.
+    expect(info.streamUrl).toMatch(/^android-stream-/)
+    expect(androidStreamHandleRegistry.get(info.streamUrl)).toBeDefined()
+  })
+
+  it('stops and unregisters the stream handle on session teardown', async () => {
+    const { executor } = recordingExecutor()
+    const bridge = new AndroidBridge({
+      registry: new EmulatorSessionRegistry(),
+      backend: provisioningBackend(),
+      resolveHost: () => ({ mode: 'local' }),
+      getExecutor: async () => executor
+    })
+    const info = await bridge.startHelperForDevice('sess1')
+    bridge.registerActiveEmulator('wt-teardown', info, { managed: true })
+    const handle = androidStreamHandleRegistry.get(info.streamUrl)
+    await bridge.stopActiveForWorktree('wt-teardown', { shutdownDevice: true })
+    expect(handle?.stop).toHaveBeenCalled()
+    expect(androidStreamHandleRegistry.get(info.streamUrl)).toBeUndefined()
   })
 
   it('maps a normalized tap to device pixels via adb shell input', async () => {

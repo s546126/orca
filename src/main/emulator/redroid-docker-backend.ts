@@ -9,6 +9,11 @@ import {
 } from './adb-android-devices'
 import { inspectAndroidAvailability } from './android-availability'
 import {
+  createAndroidStreamSource,
+  createLocalScreenrecordSpawner,
+  type AndroidStreamSpawner
+} from './android-stream-source'
+import {
   hostIdForHost,
   resolveAndroidExecutor,
   type AndroidExecutorDeps,
@@ -41,6 +46,9 @@ export type RedroidDockerBackendDeps = AndroidExecutorDeps & {
   bootTimeoutMs?: number
   bootPollIntervalMs?: number
   androidVersion?: string
+  // Injected so streaming tests never spawn screenrecord; defaults to the local
+  // adb exec-out child.
+  createStreamSpawner?: (serial: string) => AndroidStreamSpawner
 }
 
 const DOCKER_PROGRAM = 'docker'
@@ -272,11 +280,23 @@ export class RedroidDockerBackend implements AndroidDeviceBackend {
     return orphans
   }
 
-  async startStream(_serial: string, _host: AndroidHost): Promise<AndroidStreamHandle> {
-    throw new EmulatorError(
-      'emulator_redroid_unreachable',
-      'TODO: redroid H.264 streaming is not implemented (Phase 4).'
-    )
+  async startStream(serial: string, host: AndroidHost): Promise<AndroidStreamHandle> {
+    const resolved = await this.resolveExecutor(host)
+    if (!resolved.ok) {
+      throw new EmulatorError('emulator_redroid_unreachable', resolved.availability.message)
+    }
+    // Phase 4 ships the LOCAL screenrecord path; the byte source is injected so a
+    // remote SSH exec-channel spawner drops in for Phase 5 with no other change.
+    if (resolved.executor.mode !== 'local') {
+      throw new EmulatorError(
+        'emulator_redroid_unreachable',
+        'Remote redroid H.264 streaming over SSH is not implemented yet (Phase 5).'
+      )
+    }
+    const spawner = this.deps.createStreamSpawner
+      ? this.deps.createStreamSpawner(serial)
+      : createLocalScreenrecordSpawner(serial)
+    return createAndroidStreamSource({ spawn: spawner })
   }
 
   // Two hosts can both expose 127.0.0.1:5555, so the teardown map keys by host.

@@ -474,12 +474,22 @@ export type EmulatorApi = {
       info: { deviceUdid: string; streamUrl: string; wsUrl: string; axUrl?: string }
     }) => void
   ) => () => void
-  startFrameStream: (args: { streamUrl: string; streamKey?: string }) => Promise<{
+  startFrameStream: (args: {
+    streamUrl: string
+    streamKey?: string
+    // Absent/'mjpeg' = iOS serve-sim; 'h264' resolves a main-owned Android stream.
+    streamKind?: 'mjpeg' | 'h264'
+  }) => Promise<{
     streamId: string
   }>
   stopFrameStream: (args: { streamId: string }) => Promise<void>
   onFrameStreamFrame: (
-    callback: (data: { streamId: string; bytes: ArrayBuffer }) => void
+    callback: (data: {
+      streamId: string
+      bytes: ArrayBuffer
+      // Present only for h264 access units; the mjpeg path omits it.
+      meta?: { key: boolean; ptsMicros: number; width: number; height: number }
+    }) => void
   ) => () => void
   onFrameStreamError: (
     callback: (data: { streamId: string; message: string }) => void

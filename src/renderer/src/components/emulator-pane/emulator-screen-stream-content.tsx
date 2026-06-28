@@ -1,6 +1,7 @@
 import { Loader2 } from 'lucide-react'
 import { useEffect } from 'react'
 import { useEmulatorFrameStream } from './use-emulator-frame-stream'
+import { EmulatorH264StreamCanvas } from './emulator-h264-canvas'
 import { translate } from '@/i18n/i18n'
 
 type StreamSize = {
@@ -16,9 +17,30 @@ type EmulatorScreenStreamContentProps = {
   showStream: boolean
   streamError: boolean
   streamKey?: string
+  // Absent/'mjpeg' = iOS serve-sim <img>; 'h264' = Android WebCodecs <canvas>.
+  streamKind?: 'mjpeg' | 'h264'
 }
 
-export function EmulatorScreenStreamContent({
+export function EmulatorScreenStreamContent(props: EmulatorScreenStreamContentProps) {
+  // Switch only — no hooks here — so each codec child owns its own stream hook and
+  // the mjpeg path stays behaviorally identical to before.
+  if (props.streamKind === 'h264') {
+    return (
+      <EmulatorH264StreamCanvas
+        loading={props.loading}
+        onStreamError={props.onStreamError}
+        onStreamSize={props.onStreamSize}
+        streamId={props.previewUrl}
+        showStream={props.showStream}
+        streamError={props.streamError}
+        streamKey={props.streamKey}
+      />
+    )
+  }
+  return <EmulatorMjpegStreamImage {...props} />
+}
+
+function EmulatorMjpegStreamImage({
   loading,
   onStreamError,
   onStreamSize,

@@ -37,6 +37,8 @@ function EmulatorPaneContent({ tab, worktreeId, isActive = true }: EmulatorPaneP
     sendRotate,
     displayName,
     previewUrl,
+    streamKind,
+    kind,
     wsUrl,
     streamKey,
     isLive
@@ -87,6 +89,8 @@ function EmulatorPaneContent({ tab, worktreeId, isActive = true }: EmulatorPaneP
             previewUrl={previewUrl}
             wsUrl={wsUrl}
             streamKey={streamKey}
+            streamKind={streamKind}
+            kind={kind}
             deviceName={displayName}
             loading={loading}
             isLive={isLive}

@@ -14,6 +14,29 @@ export type EmulatorStreamInfo = {
   url?: string
   wsUrl?: string
   state?: string
+  // iOS serve-sim vs Android redroid; drives pointer transport and codec choice.
+  kind?: 'ios' | 'android'
+  streamKind?: 'mjpeg' | 'h264'
+}
+
+// Typed stream descriptor resolved from session info: mjpeg carries the serve-sim
+// URL, h264 carries the AndroidStreamHandle streamId (main resolves it by id).
+export type EmulatorStreamDescriptor = {
+  streamKind: 'mjpeg' | 'h264'
+  source: string
+}
+
+export function resolveEmulatorStreamDescriptor(
+  info?: EmulatorStreamInfo
+): EmulatorStreamDescriptor | undefined {
+  if (!info) {
+    return undefined
+  }
+  if (info.streamKind === 'h264') {
+    return info.streamUrl ? { streamKind: 'h264', source: info.streamUrl } : undefined
+  }
+  const source = simulatorPreviewStreamUrl(info)
+  return source ? { streamKind: 'mjpeg', source } : undefined
 }
 
 export type EmulatorPaneSession = {

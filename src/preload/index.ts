@@ -2228,17 +2228,26 @@ const api = {
     startFrameStream: (args: {
       streamUrl: string
       streamKey?: string
+      streamKind?: 'mjpeg' | 'h264'
     }): Promise<{
       streamId: string
     }> => ipcRenderer.invoke('emulator:frameStreamStart', args),
     stopFrameStream: (args: { streamId: string }): Promise<void> =>
       ipcRenderer.invoke('emulator:frameStreamStop', args),
     onFrameStreamFrame: (
-      callback: (data: { streamId: string; bytes: ArrayBuffer }) => void
+      callback: (data: {
+        streamId: string
+        bytes: ArrayBuffer
+        meta?: { key: boolean; ptsMicros: number; width: number; height: number }
+      }) => void
     ): (() => void) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
-        data: { streamId: string; bytes: ArrayBuffer }
+        data: {
+          streamId: string
+          bytes: ArrayBuffer
+          meta?: { key: boolean; ptsMicros: number; width: number; height: number }
+        }
       ) => callback(data)
       ipcRenderer.on('emulator:frameStreamFrame', listener)
       return () => ipcRenderer.removeListener('emulator:frameStreamFrame', listener)

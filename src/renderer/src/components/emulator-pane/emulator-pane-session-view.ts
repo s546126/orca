@@ -1,5 +1,5 @@
 import {
-  simulatorPreviewStreamUrl,
+  resolveEmulatorStreamDescriptor,
   type EmulatorPaneSession,
   type SimulatorDeviceRow
 } from './emulator-pane-types'
@@ -21,14 +21,16 @@ export function buildEmulatorPaneSessionView({
     sessionDisplayName &&
     sessionDisplayName !== 'Simulator' &&
     sessionDisplayName !== 'Mobile Emulator'
-  const previewUrl = simulatorPreviewStreamUrl(session?.info)
+  const descriptor = resolveEmulatorStreamDescriptor(session?.info)
   return {
     displayName: hasSpecificSessionDisplayName
       ? sessionDisplayName
       : selectedDevice?.name || sessionDisplayName || 'Mobile Emulator',
-    previewUrl,
+    previewUrl: descriptor?.source,
+    streamKind: descriptor?.streamKind ?? 'mjpeg',
+    kind: session?.info?.kind ?? 'ios',
     wsUrl: session?.info?.wsUrl,
-    isLive: Boolean(previewUrl && session?.attached),
+    isLive: Boolean(descriptor && session?.attached),
     selectedDevice
   }
 }

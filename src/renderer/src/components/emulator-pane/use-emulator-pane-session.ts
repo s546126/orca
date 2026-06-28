@@ -293,6 +293,8 @@ export function useEmulatorPaneSession({
     sendRotate,
     displayName: view.displayName,
     previewUrl: view.previewUrl,
+    streamKind: view.streamKind,
+    kind: view.kind,
     wsUrl: view.wsUrl,
     streamKey: streamKey ?? undefined,
     isLive: view.isLive,

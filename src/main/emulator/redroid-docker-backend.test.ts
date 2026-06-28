@@ -47,6 +47,26 @@ function localBackend(executor: AdbCommandExecutor, clock: WaitClock): RedroidDo
   })
 }
 
+describe('RedroidDockerBackend.startStream', () => {
+  it('builds a local h264 stream source from the injected spawner', async () => {
+    const { executor } = recordingExecutor(() => ok(''))
+    const child = {
+      chunks: (async function* () {})(),
+      stop: vi.fn()
+    }
+    const spawn = vi.fn(() => child)
+    const backend = new RedroidDockerBackend({
+      localHostPlatform: () => getRemoteHostPlatform('linux-arm64'),
+      createLocalExecutor: () => executor,
+      createStreamSpawner: () => spawn
+    })
+    const handle = await backend.startStream('127.0.0.1:5555', { mode: 'local' })
+    expect(handle.streamKind).toBe('h264')
+    expect(typeof handle.streamId).toBe('string')
+    handle.stop()
+  })
+})
+
 describe('parseDockerSessionContainers', () => {
   it('extracts the orca.session label from tab-separated docker ps output', () => {
     const out = [
