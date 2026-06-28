@@ -112,6 +112,8 @@ import { EmulatorSessionRegistry } from './emulator/emulator-session-registry'
 import { AndroidBridge } from './emulator/android-bridge'
 import { RedroidDockerBackend } from './emulator/redroid-docker-backend'
 import { resolveAndroidHost } from './emulator/android-host-resolution'
+import { resolveAndroidExecutor } from './emulator/android-executor-resolution'
+import type { SshConnection } from './ssh/ssh-connection'
 import { getSshConnectionManager } from './ipc/ssh'
 import { serveSimStateWatcher } from './emulator/serve-sim-state-watcher'
 import { browserManager } from './browser/browser-manager'
@@ -1510,16 +1512,21 @@ app.whenReady().then(async () => {
   const emulatorSessionRegistry = new EmulatorSessionRegistry()
   const emulatorBridge = new EmulatorBridge({ registry: emulatorSessionRegistry })
   runtimeService.setEmulatorBridge(emulatorBridge)
-  // Android stays effectively disabled in Phase 1: the backend reports unavailable
-  // and every verb throws TODO. No process-global Android watcher is started.
+  // Phase 3: provision + input are live; H.264 streaming stays stubbed (Phase 4).
+  // No process-global Android watcher is started here.
+  // Remote redroid reuses the existing SSH connection machinery by target id.
+  const resolveSshConnection = (targetId: string): SshConnection | null =>
+    getSshConnectionManager()?.getConnection(targetId) ?? null
   const androidBridge = new AndroidBridge({
     registry: emulatorSessionRegistry,
-    backend: new RedroidDockerBackend({
-      // Remote redroid reuses the existing SSH connection machinery by target id.
-      getConnection: (targetId) => getSshConnectionManager()?.getConnection(targetId) ?? null
-    }),
+    backend: new RedroidDockerBackend({ getConnection: resolveSshConnection }),
     // Pure selection: SSH target wins, else local on Linux, else no reachable host.
-    resolveHost: () => resolveAndroidHost(store!.getSettings(), process.platform)
+    resolveHost: () => resolveAndroidHost(store!.getSettings(), process.platform),
+    // Input verbs share the same local/remote executor resolution as the backend.
+    getExecutor: async (host) => {
+      const resolved = await resolveAndroidExecutor(host, { getConnection: resolveSshConnection })
+      return resolved.ok ? resolved.executor : null
+    }
   })
   runtimeService.setAndroidBridge(androidBridge)
   serveSimStateWatcher.start()

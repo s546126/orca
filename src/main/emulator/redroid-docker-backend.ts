@@ -1,12 +1,29 @@
-import { EmulatorError } from './android-errors'
+import { EmulatorError, type AndroidErrorCode } from './android-errors'
+import type { AdbCommandResult } from './adb-command-execution'
 import {
-  createLocalAdbExecutor,
-  createRemoteAdbExecutor,
-  type AdbCommandExecutor
-} from './adb-command-execution'
-import { listAdbDevices } from './adb-android-devices'
+  ADB_PROGRAM,
+  adbConnect,
+  listAdbDevices,
+  waitForBootCompleted,
+  type WaitClock
+} from './adb-android-devices'
 import { inspectAndroidAvailability } from './android-availability'
-import { localRemoteHostPlatform } from './android-host-resolution'
+import {
+  hostIdForHost,
+  resolveAndroidExecutor,
+  type AndroidExecutorDeps,
+  type ResolvedAndroidExecutor
+} from './android-executor-resolution'
+import {
+  buildRedroidContainerSpec,
+  REDROID_SESSION_LABEL,
+  type RedroidContainerRow
+} from './redroid-container-spec'
+import {
+  buildHostContainersPsArgs,
+  buildOrphanReapArgs,
+  computeOrphanContainers
+} from './redroid-orphan-reaper'
 import type {
   AndroidBackendAvailability,
   AndroidDeviceBackend,
@@ -15,36 +32,41 @@ import type {
   AndroidProvisionTarget,
   AndroidStreamHandle
 } from './android-device-backend'
-import { detectRemoteHostPlatform } from '../ssh/ssh-remote-platform-detection'
-import type { SshConnection } from '../ssh/ssh-connection'
-import type { RemoteHostPlatform } from '../ssh/ssh-remote-platform'
 
-// Why: every dependency that touches a process/socket is injected so inspect()
-// and listDevices() run against mocked executors in tests and never spawn here.
-export type RedroidDockerBackendDeps = {
-  // Connected SshConnection for a stored target id, or null when none.
-  getConnection?: (targetId: string) => SshConnection | null
-  detectHostPlatform?: (conn: SshConnection) => Promise<RemoteHostPlatform | null>
-  localHostPlatform?: () => RemoteHostPlatform | null
-  createLocalExecutor?: () => AdbCommandExecutor
-  createRemoteExecutor?: (conn: SshConnection) => AdbCommandExecutor
+// Why: every dependency that touches a process/socket is injected so the backend
+// runs against mocked executors in tests and never spawns here. Clock/timeouts
+// keep the boot-wait poll deterministic without real time.
+export type RedroidDockerBackendDeps = AndroidExecutorDeps & {
+  clock?: WaitClock
+  bootTimeoutMs?: number
+  bootPollIntervalMs?: number
+  androidVersion?: string
 }
-
-type ResolvedExecutor =
-  | { ok: true; executor: AdbCommandExecutor; hostPlatform: RemoteHostPlatform }
-  | { ok: false; availability: AndroidBackendAvailability }
 
 const DOCKER_PROGRAM = 'docker'
-// Format keeps fields tab-separated so the pure parser needs no docker-version
-// quirks; `orca.session` is the label provision() will stamp on each container.
-function buildSessionPsArgs(): string[] {
-  return ['ps', '--filter', 'label=orca.session', '--format', '{{.ID}}\t{{.Names}}\t{{.Labels}}']
+const DEFAULT_BOOT_TIMEOUT_MS = 60_000
+const DEFAULT_BOOT_POLL_INTERVAL_MS = 1_000
+
+// Real clock for production; never invoked at import, only inside provision().
+const systemClock: WaitClock = {
+  now: () => Date.now(),
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-type RedroidContainer = { containerId: string; name: string; sessionId?: string }
+const DOCKER_PS_FORMAT = '{{.ID}}\t{{.Names}}\t{{.Labels}}'
 
-export function parseDockerSessionContainers(stdout: string): RedroidContainer[] {
-  const containers: RedroidContainer[] = []
+// Tab-separated format so the pure parser needs no docker-version quirks.
+function buildSessionPsArgs(): string[] {
+  return ['ps', '--filter', `label=${REDROID_SESSION_LABEL}`, '--format', DOCKER_PS_FORMAT]
+}
+
+// Idempotency probe: include stopped containers (-a) for this exact session id.
+function buildSessionFilterPsArgs(sessionId: string): string[] {
+  return ['ps', '-a', '--filter', `label=${REDROID_SESSION_LABEL}=${sessionId}`, '--format', DOCKER_PS_FORMAT]
+}
+
+export function parseDockerSessionContainers(stdout: string): RedroidContainerRow[] {
+  const containers: RedroidContainerRow[] = []
   for (const raw of stdout.split('\n')) {
     const line = raw.trim()
     if (!line) {
@@ -54,7 +76,7 @@ export function parseDockerSessionContainers(stdout: string): RedroidContainer[]
     if (!containerId) {
       continue
     }
-    containers.push({ containerId, name, sessionId: parseLabel(labels, 'orca.session') })
+    containers.push({ containerId, name, sessionId: parseLabel(labels, REDROID_SESSION_LABEL) })
   }
   return containers
 }
@@ -69,8 +91,39 @@ function parseLabel(labels: string, key: string): string | undefined {
   return undefined
 }
 
+// Pure: classify the result of `docker run`/`start`. Why: a docker-group or
+// --privileged denial must surface distinctly and fail fast — otherwise the
+// container never started, the boot-wait spins the full timeout, and the user
+// gets a generic "unreachable" instead of the actionable privilege error.
+export function classifyDockerStartFailure(
+  result: AdbCommandResult
+): { failed: false } | { failed: true; code: AndroidErrorCode; message: string } {
+  if (!result.spawnError && result.exitCode === 0) {
+    return { failed: false }
+  }
+  const text = `${result.stdout}\n${result.stderr}`.trim()
+  if (/permission denied|privileged/i.test(text)) {
+    return {
+      failed: true,
+      code: 'emulator_docker_unprivileged',
+      message:
+        'docker refused to start the redroid container: this user cannot run privileged containers. Add the user to the docker group or use rootless docker.'
+    }
+  }
+  return {
+    failed: true,
+    code: 'emulator_redroid_unreachable',
+    message: `docker failed to start the redroid container: ${text || 'unknown docker error'}`
+  }
+}
+
 export class RedroidDockerBackend implements AndroidDeviceBackend {
   readonly id = 'redroid-docker' as const
+
+  // serial -> container name for teardown. Restart-safety for serials not in this
+  // map is handled by reapOrphans (label-based sweep), so a destroy of an unmapped
+  // serial only disconnects adb here.
+  private readonly containerBySerial = new Map<string, string>()
 
   constructor(private readonly deps: RedroidDockerBackendDeps = {}) {}
 
@@ -117,56 +170,106 @@ export class RedroidDockerBackend implements AndroidDeviceBackend {
     return summaries
   }
 
-  private async resolveExecutor(host: AndroidHost): Promise<ResolvedExecutor> {
-    if (host.mode === 'remote') {
-      const conn = this.deps.getConnection?.(host.sshTargetId) ?? null
-      if (!conn || conn.getState().status !== 'connected') {
-        return {
-          ok: false,
-          availability: {
-            ok: false,
-            reason: 'ssh_unreachable',
-            message: 'The configured SSH host for remote Android is not connected.'
-          }
-        }
-      }
-      const detect = this.deps.detectHostPlatform ?? detectRemoteHostPlatform
-      const hostPlatform = await detect(conn)
-      if (!hostPlatform) {
-        return {
-          ok: false,
-          availability: {
-            ok: false,
-            reason: 'ssh_unreachable',
-            message: 'Could not detect the remote host platform over SSH.'
-          }
-        }
-      }
-      const make = this.deps.createRemoteExecutor ?? createRemoteAdbExecutor
-      return { ok: true, executor: make(conn), hostPlatform }
-    }
-    const hostPlatform = (this.deps.localHostPlatform ?? defaultLocalHostPlatform)()
-    if (!hostPlatform) {
-      return {
-        ok: false,
-        availability: {
-          ok: false,
-          reason: 'host_not_linux',
-          message: 'This host is not a supported Linux redroid host.'
-        }
-      }
-    }
-    const make = this.deps.createLocalExecutor ?? createLocalAdbExecutor
-    return { ok: true, executor: make(), hostPlatform }
+  private resolveExecutor(host: AndroidHost): Promise<ResolvedAndroidExecutor> {
+    return resolveAndroidExecutor(host, this.deps)
   }
 
   async provision(
-    _target: AndroidProvisionTarget
+    target: AndroidProvisionTarget
   ): Promise<{ serial: string; host: AndroidHost; hostId: string }> {
-    throw new EmulatorError(
-      'emulator_redroid_unreachable',
-      'TODO: redroid container provisioning is not implemented (Phase 3).'
+    const resolved = await this.resolveExecutor(target.host)
+    if (!resolved.ok) {
+      throw new EmulatorError('emulator_redroid_unreachable', resolved.availability.message)
+    }
+    const { executor, hostPlatform } = resolved
+    const sessionId = target.deviceId ?? target.worktreeId ?? `sess-${Date.now()}`
+    const hostId = hostIdForHost(target.host)
+    const spec = buildRedroidContainerSpec({
+      sessionId,
+      hostId,
+      arch: hostPlatform.arch,
+      androidVersion: this.deps.androidVersion
+    })
+
+    // Idempotent ensure: (re)start an existing labeled container, else run fresh.
+    const existing = parseDockerSessionContainers(
+      (await executor.exec(DOCKER_PROGRAM, buildSessionFilterPsArgs(sessionId))).stdout
     )
+    const found = existing.find((c) => c.sessionId === sessionId)
+    const startResult = await (found
+      ? executor.exec(DOCKER_PROGRAM, ['start', found.name || found.containerId])
+      : executor.exec(DOCKER_PROGRAM, spec.runArgs))
+    // Fail fast on a privilege/docker error so we don't register an absent
+    // container or spin the boot-wait for the full timeout on one that never ran.
+    const failure = classifyDockerStartFailure(startResult)
+    if (failure.failed) {
+      throw new EmulatorError(failure.code, failure.message)
+    }
+    this.containerBySerial.set(this.serialKey(hostId, spec.serial), spec.containerName)
+
+    await adbConnect(executor, spec.serial)
+    const booted = await waitForBootCompleted({
+      executor,
+      serial: spec.serial,
+      timeoutMs: this.deps.bootTimeoutMs ?? DEFAULT_BOOT_TIMEOUT_MS,
+      pollIntervalMs: this.deps.bootPollIntervalMs ?? DEFAULT_BOOT_POLL_INTERVAL_MS,
+      clock: this.deps.clock ?? systemClock
+    })
+    if (!booted) {
+      // Why: don't leak the container we just created when it never boots. Only
+      // remove a freshly-run one (a slow pre-existing container restart is left
+      // for the label-sweep reaper) so a broken boot doesn't orphan per attempt.
+      if (!found) {
+        await executor.exec(DOCKER_PROGRAM, ['rm', '-f', spec.containerName])
+        this.containerBySerial.delete(this.serialKey(hostId, spec.serial))
+      }
+      throw new EmulatorError(
+        'emulator_redroid_unreachable',
+        `redroid container for session ${sessionId} did not reach sys.boot_completed=1 in time.`
+      )
+    }
+    return { serial: spec.serial, host: target.host, hostId }
+  }
+
+  async teardown(
+    serial: string,
+    host: AndroidHost,
+    opts?: { destroy?: boolean }
+  ): Promise<void> {
+    const resolved = await this.resolveExecutor(host)
+    if (!resolved.ok) {
+      return // host unreachable — nothing to tear down here, tolerate.
+    }
+    const { executor } = resolved
+    // exec never throws; a non-zero "device not found" is already-gone, tolerated.
+    await executor.exec(ADB_PROGRAM, ['disconnect', serial])
+    if (!opts?.destroy) {
+      return
+    }
+    const key = this.serialKey(hostIdForHost(host), serial)
+    const container = this.containerBySerial.get(key)
+    if (container) {
+      await executor.exec(DOCKER_PROGRAM, ['rm', '-f', container])
+      this.containerBySerial.delete(key)
+    }
+  }
+
+  // Startup sweep (wired in Phase 5): remove this host's labeled containers whose
+  // session id is no longer live. Pure decision in computeOrphanContainers.
+  async reapOrphans(liveSessionIds: Iterable<string>, host: AndroidHost): Promise<string[]> {
+    const resolved = await this.resolveExecutor(host)
+    if (!resolved.ok) {
+      return []
+    }
+    const { executor } = resolved
+    const containers = parseDockerSessionContainers(
+      (await executor.exec(DOCKER_PROGRAM, buildHostContainersPsArgs(hostIdForHost(host)))).stdout
+    )
+    const orphans = computeOrphanContainers(containers, new Set(liveSessionIds))
+    for (const containerId of orphans) {
+      await executor.exec(DOCKER_PROGRAM, buildOrphanReapArgs(containerId))
+    }
+    return orphans
   }
 
   async startStream(_serial: string, _host: AndroidHost): Promise<AndroidStreamHandle> {
@@ -176,18 +279,8 @@ export class RedroidDockerBackend implements AndroidDeviceBackend {
     )
   }
 
-  async teardown(
-    _serial: string,
-    _host: AndroidHost,
-    _opts?: { destroy?: boolean }
-  ): Promise<void> {
-    throw new EmulatorError(
-      'emulator_redroid_unreachable',
-      'TODO: redroid teardown is not implemented (Phase 3).'
-    )
+  // Two hosts can both expose 127.0.0.1:5555, so the teardown map keys by host.
+  private serialKey(hostId: string, serial: string): string {
+    return `${hostId}::${serial}`
   }
-}
-
-function defaultLocalHostPlatform(): RemoteHostPlatform | null {
-  return localRemoteHostPlatform(process.platform, process.arch)
 }
