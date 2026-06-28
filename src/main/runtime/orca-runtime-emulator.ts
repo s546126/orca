@@ -13,6 +13,7 @@ import type { MobileDeviceBridge } from '../emulator/mobile-device-bridge'
 import type { AndroidBackendAvailability } from '../emulator/android-device-backend'
 import type { SimulatorDevice } from '../emulator/simctl-simulator-devices'
 import type { GlobalSettings } from '../../shared/types'
+import { getAndroidBridge } from './mobile-bridge-instances'
 
 // Why: dedicated file for "one surface" separation (emulator), parallel to orca-runtime-browser.ts. Keeps OrcaRuntimeService focused; emulator routing easy to scan. No max-lines disable (split further if grows; per AGENTS + plan Phase 3).
 export type RuntimeEmulatorCommandHost = {
@@ -39,9 +40,13 @@ export class RuntimeEmulatorCommands {
   }
 
   // Why: attach/list route by an explicit --kind; default (and absent android
-  // bridge) behave exactly as the iOS-only path did.
+  // bridge) behave exactly as the iOS-only path did. Android action paths are
+  // gated on androidEnabled so a disabled feature never provisions/lists devices.
   private resolveBridge(kind?: 'ios' | 'android'): MobileDeviceBridge {
     if (kind === 'android') {
+      if (!this.host.getSettings().androidEnabled) {
+        throw new EmulatorError('emulator_disabled', 'Android device support is disabled in Settings.')
+      }
       const android = getAndroidBridge()
       if (android) {
         return android
@@ -169,11 +174,15 @@ export class RuntimeEmulatorCommands {
       throw new EmulatorError('emulator_disabled', 'Mobile Emulator is disabled in Settings.')
     }
     const bridge = this.resolveBridge(params.kind)
+    const requestedKind = params.kind ?? 'ios'
     let device = params.device ?? settings.mobileEmulatorDefaultDeviceUdid ?? undefined
-    if (!device) {
+    // Why: simctl device discovery is iOS-only. Android has a single redroid
+    // container per host, so an absent --device is provisioned directly —
+    // calling listSimulators on the Android bridge would throw before provisioning.
+    if (!device && requestedKind !== 'android') {
       device = pickDefaultSimulatorDevice(await bridge.listSimulators())?.udid
     }
-    if (!device) {
+    if (!device && requestedKind !== 'android') {
       throw new EmulatorError(
         'emulator_device_not_found',
         'No emulator device specified. Choose a default device in Settings > Mobile Emulator or pass a device.'
@@ -183,6 +192,21 @@ export class RuntimeEmulatorCommands {
       ? (await this.host.resolveWorktreeSelector(params.worktree)).id
       : undefined
     if (worktreeId) {
+      // Why: a worktree can hold an active session of the OTHER kind (e.g. a
+      // CLI-created Android session) when the renderer/CLI attaches the other
+      // kind. Tear it down through its owning bridge BEFORE the reusable check so
+      // its container + stream handle are released (the same-kind reuse/stop paths
+      // would otherwise skip it and leak it) and iOS never reuses an Android session.
+      const displaced = this.host.getEmulatorBridge()?.getActiveForWorktree(worktreeId)
+      const displacedKind = displaced?.kind ?? 'ios'
+      if (displaced && displacedKind !== requestedKind) {
+        const owner =
+          displacedKind === 'android' ? getAndroidBridge() : this.host.getEmulatorBridge()
+        const stopped = await owner?.stopActiveForWorktree(worktreeId, { shutdownDevice: true })
+        if (stopped) {
+          serveSimStateWatcher.unmarkOrcaManaged(stopped)
+        }
+      }
       const reusable = await bridge.getReusableActiveForWorktree(worktreeId, device)
       if (reusable) {
         // Why: renderer remounts should reconnect to the existing stream, not
@@ -201,7 +225,9 @@ export class RuntimeEmulatorCommands {
         serveSimStateWatcher.unmarkOrcaManaged(stoppedUdid)
       }
     }
-    const info = await bridge.startHelperForDevice(device)
+    // Android tolerates an empty device (single redroid container per host);
+    // the iOS path always has a resolved udid by here.
+    const info = await bridge.startHelperForDevice(device ?? '')
     if (worktreeId) {
       bridge.registerActiveEmulator(worktreeId, info, { managed: true })
       serveSimStateWatcher.markOrcaManaged(info)
@@ -321,34 +347,4 @@ export class RuntimeEmulatorCommands {
   }): Promise<unknown> {
     return this.emulatorExec(params)
   }
-}
-
-// Singleton accessor pattern (mirror requireAgentBrowserBridge).
-let emulatorBridgeInstance: EmulatorBridge | null = null
-
-export function setEmulatorBridge(bridge: EmulatorBridge | null): void {
-  emulatorBridgeInstance = bridge
-}
-
-export function getEmulatorBridge(): EmulatorBridge | null {
-  return emulatorBridgeInstance
-}
-
-export function requireEmulatorBridge(): EmulatorBridge {
-  if (!emulatorBridgeInstance) {
-    throw new EmulatorError('emulator_no_active', 'Emulator bridge not initialized')
-  }
-  return emulatorBridgeInstance
-}
-
-// Why: Android is a sibling MobileDeviceBridge. Null until index wires it, so
-// resolveBridge falls back to the iOS bridge and behaves exactly as today.
-let androidBridgeInstance: MobileDeviceBridge | null = null
-
-export function setAndroidBridge(bridge: MobileDeviceBridge | null): void {
-  androidBridgeInstance = bridge
-}
-
-export function getAndroidBridge(): MobileDeviceBridge | null {
-  return androidBridgeInstance
 }

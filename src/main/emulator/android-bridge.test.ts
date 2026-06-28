@@ -107,6 +107,58 @@ describe('AndroidBridge re-attach reuse', () => {
   })
 })
 
+describe('AndroidBridge teardown registry keying', () => {
+  it('clears the host-keyed session record on kill (SEC-3)', async () => {
+    // Android sessions are keyed hostId::serial; tearing down by the raw serial
+    // would strand the keyed record and leak the session.
+    const registry = new EmulatorSessionRegistry()
+    const { executor } = recordingExecutor()
+    const bridge = new AndroidBridge({
+      registry,
+      backend: provisioningBackend(),
+      resolveHost: () => ({ mode: 'local' }),
+      getExecutor: async () => executor
+    })
+    const info = await bridge.startHelperForDevice('sess1')
+    bridge.registerActiveEmulator('wt-1', info, { managed: true })
+    const key = `local::${SERIAL}`
+    expect(registry.getSession(key)).toBeDefined()
+
+    await bridge.kill(undefined, 'wt-1')
+
+    expect(registry.getSession(key)).toBeUndefined()
+    expect(registry.getActiveForWorktree('wt-1')).toBeNull()
+  })
+
+  it('destroyAllSessions reaps only its own kind on the shared registry (SEC-1a)', async () => {
+    const registry = new EmulatorSessionRegistry()
+    registry.registerActive('wt-ios', iosSession('ios-1'), { managed: true })
+    const androidTeardown = vi.fn(async () => {})
+    const { executor } = recordingExecutor()
+    const bridge = new AndroidBridge({
+      registry,
+      backend: {
+        provision: vi.fn(async () => ({ serial: SERIAL, host: { mode: 'local' }, hostId: 'local' })),
+        startStream: vi.fn(async () => fakeStreamHandle()),
+        teardown: androidTeardown
+      } as unknown as AndroidDeviceBackend,
+      resolveHost: () => ({ mode: 'local' }),
+      getExecutor: async () => executor
+    })
+    const info = await bridge.startHelperForDevice('sess1')
+    bridge.registerActiveEmulator('wt-android', info, { managed: true })
+
+    await bridge.destroyAllSessions()
+
+    // Android session reaped...
+    expect(registry.getSession(`local::${SERIAL}`)).toBeUndefined()
+    expect(registry.getActiveForWorktree('wt-android')).toBeNull()
+    // ...but the iOS session on the shared registry survives untouched.
+    expect(registry.getActiveForWorktree('wt-ios')?.deviceUdid).toBe('ios-1')
+    expect(androidTeardown).toHaveBeenCalled()
+  })
+})
+
 describe('AndroidBridge input wiring', () => {
   it('provisions, starts a real h264 stream, and registers the handle by streamId', async () => {
     const { executor } = recordingExecutor()

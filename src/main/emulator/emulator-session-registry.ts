@@ -57,6 +57,19 @@ export class EmulatorSessionRegistry {
     return this.sessions.get(key)
   }
 
+  // Resolve the composite session key (hostId::serial for Android, bare udid for
+  // iOS) from a raw device udid. WHY: kill/shutdown receive only the serial, but
+  // Android sessions are keyed by host, so clearing by the raw serial would strand
+  // the keyed record. First match only — callers disambiguate by worktree first.
+  getSessionKeyForUdid(udid: string): string | null {
+    for (const [key, session] of this.sessions.entries()) {
+      if (session.deviceUdid === udid) {
+        return key
+      }
+    }
+    return null
+  }
+
   listSessions(): EmulatorSessionState[] {
     return [...this.sessions.values()]
   }
@@ -73,6 +86,24 @@ export class EmulatorSessionRegistry {
   clear(): void {
     this.sessions.clear()
     this.activeByWorktree.clear()
+  }
+
+  // Clear only the sessions (and their worktree mappings) owned by one bridge
+  // kind. WHY: the registry is shared across iOS/Android bridges, so a blanket
+  // clear() during one kind's destroyAll would wipe the other kind's live
+  // sessions. Sessions stored without a kind are legacy iOS (see registerActive).
+  clearSessionsOfKind(kind: 'ios' | 'android'): void {
+    // Map iteration tolerates deleting the current/visited entries, so collecting
+    // matching keys first keeps the delete loop independent of iterator order.
+    const keys: string[] = []
+    for (const [key, session] of this.sessions.entries()) {
+      if ((session.kind ?? 'ios') === kind) {
+        keys.push(key)
+      }
+    }
+    for (const key of keys) {
+      this.clearSessionAndWorktrees(key)
+    }
   }
 }
 

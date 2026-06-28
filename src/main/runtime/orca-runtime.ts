@@ -282,11 +282,8 @@ import {
   buildHeadlessTabGroupMove,
   buildHeadlessTabGroupSplit
 } from './headless-tab-group-split-layout'
-import {
-  RuntimeEmulatorCommands,
-  setEmulatorBridge,
-  setAndroidBridge
-} from './orca-runtime-emulator'
+import { RuntimeEmulatorCommands } from './orca-runtime-emulator'
+import { setEmulatorBridge, setAndroidBridge } from './mobile-bridge-instances'
 import { serveSimStateWatcher } from '../emulator/serve-sim-state-watcher'
 import type { EmulatorBridge } from '../emulator/emulator-bridge'
 import type { MobileDeviceBridge } from '../emulator/mobile-device-bridge'

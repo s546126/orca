@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { codecStringFromAccessUnit } from './h264-decoder-config'
+import {
+  codecStringFromAccessUnit,
+  codecStringFromAccessUnitIfSps,
+  H264_DEFAULT_CODEC
+} from './h264-decoder-config'
 
 // WebCodecs H.264 consumer: decode the main-framed access units into <canvas>
 // paints. This module can only be typechecked here (no DOM/VideoDecoder at
@@ -103,8 +107,14 @@ export function useEmulatorVideoStream(
         return
       }
       const data = new Uint8Array(bytes)
-      const codec = meta.key ? codecStringFromAccessUnit(data) : configuredCodec
-      const active = ensureDecoder(codec ?? '')
+      // Only re-derive the codec from a keyframe that actually carries an SPS. An
+      // SPS-less IDR must not regress an already-known codec to the baseline
+      // default (which would tear down + reconfigure the decoder); keep the codec
+      // we already configured. Real rotation/restart re-emits a full SPS, so a
+      // genuine codec change still reconfigures.
+      const derivedCodec = meta.key ? codecStringFromAccessUnitIfSps(data) : null
+      const codec = derivedCodec ?? configuredCodec ?? H264_DEFAULT_CODEC
+      const active = ensureDecoder(codec)
       if (!active) {
         return
       }

@@ -1842,6 +1842,9 @@ app.on('will-quit', (e) => {
   // down explicitly on quit alongside the other browser/session shutdowns.
   runtime?.getOffscreenBrowserBackend()?.destroyAll?.()
   const emulatorShutdown = runtime?.getEmulatorBridge()?.destroyAllSessions() ?? Promise.resolve()
+  // Why: privileged redroid containers would otherwise leak on quit — the Android
+  // bridge owns them and is torn down separately from the iOS serve-sim helpers.
+  const androidShutdown = runtime?.getAndroidBridge()?.destroyAllSessions() ?? Promise.resolve()
   serveSimStateWatcher.stop()
   stopAndroidHostServices?.()
   killAllPty()
@@ -1892,7 +1895,13 @@ app.on('will-quit', (e) => {
     // Why: normal quits preserve the detached daemon for warm reattach, but a
     // dev parent dying means the temp/dev profile has no owner left to reattach.
     const daemonTeardown = isDevParentShutdownRequested() ? shutdownDaemon() : disconnectDaemon()
-    Promise.allSettled([daemonTeardown, rpcStopAndClear, watcherShutdown, emulatorShutdown])
+    Promise.allSettled([
+      daemonTeardown,
+      rpcStopAndClear,
+      watcherShutdown,
+      emulatorShutdown,
+      androidShutdown
+    ])
       .then(() => shutdownTelemetry())
       .then(() => shutdownObservability())
       .catch(() => {

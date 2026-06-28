@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   H264_DEFAULT_CODEC,
   codecStringFromAccessUnit,
+  codecStringFromAccessUnitIfSps,
   codecStringFromSps,
   findSpsNal,
   scanNalUnits
@@ -45,5 +46,19 @@ describe('findSpsNal / codecStringFromAccessUnit', () => {
     const deltaAu = Uint8Array.from(sc4(P_FRAME))
     expect(findSpsNal(deltaAu)).toBeNull()
     expect(codecStringFromAccessUnit(deltaAu)).toBe(H264_DEFAULT_CODEC)
+  })
+})
+
+describe('codecStringFromAccessUnitIfSps (no codec regression on SPS-less IDR)', () => {
+  it('returns the SPS-derived codec when the access unit carries an SPS', () => {
+    const keyAu = Uint8Array.from([...sc4(SPS), ...sc4(PPS), ...sc4(IDR)])
+    expect(codecStringFromAccessUnitIfSps(keyAu)).toBe('avc1.42C01E')
+  })
+
+  it('returns null for an SPS-less IDR so the caller keeps the known codec', () => {
+    // An IDR without an SPS must NOT regress the codec to the baseline default —
+    // the helper returns null and the decoder hook reuses its configured codec.
+    const idrOnly = Uint8Array.from([...sc4(PPS), ...sc4(IDR)])
+    expect(codecStringFromAccessUnitIfSps(idrOnly)).toBeNull()
   })
 })

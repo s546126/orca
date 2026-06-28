@@ -107,20 +107,38 @@ export class EmulatorSessionLifecycle {
 
   async tearDownDevice(
     udid: string,
-    options: { shutdownDevice: boolean; ignoreShutdownError: boolean }
+    options: { shutdownDevice: boolean; ignoreShutdownError: boolean },
+    worktreeId?: string
   ): Promise<string> {
-    const session = this.registry.getSession(udid)
+    // Resolve the composite registry key. WHY: Android sessions are keyed
+    // hostId::serial, so clearing by the raw serial would strand the record and
+    // leak the session. Prefer the worktree's active key (disambiguates two hosts
+    // sharing 127.0.0.1:5555) when it points at this udid, else scan by udid, else
+    // fall back to the udid itself (iOS, where key === udid — unchanged).
+    const worktreeKey = worktreeId ? this.registry.getActiveSessionKey(worktreeId) : null
+    const worktreeMatches =
+      worktreeKey !== null && this.registry.getSession(worktreeKey)?.deviceUdid === udid
+    const key =
+      (worktreeMatches ? worktreeKey : null) ??
+      this.registry.getSessionKeyForUdid(udid) ??
+      udid
+    const session = this.registry.getSession(key)
     await this.teardown(
       { deviceUdid: udid, pid: session?.pid },
       { includeOrphaned: true, ...options }
     )
-    this.registry.clearSessionAndWorktrees(udid)
+    this.registry.clearSessionAndWorktrees(key)
     return udid
   }
 
   async destroyAll(): Promise<void> {
     const promises: Promise<unknown>[] = []
     for (const session of this.registry.listSessions()) {
+      // Why: the registry is shared across kinds; never run this kind's teardown
+      // (e.g. redroid docker rm) against another kind's session.
+      if ((session.kind ?? 'ios') !== this.kind) {
+        continue
+      }
       if (session.managed) {
         // Why: matches legacy destroyAll — no includeOrphaned key, device
         // shutdown errors swallowed, only managed sessions reaped.
@@ -133,6 +151,8 @@ export class EmulatorSessionLifecycle {
       }
     }
     await Promise.allSettled(promises)
-    this.registry.clear()
+    // Clear only this kind's sessions — a blanket clear() would wipe the other
+    // bridge's live sessions off the shared registry.
+    this.registry.clearSessionsOfKind(this.kind)
   }
 }

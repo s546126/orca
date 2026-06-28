@@ -6,14 +6,20 @@ import {
 } from './redroid-container-spec'
 
 describe('buildRedroidContainerSpec', () => {
-  it('selects the arm64 image for an aarch64 host', () => {
+  it('uses the multi-arch manifest tag for an aarch64 host (no per-arch suffix)', () => {
+    // redroid ships one multi-arch manifest per version (`<version>-latest`);
+    // docker resolves the host arch, so the tag is arch-independent.
     const spec = buildRedroidContainerSpec({ sessionId: 's1', hostId: 'local', arch: 'arm64' })
-    expect(spec.image).toBe(`redroid/redroid:${DEFAULT_ANDROID_VERSION}-arm64`)
+    expect(spec.image).toBe(`redroid/redroid:${DEFAULT_ANDROID_VERSION}-latest`)
   })
 
-  it('selects the x86_64 image for an x64 host', () => {
+  it('uses the same multi-arch manifest tag for an x64 host', () => {
     const spec = buildRedroidContainerSpec({ sessionId: 's1', hostId: 'local', arch: 'x64' })
-    expect(spec.image).toBe(`redroid/redroid:${DEFAULT_ANDROID_VERSION}-x86_64`)
+    expect(spec.image).toBe(`redroid/redroid:${DEFAULT_ANDROID_VERSION}-latest`)
+  })
+
+  it('uses a full semver version tag, not a bare major', () => {
+    expect(DEFAULT_ANDROID_VERSION).toBe('13.0.0')
   })
 
   it('honors an explicit android version', () => {
@@ -21,9 +27,9 @@ describe('buildRedroidContainerSpec', () => {
       sessionId: 's1',
       hostId: 'local',
       arch: 'arm64',
-      androidVersion: '11'
+      androidVersion: '11.0.0'
     })
-    expect(spec.image).toBe('redroid/redroid:11-arm64')
+    expect(spec.image).toBe('redroid/redroid:11.0.0-latest')
   })
 
   it('derives the container name and serial from the session id and port', () => {
@@ -55,10 +61,14 @@ describe('buildRedroidContainerSpec', () => {
     expect(spec.runArgs).toContain('orca.session=s1')
     expect(spec.runArgs).toContain('orca.host=h1')
     expect(spec.runArgs).toContain('5555:5555')
-    expect(spec.runArgs).toContain(`redroid/redroid:${DEFAULT_ANDROID_VERSION}-arm64`)
+    expect(spec.runArgs).toContain(`redroid/redroid:${DEFAULT_ANDROID_VERSION}-latest`)
     expect(spec.runArgs).toContain('androidboot.serialno=orca_s1')
+    // Boot dims must match the bridge's tap-mapping fallback (1080x1920).
+    expect(spec.runArgs).toContain('androidboot.redroid_width=1080')
+    expect(spec.runArgs).toContain('androidboot.redroid_height=1920')
+    expect(spec.runArgs.some((a) => a.startsWith('androidboot.redroid_dpi='))).toBe(true)
     // image must precede the redroid kernel args.
-    const imageIdx = spec.runArgs.indexOf(`redroid/redroid:${DEFAULT_ANDROID_VERSION}-arm64`)
+    const imageIdx = spec.runArgs.indexOf(`redroid/redroid:${DEFAULT_ANDROID_VERSION}-latest`)
     const bootIdx = spec.runArgs.indexOf('androidboot.hardware=redroid')
     expect(imageIdx).toBeLessThan(bootIdx)
   })

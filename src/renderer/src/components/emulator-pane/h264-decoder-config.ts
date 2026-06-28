@@ -62,3 +62,12 @@ export function codecStringFromAccessUnit(data: Uint8Array): string {
   const sps = findSpsNal(data)
   return sps ? codecStringFromSps(sps) : H264_DEFAULT_CODEC
 }
+
+// Codec string ONLY when the access unit actually carries an SPS, else null.
+// WHY: an SPS-less IDR (redroid emits these) must not regress an already-known
+// codec back to the baseline default and force a needless decoder reconfigure —
+// the caller keeps the previously configured codec when this returns null.
+export function codecStringFromAccessUnitIfSps(data: Uint8Array): string | null {
+  const sps = findSpsNal(data)
+  return sps ? codecStringFromSps(sps) : null
+}

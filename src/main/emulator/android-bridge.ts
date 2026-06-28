@@ -25,6 +25,7 @@ import type { EmulatorSessionInfo } from './emulator-types'
 import type { MobileDeviceBridge, MobileDeviceTargetOptions } from './mobile-device-bridge'
 import type { SimulatorDevice } from './simctl-simulator-devices'
 import { androidStreamHandleRegistry } from '../ipc/android-stream-handle-registry'
+import { DEFAULT_REDROID_DISPLAY } from './redroid-container-spec'
 
 export type AndroidBridgeOptions = {
   // Why: shared with EmulatorBridge so the runtime routes from one registry.
@@ -40,8 +41,12 @@ export type AndroidBridgeOptions = {
 // Default tap-mapping resolution until the stream reports real dimensions.
 // streamSizeBySerial must always hold NATURAL (rotation-0) dimensions —
 // effectiveSize() applies the current rotation when mapping taps, so storing
-// already-rotated dims here would double-swap.
-const DEFAULT_STREAM_SIZE: StreamSize = { width: 1080, height: 1920 }
+// already-rotated dims here would double-swap. Shares the container's booted
+// dims (DEFAULT_REDROID_DISPLAY) so the fallback can never drift from the image.
+const DEFAULT_STREAM_SIZE: StreamSize = {
+  width: DEFAULT_REDROID_DISPLAY.width,
+  height: DEFAULT_REDROID_DISPLAY.height
+}
 
 // Phase 1 scaffold: device-control verbs throw TODO; session/registry shells
 // delegate to the shared lifecycle so routing and app-quit never blow up.
@@ -259,16 +264,21 @@ export class AndroidBridge implements MobileDeviceBridge {
   }
 
   async kill(device?: string, worktreeId?: string): Promise<string> {
-    const udid = this.lifecycle.getTargetOrThrow({ device, worktreeId }).udid
-    return this.lifecycle.tearDownDevice(udid, {
-      shutdownDevice: false,
-      ignoreShutdownError: false
-    })
+    const target = this.lifecycle.getTargetOrThrow({ device, worktreeId })
+    return this.lifecycle.tearDownDevice(
+      target.udid,
+      { shutdownDevice: false, ignoreShutdownError: false },
+      target.worktreeId
+    )
   }
 
   async shutdown(device?: string, worktreeId?: string): Promise<string> {
-    const udid = this.lifecycle.getTargetOrThrow({ device, worktreeId }).udid
-    return this.lifecycle.tearDownDevice(udid, { shutdownDevice: true, ignoreShutdownError: false })
+    const target = this.lifecycle.getTargetOrThrow({ device, worktreeId })
+    return this.lifecycle.tearDownDevice(
+      target.udid,
+      { shutdownDevice: true, ignoreShutdownError: false },
+      target.worktreeId
+    )
   }
 
   async destroyAllSessions(): Promise<void> {
