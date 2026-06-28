@@ -5,8 +5,12 @@ in a fresh AlmaLinux 9 container (closest match to the OL9 target), as a generic
 `uid 1000` user, with a stub `claude` (no auth/network). It exercises both the
 direct launcher path and the **real systemd-user unit**.
 
+Build from the tool directory (`tools/claude-autoresume/`) so the toolkit is in
+the build context — no staging step:
+
 ```sh
-docker build -t claude-autoresume-verify .
+cd tools/claude-autoresume
+docker build -t claude-autoresume-verify -f verify/Dockerfile .
 docker run -d --name car-verify --privileged --cgroupns=host \
   -v /sys/fs/cgroup:/sys/fs/cgroup:rw --tmpfs /run --tmpfs /tmp claude-autoresume-verify
 # wait for `systemctl is-system-running` to report running/degraded, then:

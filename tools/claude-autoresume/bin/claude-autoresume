@@ -90,7 +90,13 @@ sanitize_name() { printf '%s' "$1" | tr -c 'A-Za-z0-9_-' '-'; }
 # and defeat the same-basename collision guard.
 resolve_name() {
   local cwd="$1" raw="$2" name
-  if [ -n "$raw" ]; then name="$(sanitize_name "$raw")"; else name="$SLUG_PREFIX-$(sanitize_name "$(basename "$cwd")")"; fi
+  if [ -n "$raw" ]; then
+    # keep a custom name inside the managed car- namespace so live_count/attach see it
+    name="$(sanitize_name "$raw")"
+    case "$name" in ${SLUG_PREFIX}-*) ;; *) name="${SLUG_PREFIX}-${name}" ;; esac
+  else
+    name="$SLUG_PREFIX-$(sanitize_name "$(basename "$cwd")")"
+  fi
   if [ -n "${SEEN_NAMES[$name]:-}" ] && [ "${SEEN_NAMES[$name]}" != "$cwd" ]; then
     name="${name}-$(printf '%s' "$cwd" | cksum | cut -d' ' -f1 | cut -c1-6)"
     log "warn: session-name collision; disambiguated to '$name' for $cwd"
@@ -211,10 +217,13 @@ process_entry() {
 live_count() { tmux -L "$SOCKET" ls 2>/dev/null | grep -c "^${SLUG_PREFIX}-" || true; }
 
 cmd_start() {
-  command -v tmux >/dev/null 2>&1 || die "tmux not found on PATH"
   command -v jq   >/dev/null 2>&1 || die "jq not found on PATH"
   [ -x "$CLAUDE_BIN" ] || die "claude binary not executable: $CLAUDE_BIN"
   load_options
+  # tmux is only needed if an enabled entry actually uses the tmux host.
+  if jq -e 'any(.sessions[]?; (.enabled // false) and ((.host // "tmux") == "tmux"))' "$CONFIG" >/dev/null 2>&1; then
+    command -v tmux >/dev/null 2>&1 || die "tmux not found on PATH (required by an enabled host:\"tmux\" entry)"
+  fi
   wait_for_network
   local entries; mapfile -t entries < <(jq -c '.sessions[]?' "$CONFIG")
   local enabled=0 launched=0 e
@@ -322,10 +331,13 @@ Re-run:  $SELF enable --yes
 EOF
     return 1
   fi
-  systemctl --user enable --now claude-autoresume.service
+  systemctl --user enable --now claude-autoresume.service || die "failed to enable the service (boot state unchanged)"
   log "enabled: claude-autoresume.service (WantedBy=default.target)"
 }
-cmd_disable() { systemctl --user disable --now claude-autoresume.service; log "disabled"; }
+cmd_disable() {
+  systemctl --user disable --now claude-autoresume.service || die "failed to disable the service (boot state unchanged)"
+  log "disabled"
+}
 
 usage() {
   cat <<EOF

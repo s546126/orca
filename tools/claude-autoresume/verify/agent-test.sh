@@ -25,7 +25,7 @@ echo "===== A) direct launcher start (no systemd) ====="
 grep -q 'done: enabled=1 launched=1 live=1' /tmp/start.out && mark "DIRECT_LAUNCH_OK" || { mark "DIRECT_LAUNCH_FAIL"; fail=1; }
 if ! grep -q '\[!!\]' /tmp/start.out; then mark "NO_FALSE_WARN"; else mark "UNEXPECTED_WARN"; fail=1; fi
 echo "--- live sessions ---"; tmux -L claude-autoresume ls 2>&1
-tmux -L claude-autoresume capture-pane -p -t car-proj 2>/dev/null | grep -qi 'STUB CLAUDE RESUMED' && mark "PANE_RESUMED" || mark "PANE_EMPTY"
+tmux -L claude-autoresume capture-pane -p -t car-proj 2>/dev/null | grep -qi 'STUB CLAUDE RESUMED' && mark "PANE_RESUMED" || { mark "PANE_EMPTY"; fail=1; }
 echo "--- idempotent re-run ---"
 reout="$("$BIN" start 2>&1)"; echo "$reout" | grep -E 'already running|done:'
 echo "$reout" | grep -q "already running" && mark "IDEMPOTENT_OK" || { mark "IDEMPOTENT_FAIL"; fail=1; }
@@ -48,9 +48,9 @@ if [ "$busok" = 1 ] && systemctl --user show-environment >/dev/null 2>&1; then
   if tmux -L claude-autoresume ls 2>&1 | grep -q '^car-proj'; then mark "SYSTEMD_SURVIVAL_OK"; else mark "SYSTEMD_SURVIVAL_FAIL"; fail=1; fi
   systemctl --user status claude-autoresume.service --no-pager 2>/dev/null | grep -E 'Active:|CGroup:|tmux|sleep 3600' | head -6
   systemctl --user stop claude-autoresume.service; sleep 2
-  tmux -L claude-autoresume ls >/dev/null 2>&1 && mark "SYSTEMD_STOP_FAIL" || mark "SYSTEMD_STOP_OK"
+  tmux -L claude-autoresume ls >/dev/null 2>&1 && { mark "SYSTEMD_STOP_FAIL"; fail=1; } || mark "SYSTEMD_STOP_OK"
 else
-  mark "SYSTEMD_USER_BUS_UNAVAILABLE"
+  mark "SYSTEMD_USER_BUS_UNAVAILABLE"; fail=1
   echo "(user manager not reachable in this container; static unit check instead)"
   systemd-analyze verify "$HOME/.config/systemd/user/claude-autoresume.service" 2>&1 || true
 fi

@@ -14,7 +14,7 @@ tmux pane**. tmux gives each session a real PTY, so the interactive TUI — and 
 `/loop` / scheduler machinery your autonomous sessions rely on — resumes exactly as
 it was before the reboot. You can `attach` later (over SSH or Orca) to watch.
 
-```
+```text
 boot ──▶ systemd user manager (lingering) ──▶ claude-autoresume.service (oneshot)
                                                    │
                                                    ├─ wait for outbound :443

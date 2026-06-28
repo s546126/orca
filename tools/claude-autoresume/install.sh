@@ -22,7 +22,9 @@ else
   echo "wrote: $CONF_DIR/sessions.json (sample — every entry is enabled:false)"
 fi
 
-systemctl --user daemon-reload
+# Files are already installed; a missing/unreachable user bus must not fail the
+# install. Warn and let the user reload once their session manager is up.
+systemctl --user daemon-reload || echo "WARNING: 'systemctl --user daemon-reload' failed (user bus not ready); run it after login."
 
 if ! loginctl show-user "$(id -un)" 2>/dev/null | grep -q 'Linger=yes'; then
   echo "WARNING: systemd lingering is OFF; user services will NOT start at boot."
