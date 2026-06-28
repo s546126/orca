@@ -90,6 +90,7 @@ describe('hosted review slice', () => {
     expect(mockApi.hostedReview.forBranch).toHaveBeenCalledWith({
       repoPath: '/repo',
       branch: 'feature/gitlab',
+      currentHeadOid: null,
       linkedGitHubPR: null,
       linkedGitLabMR: 5,
       linkedBitbucketPR: null,
@@ -203,6 +204,7 @@ describe('hosted review slice', () => {
         repo: 'C:\\repo',
         repoPath: 'C:\\repo',
         branch: 'feature/windows',
+        currentHeadOid: null,
         linkedGitHubPR: 12,
         linkedGitLabMR: null,
         linkedBitbucketPR: null,

@@ -22,7 +22,12 @@ import { getRepoExecutionHostId, parseExecutionHostId } from '../../../../shared
 export { getHostedReviewCacheKey, linkedReviewHintKey } from './hosted-review-cache-identity'
 
 type CacheEntry<T> = { data: T | null; fetchedAt: number; linkedReviewHintKey?: string }
-type FetchOptions = { force?: boolean; repoId?: string; staleWhileRevalidate?: boolean }
+type FetchOptions = {
+  force?: boolean
+  repoId?: string
+  staleWhileRevalidate?: boolean
+  currentHeadOid?: string | null
+}
 type CreateHostedReviewStoreInput = CreateHostedReviewInput & { repoId?: string | null }
 
 const CACHE_TTL_MS = 60_000
@@ -310,6 +315,7 @@ export const createHostedReviewSlice: StateCreator<AppState, [], [], HostedRevie
           const args = {
             branch,
             ...(options?.repoId !== undefined ? { repoId: options.repoId } : {}),
+            currentHeadOid: options?.currentHeadOid ?? null,
             linkedGitHubPR: options?.linkedGitHubPR ?? null,
             ...(fallbackGitHubPR !== null ? { fallbackGitHubPR } : {}),
             linkedGitLabMR: options?.linkedGitLabMR ?? null,
@@ -383,29 +389,13 @@ export const createHostedReviewSlice: StateCreator<AppState, [], [], HostedRevie
           }
           return review
         } catch (error) {
+          // Why: a transient lookup failure (timeout, rate limit, gh/git error)
+          // must not be cached as a definitive "no review" miss — that blanks
+          // the sidebar card to branch-only and suppresses retry for the full
+          // cache TTL. Preserve the last known review and let the next visible
+          // poll retry instead.
           console.error('Failed to fetch hosted review:', error)
-          if (requestGenerations.get(cacheKey) === generation) {
-            set((state) => {
-              if (
-                hasNewerHostedReviewCacheEntry(
-                  state.hostedReviewCache,
-                  cacheKey,
-                  requestStartedAt,
-                  requestStartedEntry
-                )
-              ) {
-                return {}
-              }
-              return {
-                hostedReviewCache: withHostedReviewCacheEntry(state.hostedReviewCache, cacheKey, {
-                  data: null,
-                  fetchedAt: Date.now(),
-                  linkedReviewHintKey: hintKey
-                })
-              }
-            })
-          }
-          return null
+          return get().hostedReviewCache[cacheKey]?.data ?? null
         } finally {
           const activeRequest = inflightHostedReviewRequests.get(cacheKey)
           if (activeRequest?.generation === generation) {
