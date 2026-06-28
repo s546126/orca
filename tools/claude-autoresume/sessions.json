@@ -1,0 +1,28 @@
+{
+  "options": {
+    "_comment": "Global knobs. work_path (optional) overrides the PATH given to resumed agents; omit to default to $HOME/.local/bin:/usr/local/bin:/usr/bin:/bin. net_wait_seconds: wait for outbound 443 before launching. stagger_seconds: gap between launches (also the liveness-check delay). auto_trust: when true, pre-seed hasTrustDialogAccepted for listed cwds (otherwise untrusted cwds are SKIPPED, never hung). print_timeout_seconds: cap for a host:'print' resume turn.",
+    "net_wait_seconds": 60,
+    "stagger_seconds": 8,
+    "auto_trust": false,
+    "print_timeout_seconds": 600
+  },
+  "sessions": [
+    {
+      "_comment": "EXAMPLE entries — replace cwd with your project dirs and flip enabled:true. Every entry ships disabled so nothing auto-runs until you opt in. session:'latest' resumes the newest conversation for the cwd; pin a UUID for determinism when a project has several sessions.",
+      "cwd": "/home/youruser/projects/example-a",
+      "session": "latest",
+      "mode": "reopen",
+      "prompt": "",
+      "host": "tmux",
+      "enabled": false
+    },
+    {
+      "cwd": "/home/youruser/projects/example-b",
+      "session": "latest",
+      "mode": "continue",
+      "prompt": "Resume the autonomous task you were running before the machine rebooted. Re-read your task list / loop state and continue where you left off.",
+      "host": "tmux",
+      "enabled": false
+    }
+  ]
+}

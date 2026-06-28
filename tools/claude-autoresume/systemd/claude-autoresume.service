@@ -1,0 +1,30 @@
+[Unit]
+Description=Claude Code session auto-resume on boot
+Documentation=file:%h/claude-autoresume/README.md
+# NOTE: After=network.target is a near-no-op in the USER manager (the target is
+# not pulled into the user transaction), so it imposes no real ordering. The
+# actual network guard is the launcher's wait_for_network() (polls outbound 443).
+After=network.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+# The launcher spawns detached tmux servers and exits. RemainAfterExit keeps the
+# unit "active" so completing ExecStart does not tear down those daemonized tmux
+# servers, and KillMode=process means only the (already-exited) launcher is the
+# kill target. Stopping the unit is an explicit, intended teardown: ExecStop runs
+# `claude-autoresume stop` (tmux kill-server) so `systemctl stop`/`restart` ends
+# the resumed sessions on purpose.
+RemainAfterExit=yes
+KillMode=process
+ExecStart=%h/.local/bin/claude-autoresume start
+ExecStop=%h/.local/bin/claude-autoresume stop
+Environment=HOME=%h
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+TimeoutStartSec=900
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
