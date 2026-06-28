@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AppState } from '@/store/types'
+import { buildAiVaultResumeCommand } from '../../../shared/ai-vault-types'
 import {
   buildAiVaultResumeCommandForWorktree,
   buildAiVaultResumeStartupForWorktree,
@@ -15,6 +16,7 @@ type RuntimePreference = { kind: 'windows-host' } | { kind: 'wsl'; distro: strin
 function makeState(args: {
   worktreePath: string
   localWindowsRuntimePreference?: RuntimePreference
+  terminalWindowsShell?: string
 }): Pick<
   AppState,
   'activeRepoId' | 'activeWorktreeId' | 'projects' | 'repos' | 'settings' | 'worktreesByRepo'
@@ -34,6 +36,7 @@ function makeState(args: {
     ],
     settings: {
       localWindowsRuntimeDefault: { kind: 'windows-host' },
+      ...(args.terminalWindowsShell ? { terminalWindowsShell: args.terminalWindowsShell } : {}),
       agentDefaultArgs: { claude: '', codex: '' },
       agentDefaultEnv: { claude: {}, codex: {} }
     },
@@ -53,7 +56,9 @@ function makeState(args: {
 }
 
 describe('ai vault resume command runtime', () => {
-  it('uses Windows command wrapping for Windows-host projects', () => {
+  it('queues a PowerShell-valid command for the default Windows shell', () => {
+    // Why: the queued command is typed into the live tab shell (default
+    // PowerShell), which mis-parses the cmd `""`-doubled wrapper (#6152).
     const state = makeState({ worktreePath: 'C:\\Users\\alice\\repo' })
 
     expect(
@@ -67,7 +72,61 @@ describe('ai vault resume command runtime', () => {
           codexHome: null
         }
       })
+    ).toBe("Set-Location -LiteralPath 'C:\\Users\\alice\\repo'; claude '--resume' 'session one'")
+  })
+
+  it('keeps the cmd wrapper when the configured Windows shell is cmd.exe', () => {
+    const state = makeState({
+      worktreePath: 'C:\\Users\\alice\\repo',
+      terminalWindowsShell: 'cmd.exe'
+    })
+
+    expect(
+      buildAiVaultResumeCommandForWorktree({
+        state,
+        worktreeId: 'repo-1::worktree-1',
+        session: {
+          agent: 'claude',
+          sessionId: 'session one',
+          cwd: 'C:\\Users\\alice\\repo',
+          codexHome: null
+        }
+      })
     ).toBe('cmd /d /s /c "cd /d ""C:\\Users\\alice\\repo"" && claude ""--resume"" ""session one"""')
+  })
+
+  it('queues a POSIX command for the Git Bash Windows shell', () => {
+    const state = makeState({
+      worktreePath: 'C:\\Users\\alice\\repo',
+      terminalWindowsShell: 'git-bash'
+    })
+
+    expect(
+      buildAiVaultResumeCommandForWorktree({
+        state,
+        worktreeId: 'repo-1::worktree-1',
+        session: {
+          agent: 'claude',
+          sessionId: 'session one',
+          cwd: 'C:\\Users\\alice\\repo',
+          codexHome: null
+        }
+      })
+    ).toBe("cd 'C:\\Users\\alice\\repo' && claude '--resume' 'session one'")
+  })
+
+  it('keeps the cmd wrapper for the copy-to-clipboard command on Windows', () => {
+    // Regression guard: the copy path is self-contained for pasting into cmd.exe
+    // and must stay cmd-wrapped even though the queued path now follows the shell.
+    expect(
+      buildAiVaultResumeCommand({
+        agent: 'claude',
+        sessionId: 'session one',
+        cwd: 'C:\\Users\\alice\\repo',
+        platform: 'win32',
+        codexHome: null
+      })
+    ).toBe('cmd /d /s /c "cd /d ""C:\\Users\\alice\\repo"" && claude --resume ""session one"""')
   })
 
   it('uses configured agent defaults for resumable session history entries', () => {
