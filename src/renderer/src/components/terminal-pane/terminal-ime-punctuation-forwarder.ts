@@ -1,12 +1,23 @@
 import type { IDisposable } from '@xterm/xterm'
 
-// Why: many macOS Chinese IMEs commit full-width punctuation ("，。？！") via a
-// plain `insertText` input event whose preceding keydown still reports the
-// half-width ASCII symbol. With xterm's kitty keyboard protocol active, xterm
-// encodes+sends that ASCII on keydown and preventDefaults it, so the input
-// event carrying the real glyph is dropped and the user gets "," instead of
-// "，". We bypass those keydowns so the native input pipeline runs, then forward
-// the committed glyph from the input event straight to the PTY.
+// Why: with xterm's kitty keyboard protocol active, xterm encodes+sends a
+// printable key on keydown and preventDefaults it, which cancels Chromium's
+// native `insertText` on the helper textarea. That breaks two related cases on
+// macOS:
+//   1. CJK IMEs that commit full-width punctuation ("，。？！") via a plain
+//      `insertText` whose preceding keydown still reports the half-width ASCII
+//      symbol — the user gets "," instead of "，". We bypass those punctuation
+//      keydowns (claimKeyEvent) so the native input pipeline runs, then forward
+//      the committed glyph from the input event straight to the PTY.
+//   2. OS-level text injection (dictation, text expanders, accessibility,
+//      CGEvent keyboardSetUnicodeString) that arrives as a standalone
+//      non-composing `insertText` with no normally-processed keydown. xterm's
+//      preventDefault-on-keydown would otherwise drop it silently. We forward
+//      that injected text from the input event too.
+// In both cases we stopImmediatePropagation so xterm's own `_inputEvent`
+// handler cannot also forward the same glyph (it sits on the textarea, a
+// descendant, so our capture-phase listener on the terminal element runs
+// first).
 
 export type ImePunctuationKeyEvent = {
   type: string
@@ -72,7 +83,6 @@ export function installTerminalImePunctuationForwarder(args: {
   terminalElement: HTMLElement | null | undefined
   isComposing: () => boolean
   sendInput: (data: string) => void
-  isEnabled?: () => boolean
 }): TerminalImePunctuationForwarder {
   if (!args.terminalElement) {
     return {
@@ -84,15 +94,28 @@ export function installTerminalImePunctuationForwarder(args: {
   const terminalElement = args.terminalElement
   let pendingForward = false
   let claimedPress = false
+  // Why: distinguishes keyboard-driven `insertText` from injected text. Any key
+  // event (claimed or not) belongs to a keystroke that xterm — or our claimed
+  // punctuation path — already owns, so the `insertText` it produces must not be
+  // re-forwarded by the injection path (that would double-send). OS-level
+  // injection (dictation, text expanders, accessibility, CGEvent
+  // keyboardSetUnicodeString) instead fires a standalone `insertText` with no
+  // preceding key event, which is the case the injection path recovers. Set on
+  // every observed key event; cleared once an `input` event resolves it.
+  let keyActivitySinceInput = false
+  // Why: a composition emits `insertCompositionText` (preedit) and resolves with
+  // a final `insertText` whose committed text belongs to the IME, not injection.
+  // Mark composition so that resolving commit is not mistaken for injected text.
+  let compositionInProgress = false
 
   const claimKeyEvent = (event: ImePunctuationKeyEvent): boolean => {
+    if (event.type === 'keydown' || event.type === 'keypress' || event.type === 'keyup') {
+      keyActivitySinceInput = true
+    }
     if (!isImePunctuationCandidate(event, args.isComposing())) {
       return false
     }
     if (event.type === 'keydown') {
-      if (args.isEnabled?.() === false) {
-        return false
-      }
       // Arm forwarding so the upcoming input event is sent to the PTY.
       pendingForward = true
       claimedPress = true
@@ -117,30 +140,66 @@ export function installTerminalImePunctuationForwarder(args: {
     return false
   }
 
-  const forwardCommittedText = (event: Event): void => {
-    if (!pendingForward || !(event instanceof InputEvent)) {
-      return
-    }
-    if (event.inputType !== 'insertText') {
-      pendingForward = false
-      return
-    }
-    pendingForward = false
+  const sendAndResetTextarea = (event: InputEvent): void => {
     if (event.data) {
       args.sendInput(event.data)
     }
     event.stopImmediatePropagation()
     // The glyph only landed in xterm's helper textarea because we let the
-    // keydown reach the native pipeline; clear it back to its empty resting
-    // state so it cannot accumulate across keystrokes.
+    // native input pipeline run; clear it back to its empty resting state so it
+    // cannot accumulate across keystrokes.
     if (event.target instanceof HTMLTextAreaElement) {
       event.target.value = ''
     }
   }
 
+  const forwardCommittedText = (event: Event): void => {
+    if (!(event instanceof InputEvent)) {
+      return
+    }
+    const sawKeyActivity = keyActivitySinceInput
+    keyActivitySinceInput = false
+    const wasComposing = compositionInProgress
+    // Composition inserts belong to xterm's CompositionHelper / the IME preedit;
+    // leave them alone in every path.
+    if (event.inputType === 'insertCompositionText') {
+      pendingForward = false
+      compositionInProgress = true
+      return
+    }
+    // The composition resolved with this commit; clear the marker so the next
+    // press starts fresh.
+    compositionInProgress = false
+    if (pendingForward) {
+      pendingForward = false
+      if (event.inputType !== 'insertText') {
+        return
+      }
+      sendAndResetTextarea(event)
+      return
+    }
+    // Injected text (dictation, text expanders, accessibility, CGEvent
+    // keyboardSetUnicodeString) arrives as a standalone non-composing
+    // `insertText` with no preceding key event. With kitty mode active xterm
+    // would drop it on keydown preventDefault, so forward it here. Skip it when
+    // xterm (or our claimed punctuation press, still open until keyup) already
+    // owns this `insertText` — a preceding key event, an unresolved claimed
+    // press, an active composition, or a composition that just resolved — to
+    // avoid a double-send.
+    if (sawKeyActivity || claimedPress || wasComposing || event.inputType !== 'insertText') {
+      return
+    }
+    if (args.isComposing()) {
+      return
+    }
+    sendAndResetTextarea(event)
+  }
+
   const cancelPending = (): void => {
     pendingForward = false
     claimedPress = false
+    keyActivitySinceInput = false
+    compositionInProgress = false
   }
 
   terminalElement.addEventListener('input', forwardCommittedText, true)

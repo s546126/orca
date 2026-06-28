@@ -127,16 +127,26 @@ describe('installTerminalImePunctuationForwarder', () => {
     expect(sendInput).toHaveBeenCalledExactlyOnceWith(',')
   })
 
-  it('does not forward input when no candidate keydown was claimed', () => {
+  it('forwards a standalone injected insertText that no key event produced', () => {
+    // Why: dictation / text expanders / accessibility / emoji-picker inserts
+    // arrive as a bare non-composing insertText with no preceding key event.
+    // With kitty mode active xterm would drop them on keydown preventDefault,
+    // so the forwarder recovers them (issue #6513).
     const sendInput = vi.fn()
+    const laterInputListener = vi.fn()
     installTerminalImePunctuationForwarder({
       terminalElement: element,
       isComposing: () => false,
       sendInput
     })
+    element.addEventListener('input', laterInputListener, true)
 
+    textarea.value = '😀'
     dispatchInsertText(textarea, '😀')
-    expect(sendInput).not.toHaveBeenCalled()
+
+    expect(sendInput).toHaveBeenCalledExactlyOnceWith('😀')
+    expect(laterInputListener).not.toHaveBeenCalled()
+    expect(textarea.value).toBe('')
   })
 
   it('does not claim composing keystrokes', () => {
@@ -292,35 +302,127 @@ describe('installTerminalImePunctuationForwarder', () => {
     expect(() => forwarder.dispose()).not.toThrow()
   })
 
-  it('is disabled outside the macOS IME workaround path', () => {
+  // Part A (issue #6513): the forwarder is no longer gated to CJK input sources,
+  // so a claimed punctuation insert is forwarded on any (e.g. U.S. Latin) source.
+  it('forwards a claimed punctuation insert without any input-source gate', () => {
     const sendInput = vi.fn()
     const forwarder = installTerminalImePunctuationForwarder({
       terminalElement: element,
       isComposing: () => false,
-      sendInput,
-      isEnabled: () => false
+      sendInput
     })
-
-    expect(forwarder.claimKeyEvent(keyEvent({ key: ',' }))).toBe(false)
-    dispatchInsertText(textarea, '，')
-    expect(sendInput).not.toHaveBeenCalled()
-  })
-
-  it('can become enabled after the input source changes to a CJK IME', () => {
-    const sendInput = vi.fn()
-    let enabled = false
-    const forwarder = installTerminalImePunctuationForwarder({
-      terminalElement: element,
-      isComposing: () => false,
-      sendInput,
-      isEnabled: () => enabled
-    })
-
-    expect(forwarder.claimKeyEvent(keyEvent({ key: ',' }))).toBe(false)
-    enabled = true
 
     expect(forwarder.claimKeyEvent(keyEvent({ key: ',' }))).toBe(true)
-    dispatchInsertText(textarea, '、')
-    expect(sendInput).toHaveBeenCalledExactlyOnceWith('、')
+    dispatchInsertText(textarea, ',')
+    expect(sendInput).toHaveBeenCalledExactlyOnceWith(',')
+  })
+
+  // Part B (issue #6513): arbitrary injected prose, not just punctuation.
+  describe('injected text with no preceding key event', () => {
+    it('forwards a multi-character injected phrase exactly once', () => {
+      const sendInput = vi.fn()
+      const laterInputListener = vi.fn()
+      installTerminalImePunctuationForwarder({
+        terminalElement: element,
+        isComposing: () => false,
+        sendInput
+      })
+      element.addEventListener('input', laterInputListener, true)
+
+      textarea.value = 'hello world'
+      dispatchInsertText(textarea, 'hello world')
+
+      expect(sendInput).toHaveBeenCalledExactlyOnceWith('hello world')
+      expect(laterInputListener).not.toHaveBeenCalled()
+      expect(textarea.value).toBe('')
+    })
+
+    it('does not forward an insertText that a normally-typed key produced', () => {
+      const sendInput = vi.fn()
+      const forwarder = installTerminalImePunctuationForwarder({
+        terminalElement: element,
+        isComposing: () => false,
+        sendInput
+      })
+
+      // Letters are not punctuation candidates, so xterm owns the keystroke;
+      // the keydown→keypress→input sequence must not be re-forwarded.
+      expect(forwarder.claimKeyEvent(keyEvent({ key: 'a' }))).toBe(false)
+      expect(forwarder.claimKeyEvent(keyEvent({ type: 'keypress', key: 'a' }))).toBe(false)
+      dispatchInsertText(textarea, 'a')
+      expect(sendInput).not.toHaveBeenCalled()
+    })
+
+    it('does not forward when a key event preceded the insert but produced no keypress', () => {
+      const sendInput = vi.fn()
+      const forwarder = installTerminalImePunctuationForwarder({
+        terminalElement: element,
+        isComposing: () => false,
+        sendInput
+      })
+
+      expect(forwarder.claimKeyEvent(keyEvent({ key: 'a' }))).toBe(false)
+      dispatchInsertText(textarea, 'a')
+      expect(sendInput).not.toHaveBeenCalled()
+    })
+
+    it('does not forward a composition commit as injected text', () => {
+      const sendInput = vi.fn()
+      installTerminalImePunctuationForwarder({
+        terminalElement: element,
+        isComposing: () => false,
+        sendInput
+      })
+
+      // compositionupdate fires insertCompositionText; the resolving insertText
+      // carries the committed glyph but belongs to the IME, not injection.
+      textarea.dispatchEvent(
+        new InputEvent('input', { data: 'にほ', inputType: 'insertCompositionText', bubbles: true })
+      )
+      dispatchInsertText(textarea, '日本')
+      expect(sendInput).not.toHaveBeenCalled()
+    })
+
+    it('does not forward while a composition is active', () => {
+      const sendInput = vi.fn()
+      installTerminalImePunctuationForwarder({
+        terminalElement: element,
+        isComposing: () => true,
+        sendInput
+      })
+
+      dispatchInsertText(textarea, '日本')
+      expect(sendInput).not.toHaveBeenCalled()
+    })
+
+    it('forwards a later injected insert after an earlier key press resolved', () => {
+      const sendInput = vi.fn()
+      const forwarder = installTerminalImePunctuationForwarder({
+        terminalElement: element,
+        isComposing: () => false,
+        sendInput
+      })
+
+      // First a normal typed key (owned by xterm), then a standalone injection.
+      expect(forwarder.claimKeyEvent(keyEvent({ key: 'a' }))).toBe(false)
+      dispatchInsertText(textarea, 'a')
+      dispatchInsertText(textarea, 'dictated')
+
+      expect(sendInput).toHaveBeenCalledExactlyOnceWith('dictated')
+    })
+
+    it('does not forward a non-text input type', () => {
+      const sendInput = vi.fn()
+      installTerminalImePunctuationForwarder({
+        terminalElement: element,
+        isComposing: () => false,
+        sendInput
+      })
+
+      textarea.dispatchEvent(
+        new InputEvent('input', { data: null, inputType: 'deleteContentBackward', bubbles: true })
+      )
+      expect(sendInput).not.toHaveBeenCalled()
+    })
   })
 })

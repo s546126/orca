@@ -55,7 +55,6 @@ import { showOsc52ClipboardBlockedToast } from './osc52-clipboard-blocked-toast'
 import { parseOsc7 } from './parse-osc7'
 import { resolveTerminalJisYenInput } from './terminal-jis-yen-input'
 import { installTerminalImeCompositionTracker } from './terminal-ime-composition-tracker'
-import { getMacCjkInputSourceTracker } from './terminal-ime-input-source'
 import { installTerminalImePunctuationForwarder } from './terminal-ime-punctuation-forwarder'
 import {
   shouldBypassXtermKeyboardEvent,
@@ -693,19 +692,22 @@ export function useTerminalPaneLifecycle({
         // See xterm-bypass-policy.ts for the rule derivation.
         let pendingTerminalInterruptKeyup = false
         const isMac = navigator.userAgent.includes('Mac')
-        const macCjkInputSourceTracker = isMac ? getMacCjkInputSourceTracker() : null
         const imeCompositionTracker = installTerminalImeCompositionTracker(pane.terminal.element)
         imeCompositionDisposablesRef.current.set(pane.id, imeCompositionTracker)
-        // Why: this workaround is for macOS IMEs; elsewhere it can bypass
-        // xterm's kitty CSI-u encoding for ordinary punctuation. Gate it to CJK
-        // input sources so direct Japanese/Chinese punctuation works without
-        // changing plain US/European terminal key handling.
+        // Why: macOS-only. With xterm's kitty CSI-u encoding active, the
+        // keydown preventDefault cancels Chromium's native insertText, dropping
+        // any synthesized printable text — CJK IME punctuation commits AND
+        // OS-level injection (dictation, text expanders, accessibility). The
+        // forwarder recovers that text from the helper-textarea input event.
+        // Not gated to CJK input sources: the drop affects every locale (see
+        // #6513). Safe for ordinary typing because claimKeyEvent only bypasses
+        // unmodified ASCII punctuation keydowns, and the injected-text path
+        // skips any input event that followed a normally-processed keydown.
         const imePunctuationForwarder = isMac
           ? installTerminalImePunctuationForwarder({
               terminalElement: pane.terminal.element,
               isComposing: () => imeCompositionTracker.isActive(),
-              sendInput: (data) => pane.terminal.input(data),
-              isEnabled: () => macCjkInputSourceTracker?.isActive() === true
+              sendInput: (data) => pane.terminal.input(data)
             })
           : {
               claimKeyEvent: () => false,
