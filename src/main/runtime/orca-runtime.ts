@@ -21352,6 +21352,8 @@ export class OrcaRuntimeService {
     this.emulatorCommands.emulatorListSimulators.bind(this.emulatorCommands)
   emulatorAvailability: RuntimeEmulatorCommands['emulatorAvailability'] =
     this.emulatorCommands.emulatorAvailability.bind(this.emulatorCommands)
+  emulatorAndroidAvailability: RuntimeEmulatorCommands['emulatorAndroidAvailability'] =
+    this.emulatorCommands.emulatorAndroidAvailability.bind(this.emulatorCommands)
   emulatorUnregisterActive: RuntimeEmulatorCommands['emulatorUnregisterActive'] =
     this.emulatorCommands.emulatorUnregisterActive.bind(this.emulatorCommands)
 

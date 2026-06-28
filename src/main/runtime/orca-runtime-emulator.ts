@@ -10,6 +10,7 @@ import { serveSimStateWatcher } from '../emulator/serve-sim-state-watcher'
 import type { EmulatorGesturePoint } from '../emulator/emulator-gesture-sender'
 import type { EmulatorSessionInfo } from '../emulator/emulator-types'
 import type { MobileDeviceBridge } from '../emulator/mobile-device-bridge'
+import type { AndroidBackendAvailability } from '../emulator/android-device-backend'
 import type { SimulatorDevice } from '../emulator/simctl-simulator-devices'
 import type { GlobalSettings } from '../../shared/types'
 
@@ -18,8 +19,13 @@ export type RuntimeEmulatorCommandHost = {
   getEmulatorBridge(): EmulatorBridge | null
   resolveWorktreeSelector(selector: string): Promise<{ id: string }>
   getAuthoritativeWindow(): BrowserWindow
-  getSettings(): Pick<GlobalSettings, 'mobileEmulatorEnabled' | 'mobileEmulatorDefaultDeviceUdid'>
+  getSettings(): Pick<GlobalSettings, EmulatorSettingKey>
 }
+
+type EmulatorSettingKey =
+  | 'mobileEmulatorEnabled'
+  | 'mobileEmulatorDefaultDeviceUdid'
+  | 'androidEnabled'
 
 export class RuntimeEmulatorCommands {
   constructor(private readonly host: RuntimeEmulatorCommandHost) {}
@@ -236,6 +242,19 @@ export class RuntimeEmulatorCommands {
 
   async emulatorAvailability(_params: { worktree?: string } = {}): Promise<EmulatorAvailability> {
     return inspectEmulatorAvailability(this.requireEmulatorBridge())
+  }
+
+  // Why: sibling to emulatorAvailability so the iOS shape stays untouched. Gated
+  // on androidEnabled (off by default); delegates to the Android bridge's
+  // capability probe (binder/arch/docker, never KVM).
+  async emulatorAndroidAvailability(
+    _params: { worktree?: string; kind?: 'ios' | 'android' } = {}
+  ): Promise<AndroidBackendAvailability> {
+    if (!this.host.getSettings().androidEnabled) {
+      return { ok: false, message: 'Android device support is disabled in Settings.' }
+    }
+    const probe = getAndroidBridge()?.inspectAvailability?.()
+    return probe ?? { ok: false, reason: 'no_remote_host', message: 'Android is unavailable.' }
   }
 
   async emulatorKill(params: {

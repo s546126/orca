@@ -1,3 +1,4 @@
+import type { AndroidBackendAvailability } from './android-device-backend'
 import type { EmulatorGesturePoint } from './emulator-gesture-sender'
 import type { EmulatorSessionInfo } from './emulator-types'
 import type { SimulatorDevice } from './simctl-simulator-devices'
@@ -54,4 +55,8 @@ export type MobileDeviceBridge = {
   shutdown(device?: string, worktreeId?: string): Promise<string>
   destroyAllSessions(): Promise<void>
   onAppQuit(): Promise<void>
+
+  // Android-only capability probe. Optional so the iOS bridge keeps its exact
+  // shape; the runtime gates on androidEnabled before consulting it.
+  inspectAvailability?(): Promise<AndroidBackendAvailability>
 }

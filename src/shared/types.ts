@@ -2730,6 +2730,12 @@ export type GlobalSettings = {
   mobileEmulatorEnabled?: boolean
   /** Preferred iOS Simulator UDID for UI auto-attach and agent CLI attach. */
   mobileEmulatorDefaultDeviceUdid?: string | null
+  /** Master switch for redroid Android device support. Disabled by default —
+   *  availability stays unreported and verbs stay gated until the user opts in. */
+  androidEnabled?: boolean
+  /** SshConnectionStore target id for the remote redroid host. When set, Android
+   *  runs docker/adb/screenrecord remote-side over that SSH connection. */
+  androidRedroidSshTargetId?: string
   /** Auto-restore window for a phone-fit PTY after the last mobile
    *  subscriber leaves. `null` (default) holds the PTY at phone size
    *  indefinitely; the desktop "Restore" banner remains the explicit

@@ -143,6 +143,13 @@ export const EMULATOR_METHODS: RpcMethod[] = [
     handler: async (params, { runtime }) => runtime.emulatorAvailability(params)
   }),
   defineMethod({
+    name: 'emulator.androidAvailability',
+    params: z
+      .object({ worktree: z.string().optional(), kind: z.enum(['ios', 'android']).optional() })
+      .partial(),
+    handler: async (params, { runtime }) => runtime.emulatorAndroidAvailability(params)
+  }),
+  defineMethod({
     name: 'emulator.unregisterActive',
     params: z.object({ worktree: z.string().optional() }).partial(),
     handler: async (params, { runtime }) => runtime.emulatorUnregisterActive(params)

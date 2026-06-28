@@ -32,6 +32,18 @@ export type AndroidStreamHandle = {
   stop(): void
 }
 
+// Summary row for `emulator list --kind android`: a redroid device seen by adb
+// and/or a managed container seen by docker. Not a session record — listing is
+// read-only discovery (provision/attach is Phase 3).
+export type AndroidDeviceSummary = {
+  serial: string
+  state: string
+  kind: 'android'
+  // Orca session id from the container's orca.session label, when known.
+  sessionId?: string
+  containerId?: string
+}
+
 export type AndroidBackendAvailability = {
   ok: boolean
   reason?:
@@ -48,6 +60,9 @@ export type AndroidBackendAvailability = {
 export type AndroidDeviceBackend = {
   readonly id: 'redroid-docker' | 'local-adb-scrcpy'
   inspect(host: AndroidHost): Promise<AndroidBackendAvailability>
+  // Read-only discovery for `emulator list --kind android`. Empty when the host
+  // is unreachable/unsupported (the unavailable pane carries the reason).
+  listDevices(host: AndroidHost): Promise<AndroidDeviceSummary[]>
   // Ensure device exists + adb-reachable + getprop sys.boot_completed === 1.
   provision(
     target: AndroidProvisionTarget

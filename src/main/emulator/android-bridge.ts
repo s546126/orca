@@ -1,10 +1,12 @@
 import { EmulatorError } from './android-errors'
-import type { AndroidDeviceBackend, AndroidHost } from './android-device-backend'
+import type {
+  AndroidBackendAvailability,
+  AndroidDeviceBackend,
+  AndroidDeviceSummary,
+  AndroidHost
+} from './android-device-backend'
 import type { EmulatorSessionRegistry } from './emulator-session-registry'
-import {
-  EmulatorSessionLifecycle,
-  type SessionTeardown
-} from './emulator-session-lifecycle'
+import { EmulatorSessionLifecycle, type SessionTeardown } from './emulator-session-lifecycle'
 import type { EmulatorGesturePoint } from './emulator-gesture-sender'
 import type { EmulatorSessionInfo } from './emulator-types'
 import type { MobileDeviceBridge } from './mobile-device-bridge'
@@ -14,7 +16,8 @@ export type AndroidBridgeOptions = {
   // Why: shared with EmulatorBridge so the runtime routes from one registry.
   registry: EmulatorSessionRegistry
   backend: AndroidDeviceBackend
-  resolveHost: () => AndroidHost
+  // null => no reachable redroid host (non-Linux desktop, no SSH target).
+  resolveHost: () => AndroidHost | null
 }
 
 // Phase 1 scaffold: device-control verbs throw TODO; session/registry shells
@@ -22,10 +25,14 @@ export type AndroidBridgeOptions = {
 export class AndroidBridge implements MobileDeviceBridge {
   private readonly lifecycle: EmulatorSessionLifecycle
   private readonly backend: AndroidDeviceBackend
-  private readonly resolveHost: () => AndroidHost
+  private readonly resolveHost: () => AndroidHost | null
 
   private readonly teardownSession: SessionTeardown = async (target, options) => {
-    await this.backend.teardown(target.deviceUdid, this.resolveHost(), {
+    const host = this.resolveHost()
+    if (!host) {
+      return
+    }
+    await this.backend.teardown(target.deviceUdid, host, {
       destroy: options.shutdownDevice
     })
   }
@@ -74,11 +81,30 @@ export class AndroidBridge implements MobileDeviceBridge {
     )
   }
 
-  async listRunningHelpers(): Promise<unknown> {
-    throw new EmulatorError(
-      'emulator_adb_unavailable',
-      'TODO: Android device discovery is not implemented (Phase 2).'
-    )
+  // `emulator list --kind android`: enumerate running redroid devices. No host
+  // (non-Linux desktop, no SSH target) yields an empty list, not an error.
+  async listRunningHelpers(): Promise<AndroidDeviceSummary[]> {
+    const host = this.resolveHost()
+    if (!host) {
+      return []
+    }
+    return this.backend.listDevices(host)
+  }
+
+  // Capability probe for "is android available". Returns no_remote_host when no
+  // redroid host is reachable, otherwise the backend's real binder/arch/docker
+  // verdict. Parallel to inspectEmulatorAvailability for the iOS path.
+  async inspectAvailability(): Promise<AndroidBackendAvailability> {
+    const host = this.resolveHost()
+    if (!host) {
+      return {
+        ok: false,
+        reason: 'no_remote_host',
+        message:
+          'No redroid host available. Configure a remote SSH target, or run Orca on a Linux host with binder support.'
+      }
+    }
+    return this.backend.inspect(host)
   }
 
   registerActiveEmulator(
@@ -122,7 +148,10 @@ export class AndroidBridge implements MobileDeviceBridge {
 
   async kill(device?: string, worktreeId?: string): Promise<string> {
     const udid = this.lifecycle.getTargetOrThrow({ device, worktreeId }).udid
-    return this.lifecycle.tearDownDevice(udid, { shutdownDevice: false, ignoreShutdownError: false })
+    return this.lifecycle.tearDownDevice(udid, {
+      shutdownDevice: false,
+      ignoreShutdownError: false
+    })
   }
 
   async shutdown(device?: string, worktreeId?: string): Promise<string> {

@@ -111,6 +111,8 @@ import { EmulatorBridge } from './emulator/emulator-bridge'
 import { EmulatorSessionRegistry } from './emulator/emulator-session-registry'
 import { AndroidBridge } from './emulator/android-bridge'
 import { RedroidDockerBackend } from './emulator/redroid-docker-backend'
+import { resolveAndroidHost } from './emulator/android-host-resolution'
+import { getSshConnectionManager } from './ipc/ssh'
 import { serveSimStateWatcher } from './emulator/serve-sim-state-watcher'
 import { browserManager } from './browser/browser-manager'
 import { OffscreenBrowserBackend } from './browser/offscreen-browser-backend'
@@ -1512,8 +1514,12 @@ app.whenReady().then(async () => {
   // and every verb throws TODO. No process-global Android watcher is started.
   const androidBridge = new AndroidBridge({
     registry: emulatorSessionRegistry,
-    backend: new RedroidDockerBackend(),
-    resolveHost: () => ({ mode: 'local' })
+    backend: new RedroidDockerBackend({
+      // Remote redroid reuses the existing SSH connection machinery by target id.
+      getConnection: (targetId) => getSshConnectionManager()?.getConnection(targetId) ?? null
+    }),
+    // Pure selection: SSH target wins, else local on Linux, else no reachable host.
+    resolveHost: () => resolveAndroidHost(store!.getSettings(), process.platform)
   })
   runtimeService.setAndroidBridge(androidBridge)
   serveSimStateWatcher.start()
