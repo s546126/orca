@@ -534,7 +534,8 @@
         "ba6cb77082": "No se pudo conectar al proyecto.",
         "chooseOrAddProjectBeforeWorkspace": "Elige o agrega un proyecto antes de crear un espacio de trabajo.",
         "folderWorkspaceCreateFailedTitle": "No se pudo crear el espacio de trabajo de carpeta",
-        "folderWorkspaceCreateFailedMessage": "No se pudo crear el espacio de trabajo de carpeta. Revisa los detalles del error de arriba e inténtalo de nuevo."
+        "folderWorkspaceCreateFailedMessage": "No se pudo crear el espacio de trabajo de carpeta. Revisa los detalles del error de arriba e inténtalo de nuevo.",
+        "5f3d2c8a1b": "Failed to resolve MR base."
       },
       "useGlobalFileDrop": {
         "38c9f034ff": "No se pudieron cargar los archivos eliminados.",

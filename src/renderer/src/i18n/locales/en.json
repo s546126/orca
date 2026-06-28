@@ -534,7 +534,8 @@
         "ba6cb77082": "Failed to connect to project.",
         "chooseOrAddProjectBeforeWorkspace": "Choose or add a project before creating a workspace.",
         "folderWorkspaceCreateFailedTitle": "Folder workspace creation failed",
-        "folderWorkspaceCreateFailedMessage": "The folder workspace could not be created. Check the error details above, then try again."
+        "folderWorkspaceCreateFailedMessage": "The folder workspace could not be created. Check the error details above, then try again.",
+        "5f3d2c8a1b": "Failed to resolve MR base."
       },
       "useGlobalFileDrop": {
         "38c9f034ff": "Failed to upload dropped files.",
