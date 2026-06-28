@@ -146,6 +146,16 @@ export function createAgentCompletionCoordinator(
     return payload.agentType?.trim().toLowerCase() || null
   }
 
+  function doneShouldUseQuietWindow(payload: AgentCompletionStatusSnapshot): boolean {
+    // Why: Pi/OMP are goal/mission agents that emit agent_end ('done') between
+    // milestones while still working, so route their done through the quiet
+    // window — like the workingStatusObserved case — so resumed work can cancel
+    // the premature "finished" notification. Other agents (e.g. Codex) only emit
+    // 'done' at turn end and keep their immediate dispatch.
+    const agent = hookCompletionAgentIdentity(payload)
+    return workingStatusObserved || agent === 'pi' || agent === 'omp'
+  }
+
   function titleCompletionIdentity(title: string): string {
     return title
   }
@@ -653,7 +663,7 @@ export function createAgentCompletionCoordinator(
         // backstops duplicate the same completion.
         currentTurn += 1
       }
-      if (payload.state === 'done' && workingStatusObserved) {
+      if (payload.state === 'done' && doneShouldUseQuietWindow(payload)) {
         lastCompletionIdentity = hookIdentity
           ? {
               source: 'hook',
