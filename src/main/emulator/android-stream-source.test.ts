@@ -94,6 +94,96 @@ describe('createAndroidStreamSource', () => {
     expect(units.map((u) => u.ptsMicros)).toEqual([0, step])
   })
 
+  it('re-establishes the channel and re-emits a keyframe on an injected reconnect signal', async () => {
+    let fireReconnect: () => void = () => {}
+    let spawnCount = 0
+    // A hung child models a dead SSH exec channel that never emits its own
+    // 'close' after relay-lost; only the reconnect-driven stop() ends it.
+    function hangingChild(onPulled: () => void): AndroidStreamChild {
+      let release: () => void = () => {}
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      return {
+        chunks: (async function* () {
+          onPulled()
+          await gate
+          // Dead channel: never emits before stop() releases the gate.
+          yield* []
+        })(),
+        stop: () => release()
+      }
+    }
+    const handle = createAndroidStreamSource({
+      spawn: () => {
+        const isFirst = spawnCount++ === 0
+        // First capture hangs until the reconnect signal stops it; the post-
+        // reconnect capture leads with a fresh keyframe, as screenrecord does.
+        return isFirst ? hangingChild(() => fireReconnect()) : makeChild([sc4(IDR)])
+      },
+      onReconnect: (cb) => {
+        fireReconnect = cb
+        return () => {}
+      },
+      waitAfterFailure: () => Promise.resolve(),
+      waitBeforeRestart: () => Promise.resolve(),
+      fps: 30
+    })
+    const units = await collect(handle, 1)
+    expect(spawnCount).toBe(2)
+    expect(units.map((u) => u.key)).toEqual([true])
+  })
+
+  it('ends cleanly without an infinite loop when the connection is permanently gone', async () => {
+    let spawnCount = 0
+    const handle = createAndroidStreamSource({
+      // Every respawn yields no data (exec keeps rejecting): a permanently-dead
+      // connection. The source must bound retries and end, not loop forever.
+      spawn: () => {
+        spawnCount++
+        return makeChild([])
+      },
+      maxFailedRestarts: 3,
+      waitAfterFailure: () => Promise.resolve(),
+      waitBeforeRestart: () => Promise.resolve()
+    })
+    const units: AndroidVideoUnit[] = []
+    for await (const unit of handle.units()) {
+      units.push(unit)
+    }
+    expect(units).toEqual([])
+    expect(spawnCount).toBe(3)
+  })
+
+  it('keeps retrying past the local budget and ends only on the unrecoverable signal', async () => {
+    let spawnCount = 0
+    let fireGone: () => void = () => {}
+    const handle = createAndroidStreamSource({
+      // Every respawn is data-less (SSH down during a long reconnect window). With
+      // an unrecoverable signal injected, the time budget must NOT terminate the
+      // source — only the terminal signal does, well past the default budget of 5.
+      spawn: () => {
+        spawnCount++
+        if (spawnCount === 8) {
+          fireGone()
+        }
+        return makeChild([])
+      },
+      onUnrecoverable: (cb) => {
+        fireGone = cb
+        return () => {}
+      },
+      waitAfterFailure: () => Promise.resolve(),
+      waitBeforeRestart: () => Promise.resolve()
+    })
+    const units: AndroidVideoUnit[] = []
+    for await (const unit of handle.units()) {
+      units.push(unit)
+    }
+    expect(units).toEqual([])
+    expect(spawnCount).toBe(8)
+  })
+
   it('stops without spawning when already stopped', async () => {
     let spawnCount = 0
     const handle = createAndroidStreamSource({

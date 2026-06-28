@@ -3,6 +3,7 @@ import { parseDockerSessionContainers, RedroidDockerBackend } from './redroid-do
 import type { AdbCommandExecutor, AdbCommandResult } from './adb-command-execution'
 import type { WaitClock } from './adb-android-devices'
 import type { SshConnection } from '../ssh/ssh-connection'
+import type { RemoteExecChannel } from './android-remote-screenrecord-spawner'
 import { getRemoteHostPlatform } from '../ssh/ssh-remote-platform'
 
 function ok(stdout: string, exitCode = 0): AdbCommandResult {
@@ -64,6 +65,99 @@ describe('RedroidDockerBackend.startStream', () => {
     expect(handle.streamKind).toBe('h264')
     expect(typeof handle.streamId).toBe('string')
     handle.stop()
+  })
+
+  it('builds a remote h264 stream source from the resolved SSH connection', async () => {
+    const conn = { getState: () => ({ status: 'connected' }) } as unknown as SshConnection
+    const remoteExecutor: AdbCommandExecutor = { mode: 'remote', exec: vi.fn(async () => ok('')) }
+    const spawn = vi.fn(() => ({ chunks: (async function* () {})(), stop: vi.fn() }))
+    const backend = new RedroidDockerBackend({
+      getConnection: () => conn,
+      detectHostPlatform: async () => getRemoteHostPlatform('linux-arm64'),
+      createRemoteExecutor: () => remoteExecutor,
+      createStreamSpawner: () => spawn,
+      subscribeReconnect: vi.fn(() => () => {})
+    })
+    const handle = await backend.startStream('127.0.0.1:5555', {
+      mode: 'remote',
+      sshTargetId: 't1'
+    })
+    expect(handle.streamKind).toBe('h264')
+    handle.stop()
+  })
+
+  it('throws emulator_redroid_unreachable for a remote host with no live connection', async () => {
+    // Connected for the executor resolution, but getConnection returns null when
+    // the stream tries to resolve the live channel.
+    let calls = 0
+    const conn = { getState: () => ({ status: 'connected' }) } as unknown as SshConnection
+    const backend = new RedroidDockerBackend({
+      getConnection: () => (calls++ === 0 ? conn : null),
+      detectHostPlatform: async () => getRemoteHostPlatform('linux-arm64'),
+      createRemoteExecutor: () => ({ mode: 'remote', exec: vi.fn(async () => ok('')) })
+    })
+    await expect(
+      backend.startStream('127.0.0.1:5555', { mode: 'remote', sshTargetId: 't1' })
+    ).rejects.toMatchObject({ code: 'emulator_redroid_unreachable' })
+  })
+
+  it('re-resolves the SSH connection per exec so a reconnect-swapped instance is used, not a captured dead one', async () => {
+    // A reconnect makes SshConnectionManager dispose instance A and build B; the
+    // spawner must exec against the current instance, never a captured one.
+    let resolveExec!: () => void
+    const execCalled = new Promise<void>((r) => {
+      resolveExec = r
+    })
+    // close() must fire the 'close' listener so the spawner's wake-loop unparks
+    // when handle.stop() tears the channel down; otherwise the generator hangs.
+    const stubChannel = (): RemoteExecChannel => {
+      let onClose: (() => void) | null = null
+      const channel = {
+        on: (event: string, listener: () => void) => {
+          if (event === 'close') {
+            onClose = listener
+          }
+          return channel
+        },
+        stderr: { on: () => channel.stderr },
+        close: () => onClose?.()
+      }
+      return channel as unknown as RemoteExecChannel
+    }
+    const execA = vi.fn(async () => {
+      resolveExec()
+      return stubChannel()
+    })
+    const execB = vi.fn(async () => {
+      resolveExec()
+      return stubChannel()
+    })
+    const connA = {
+      getState: () => ({ status: 'connected' }),
+      exec: execA
+    } as unknown as SshConnection
+    const connB = {
+      getState: () => ({ status: 'connected' }),
+      exec: execB
+    } as unknown as SshConnection
+    let conn = connA
+    const backend = new RedroidDockerBackend({
+      getConnection: () => conn,
+      detectHostPlatform: async () => getRemoteHostPlatform('linux-arm64'),
+      createRemoteExecutor: () => ({ mode: 'remote', exec: vi.fn(async () => ok('')) })
+    })
+    const handle = await backend.startStream('127.0.0.1:5555', {
+      mode: 'remote',
+      sshTargetId: 't1'
+    })
+    conn = connB // SshConnectionManager swapped A->B on reconnect.
+    const gen = handle.units()[Symbol.asyncIterator]()
+    const pumped = gen.next()
+    await execCalled
+    handle.stop()
+    await pumped.catch(() => {})
+    expect(execB).toHaveBeenCalledTimes(1)
+    expect(execA).not.toHaveBeenCalled()
   })
 })
 

@@ -13,6 +13,7 @@ import {
   createLocalScreenrecordSpawner,
   type AndroidStreamSpawner
 } from './android-stream-source'
+import { createRemoteScreenrecordSpawner } from './android-remote-screenrecord-spawner'
 import {
   hostIdForHost,
   resolveAndroidExecutor,
@@ -49,6 +50,14 @@ export type RedroidDockerBackendDeps = AndroidExecutorDeps & {
   // Injected so streaming tests never spawn screenrecord; defaults to the local
   // adb exec-out child.
   createStreamSpawner?: (serial: string) => AndroidStreamSpawner
+  // Per-target SSH reconnect subscription. The remote stream source re-establishes
+  // its exec channel + re-keys on this signal (exec channels die on relay-lost).
+  // Injected so nothing taps real SSH state in tests; absent => no reconnect-driven
+  // restart (the source still bounds its retries and ends cleanly on permanent loss).
+  subscribeReconnect?: (sshTargetId: string, cb: () => void) => () => void
+  // Terminal SSH-loss subscription. When present it (not a time budget) ends the
+  // remote stream, so a long reconnect window cannot prematurely kill it.
+  subscribeUnrecoverable?: (sshTargetId: string, cb: () => void) => () => void
 }
 
 const DOCKER_PROGRAM = 'docker'
@@ -285,18 +294,44 @@ export class RedroidDockerBackend implements AndroidDeviceBackend {
     if (!resolved.ok) {
       throw new EmulatorError('emulator_redroid_unreachable', resolved.availability.message)
     }
-    // Phase 4 ships the LOCAL screenrecord path; the byte source is injected so a
-    // remote SSH exec-channel spawner drops in for Phase 5 with no other change.
-    if (resolved.executor.mode !== 'local') {
-      throw new EmulatorError(
-        'emulator_redroid_unreachable',
-        'Remote redroid H.264 streaming over SSH is not implemented yet (Phase 5).'
-      )
+    if (host.mode === 'remote') {
+      return this.startRemoteStream(serial, host.sshTargetId)
     }
+    // The byte source is injected so streaming tests never spawn screenrecord.
     const spawner = this.deps.createStreamSpawner
       ? this.deps.createStreamSpawner(serial)
       : createLocalScreenrecordSpawner(serial)
     return createAndroidStreamSource({ spawn: spawner })
+  }
+
+  // Remote H.264 rides the long-lived SshConnection.exec channel; on SSH reconnect
+  // the source re-execs (the old exec channel is not restored by port-forward
+  // replay) and re-emits a fresh keyframe.
+  private startRemoteStream(serial: string, sshTargetId: string): AndroidStreamHandle {
+    const conn = this.deps.getConnection?.(sshTargetId)
+    if (!conn) {
+      throw new EmulatorError(
+        'emulator_redroid_unreachable',
+        'The configured SSH host for remote Android is not connected.'
+      )
+    }
+    const spawner = this.deps.createStreamSpawner
+      ? this.deps.createStreamSpawner(serial)
+      : // Re-resolve per exec: a reconnect disposes the old SshConnection and builds
+        // a new one, so a captured handle would re-exec a dead connection forever.
+        createRemoteScreenrecordSpawner((command) => {
+          const current = this.deps.getConnection?.(sshTargetId)
+          return current
+            ? current.exec(command)
+            : Promise.reject(new Error('SSH host for remote Android is not connected.'))
+        }, serial)
+    const onReconnect = this.deps.subscribeReconnect
+      ? (cb: () => void) => this.deps.subscribeReconnect!(sshTargetId, cb)
+      : undefined
+    const onUnrecoverable = this.deps.subscribeUnrecoverable
+      ? (cb: () => void) => this.deps.subscribeUnrecoverable!(sshTargetId, cb)
+      : undefined
+    return createAndroidStreamSource({ spawn: spawner, onReconnect, onUnrecoverable })
   }
 
   // Two hosts can both expose 127.0.0.1:5555, so the teardown map keys by host.
