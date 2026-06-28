@@ -10406,7 +10406,31 @@
             "unavailable": {
               "pane": {
                 "f630b9ca9f": "모바일 에뮬레이터를 사용하려면 Xcode 및 iOS 시뮬레이터 런타임이 설치된 Mac이 필요합니다. Linux 또는 Windows에서는 물리적 장치 또는 원격 Mac 빌드 호스트를 사용합니다.",
-                "b2c268a0b9": "모바일 에뮬레이터는 macOS 전용입니다."
+                "b2c268a0b9": "모바일 에뮬레이터는 macOS 전용입니다.",
+                "android": {
+                  "no": {
+                    "remote": {
+                      "host": {
+                        "title": "Android needs a redroid host",
+                        "body": "Configure a remote SSH target with redroid, or run Orca on a Linux host with binder support, to drive an Android device."
+                      }
+                    }
+                  },
+                  "host": {
+                    "unsupported": {
+                      "title": "This host cannot run redroid",
+                      "body": "redroid requires a Linux kernel with binder support and a matching CPU architecture. Use a supported Linux host or a remote SSH target."
+                    }
+                  }
+                }
+              }
+            },
+            "h264": {
+              "canvas": {
+                "unsupported": "Hardware H.264 decoding is unavailable on this device.",
+                "connecting": "Connecting emulator…",
+                "disconnected": "Stream disconnected",
+                "preview": "Emulator preview"
               }
             }
           },
