@@ -40,6 +40,57 @@ type RuntimeEnvironmentSubscriptionIpc = {
 
 const SUBSCRIPTION_EVENT_CHANNEL = 'runtimeEnvironments:subscriptionEvent'
 
+// Why: each subscribe() previously attached its own channel listener that the
+// 'error' branch never detached, so shared-control subscriptions that survive
+// reconnects (and emit per-error frames) leaked one listener + closure each,
+// pinning the renderer heap. A single shared dispatcher per ipc instance routes
+// every frame by subscriptionId, bounding attached listeners to O(1) regardless
+// of subscription churn; the map entry is the only per-subscription state.
+type RuntimeEnvironmentSubscriptionDispatcher = {
+  callbacks: Map<string, RuntimeEnvironmentSubscriptionCallbacks>
+  listener: (event: unknown, payload: RuntimeEnvironmentSubscriptionEvent) => void
+}
+
+const subscriptionDispatchers = new WeakMap<
+  RuntimeEnvironmentSubscriptionIpc,
+  RuntimeEnvironmentSubscriptionDispatcher
+>()
+
+function getOrCreateDispatcher(
+  ipc: RuntimeEnvironmentSubscriptionIpc
+): RuntimeEnvironmentSubscriptionDispatcher {
+  const existing = subscriptionDispatchers.get(ipc)
+  if (existing) {
+    return existing
+  }
+  const callbacks = new Map<string, RuntimeEnvironmentSubscriptionCallbacks>()
+  const listener = (_event: unknown, event: RuntimeEnvironmentSubscriptionEvent): void => {
+    const subscriptionCallbacks = callbacks.get(event.subscriptionId)
+    if (!subscriptionCallbacks) {
+      return
+    }
+    if (event.type === 'response') {
+      subscriptionCallbacks.onResponse(event.response)
+    } else if (event.type === 'binary') {
+      subscriptionCallbacks.onBinary?.(event.bytes)
+    } else if (event.type === 'error') {
+      // Why: errors are non-terminal for shared-control subscriptions (they
+      // survive reconnects), so the entry stays mapped until the consumer
+      // unsubscribes — this is what keeps the dispatcher bounded under flapping.
+      subscriptionCallbacks.onError?.({ code: event.code, message: event.message })
+    } else {
+      subscriptionCallbacks.onClose?.()
+      // Why: main has already dropped the remote subscription on close, so the
+      // entry can be released immediately without waiting for unsubscribe().
+      callbacks.delete(event.subscriptionId)
+    }
+  }
+  const dispatcher: RuntimeEnvironmentSubscriptionDispatcher = { callbacks, listener }
+  subscriptionDispatchers.set(ipc, dispatcher)
+  ipc.on(SUBSCRIPTION_EVENT_CHANNEL, listener)
+  return dispatcher
+}
+
 function createRuntimeEnvironmentSubscriptionId(): string {
   const randomUuid = globalThis.crypto?.randomUUID
   if (typeof randomUuid === 'function') {
@@ -55,53 +106,30 @@ export async function subscribeRuntimeEnvironmentFromPreload(
   createSubscriptionId = createRuntimeEnvironmentSubscriptionId
 ): Promise<RuntimeEnvironmentSubscriptionHandle> {
   const subscriptionId = createSubscriptionId()
-  let listenerAttached = false
-  const detachListener = (): void => {
-    if (!listenerAttached) {
-      return
-    }
-    listenerAttached = false
-    ipc.removeListener(SUBSCRIPTION_EVENT_CHANNEL, listener)
-  }
-  const listener = (_event: unknown, event: RuntimeEnvironmentSubscriptionEvent): void => {
-    if (event.subscriptionId !== subscriptionId) {
-      return
-    }
-    if (event.type === 'response') {
-      callbacks.onResponse(event.response)
-    } else if (event.type === 'binary') {
-      callbacks.onBinary?.(event.bytes)
-    } else if (event.type === 'error') {
-      callbacks.onError?.({ code: event.code, message: event.message })
-    } else {
-      callbacks.onClose?.()
-      // Why: main has already dropped the remote subscription on close, so
-      // keeping this per-subscription IPC listener would retain renderer state.
-      detachListener()
-    }
-  }
-
   // Why: streaming RPCs can emit their first frame before ipcMain.handle()
-  // resolves, so preload must subscribe to the event channel before invoking.
-  ipc.on(SUBSCRIPTION_EVENT_CHANNEL, listener)
-  listenerAttached = true
+  // resolves, so the dispatcher must be routing this id before invoking.
+  const dispatcher = getOrCreateDispatcher(ipc)
+  dispatcher.callbacks.set(subscriptionId, callbacks)
+  const releaseSubscription = (): void => {
+    dispatcher.callbacks.delete(subscriptionId)
+  }
   try {
     const result = (await ipc.invoke('runtimeEnvironments:subscribe', {
       ...args,
       subscriptionId
     })) as { subscriptionId: string; requestId: string }
     if (result.subscriptionId !== subscriptionId) {
-      detachListener()
+      releaseSubscription()
       throw new Error('Runtime environment subscription id mismatch')
     }
   } catch (error) {
-    detachListener()
+    releaseSubscription()
     throw error
   }
 
   return {
     unsubscribe: () => {
-      detachListener()
+      releaseSubscription()
       void ipc.invoke('runtimeEnvironments:unsubscribe', { subscriptionId })
     },
     sendBinary: (bytes) => {
