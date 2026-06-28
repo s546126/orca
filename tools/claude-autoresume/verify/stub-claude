@@ -1,0 +1,13 @@
+#!/bin/bash
+# Stub `claude` for the clean-container verification. No auth/network.
+#   -p <prompt>  : print mode -> emit READY and exit 0 (covers `doctor` probe)
+#   otherwise    : interactive -> render a line and stay alive (simulates a
+#                  resumed TUI so the launcher's liveness check sees it live).
+print_mode=0
+for a in "$@"; do [ "$a" = "-p" ] && print_mode=1; done
+if [ "$print_mode" = 1 ]; then
+  echo "READY"
+  exit 0
+fi
+echo "STUB CLAUDE RESUMED in $(pwd) [args: $*]"
+exec sleep 3600
