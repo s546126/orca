@@ -171,6 +171,10 @@ import { createHeadlessAutomationOutputSnapshotBuffer } from './automations/head
 import { buildHeadlessAutomationWorktreeCreateArgs } from './automations/headless-workspace-create'
 import { AgentAwakeService } from './agent-awake-service'
 import { registerSystemResumeBroadcast } from './system-resume-broadcast'
+import { PluginService } from './plugins/plugin-service'
+import { resolvePluginHostEntryPath } from './plugins/plugin-host-process'
+import { setPluginServiceForRpc } from './runtime/rpc/methods/plugins'
+import { normalizeDisabledPlugins } from '../shared/plugins/plugin-extension-registry'
 import {
   recordCoalescedCrashBreadcrumb,
   recordCrashBreadcrumb
@@ -238,6 +242,7 @@ let unsubscribeSystemResumeBroadcast: (() => void) | null = null
 let watcherShutdownPromise: Promise<void> | null = null
 let watcherShutdownDone = false
 let automations: AutomationService | null = null
+let pluginService: PluginService | null = null
 let keybindings: KeybindingService | null = null
 // Why: a reload intent must not leak to a later load; the recovery reload re-fires did-finish-load, so its flag spares live PTYs from the orphan sweep (#5787).
 const expectedRendererReload = createWebContentsTimedFlag()
@@ -971,7 +976,8 @@ function openMainWindow(): BrowserWindow {
       },
       onOrcaProfileAuthMutation: () => desktopRelayService?.authMutated(),
       onBeforeOrcaProfileSignOut: () => desktopRelayService?.fenceAndCloseNow()
-    }
+    },
+    pluginService ?? undefined
   )
   automations.setWebContents(window.webContents)
   automations.start()
@@ -1899,6 +1905,19 @@ app.whenReady().then(async () => {
     prepareForCodexLaunch: prepareCodexRuntimeHomeForLaunch,
     prepareForClaudeLaunch: (target) => claudeRuntimeAuth!.prepareForClaudeLaunch(target)
   })
+  pluginService = new PluginService({
+    userDataPath: app.getPath('userData'),
+    getDisabledPlugins: () => normalizeDisabledPlugins(store?.getSettings().disabledPlugins),
+    hostEntryPath: resolvePluginHostEntryPath(app.getAppPath(), app.isPackaged)
+  })
+  // Why: headless `orca serve` clients reach plugins through the runtime RPC
+  // methods, which resolve the service via this module-level setter.
+  setPluginServiceForRpc(pluginService)
+  // Why: plugin host startup forks child processes; it must not block window
+  // startup, and a broken plugin surfaces via listPlugins() status instead.
+  void pluginService.initialize().catch((error) => {
+    console.warn('[plugins] failed to initialize plugin service:', error)
+  })
   starNag = new StarNagService(store, stats)
   starNag.start()
   starNag.registerIpcHandlers()
@@ -2204,6 +2223,11 @@ app.on('will-quit', (e) => {
   // Why: stats.flush() must precede killAllPty() so still-running agents emit synthetic agent_stop events (killAllPty skips runtime.onPtyExit()).
   starNag?.stop()
   automations?.stop()
+  // Why: plugin hosts are forked children; dispose sends shutdown and
+  // escalates to SIGKILL so they cannot outlive the app.
+  setPluginServiceForRpc(null)
+  void pluginService?.dispose()
+  pluginService = null
   setUnreadDockBadgeCount(0)
   agentHookServer.stop()
   // Why: cancels relay restart/reinstall timers and kills wsl.exe children deterministically, not via stdio-pipe teardown.

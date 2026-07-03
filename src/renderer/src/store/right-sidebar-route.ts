@@ -1,4 +1,5 @@
 import type { ActiveRightSidebarTab, RightSidebarExplorerView } from '../../../shared/types'
+import { isPluginPanelTabKey } from '../../../shared/plugins/plugin-manifest'
 
 export type RightSidebarRoute = {
   rightSidebarTab: ActiveRightSidebarTab
@@ -16,6 +17,12 @@ export function normalizeRightSidebarRoute(
   // Why: older builds persisted Search as a standalone activity tab.
   if (tab === 'search') {
     return { rightSidebarTab: 'explorer', rightSidebarExplorerView: 'search' }
+  }
+  // Why: plugin tabs are open-ended keys; validate their shape so a persisted
+  // plugin tab isn't reset to Explorer. Uninstalled plugins still fall back at
+  // render time via resolveRightSidebarEffectiveTab.
+  if (typeof tab === 'string' && isPluginPanelTabKey(tab)) {
+    return { rightSidebarTab: tab, rightSidebarExplorerView: 'files' }
   }
   if (
     tab === 'explorer' ||

@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      /* Panel UI runs in an opaque-origin sandboxed iframe: self-contained
+         styles only, no access to the host app's DOM or tokens. */
+      body {
+        margin: 0;
+        padding: 12px;
+        font-family: system-ui, sans-serif;
+        font-size: 13px;
+        color: #ddd;
+        background: transparent;
+      }
+      h1 {
+        font-size: 14px;
+        margin: 0 0 8px;
+      }
+      p {
+        color: #999;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Hello Orca 👋</h1>
+    <p>
+      This panel is contributed by the <code>hello-orca</code> sample plugin and rendered in a
+      sandboxed frame. Build your own by dropping a directory with an
+      <code>orca-plugin.json</code> into the Orca plugins folder.
+    </p>
+  </body>
+</html>

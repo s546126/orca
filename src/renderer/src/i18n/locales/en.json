@@ -10094,6 +10094,11 @@
             "folderWorkspaces": "Attached worktrees",
             "parentPrChecks": "PR Checks"
           },
+          "PluginPanel": {
+            "loading": "Loading plugin panel...",
+            "unavailable": "This plugin panel is no longer available.",
+            "loadFailed": "The plugin panel could not be loaded."
+          },
           "right": {
             "panel": {
               "comment": {

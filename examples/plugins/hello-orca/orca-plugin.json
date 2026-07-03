@@ -1,0 +1,16 @@
+{
+  "id": "hello-orca",
+  "name": "Hello Orca",
+  "version": "1.0.0",
+  "description": "Sample plugin: a TODO-scanning CodeProvider and a right-sidebar panel.",
+  "engines": { "orca": ">=1.4.0" },
+  "main": "main.js",
+  "contributes": {
+    "codeProviders": [
+      { "id": "todo-scanner", "displayName": "TODO Scanner", "languages": ["*"] }
+    ],
+    "panels": [
+      { "id": "hello", "title": "Hello Orca", "icon": "plug", "entry": "panel.html" }
+    ]
+  }
+}

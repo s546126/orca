@@ -942,6 +942,26 @@ export type AppApi = {
   ) => Promise<WriteTerminalRenderDesyncEvidenceResult>
 }
 
+/** Panel contribution as surfaced by the main-process plugin host. */
+export type PluginHostPanel = {
+  id: string
+  title: string
+  /** Lucide icon name declared in the plugin manifest. */
+  icon?: string
+  tabKey: `plugin:${string}`
+}
+
+export type PluginHostStatus = 'active' | 'disabled' | 'error'
+
+export type PluginHostListEntry = {
+  pluginId: string
+  name: string
+  version: string
+  status: PluginHostStatus
+  error?: string
+  panels: PluginHostPanel[]
+}
+
 export type PreloadApi = {
   app: AppApi
   orcaProfiles: {
@@ -3142,6 +3162,18 @@ export type PreloadApi = {
   }
   gitBash: {
     isAvailable: () => Promise<boolean>
+  }
+  plugins: {
+    list: () => Promise<PluginHostListEntry[]>
+    setEnabled: (args: { pluginId: string; enabled: boolean }) => Promise<PluginHostListEntry[]>
+    /** Returns the panel's HTML entry contents, or null when the plugin or
+     *  panel is missing/disabled. Rendered only inside a sandboxed iframe. */
+    readPanelEntry: (args: { pluginId: string; panelId: string }) => Promise<{ html: string } | null>
+    invokeCodeProvider: (args: {
+      pluginId: string
+      method: string
+      args?: unknown
+    }) => Promise<unknown>
   }
   agentStatus: {
     /** Listen for agent status updates forwarded from native hook receivers. */

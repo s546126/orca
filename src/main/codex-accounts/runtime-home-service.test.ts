@@ -116,6 +116,7 @@ function createSettings(overrides: Partial<GlobalSettings> = {}): GlobalSettings
     terminalScopeHistoryByWorktree: true,
     defaultTuiAgent: null,
     disabledTuiAgents: [],
+    disabledPlugins: [],
     skipDeleteWorktreeConfirm: false,
     skipCloseTerminalWithRunningProcessConfirm: false,
     skipDeleteAutomationConfirm: false,

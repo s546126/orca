@@ -26,7 +26,9 @@ const items: ActivityBarItem[] = [
     shortcut: '',
     gitOnly: true
   },
-  { id: 'ports', icon: Files, title: 'Ports', shortcut: '', sshOnly: true }
+  { id: 'ports', icon: Files, title: 'Ports', shortcut: '', sshOnly: true },
+  // Plugin panels carry no visibility flags, so they show in every context.
+  { id: 'plugin:my-plugin/dashboard', icon: Files, title: 'Dashboard', shortcut: '' }
 ]
 
 describe('getVisibleRightSidebarActivityItems', () => {
@@ -37,7 +39,7 @@ describe('getVisibleRightSidebarActivityItems', () => {
         isFolderWorkspace: false,
         isSshRepo: false
       }).map((item) => item.id)
-    ).toEqual(['explorer', 'source-control'])
+    ).toEqual(['explorer', 'source-control', 'plugin:my-plugin/dashboard'])
 
     expect(
       getVisibleRightSidebarActivityItems(items, {
@@ -45,7 +47,7 @@ describe('getVisibleRightSidebarActivityItems', () => {
         isFolderWorkspace: false,
         isSshRepo: true
       }).map((item) => item.id)
-    ).toEqual(['explorer', 'source-control', 'ports'])
+    ).toEqual(['explorer', 'source-control', 'ports', 'plugin:my-plugin/dashboard'])
   })
 
   it('shows Workspaces only for folder workspaces and hides git tabs for all folder scopes', () => {
@@ -55,7 +57,7 @@ describe('getVisibleRightSidebarActivityItems', () => {
         isFolderWorkspace: true,
         isSshRepo: true
       }).map((item) => item.id)
-    ).toEqual(['explorer', 'workspaces', 'pr-checks', 'ports'])
+    ).toEqual(['explorer', 'workspaces', 'pr-checks', 'ports', 'plugin:my-plugin/dashboard'])
 
     expect(
       getVisibleRightSidebarActivityItems(items, {
@@ -63,6 +65,6 @@ describe('getVisibleRightSidebarActivityItems', () => {
         isFolderWorkspace: false,
         isSshRepo: true
       }).map((item) => item.id)
-    ).toEqual(['explorer', 'ports'])
+    ).toEqual(['explorer', 'ports', 'plugin:my-plugin/dashboard'])
   })
 })

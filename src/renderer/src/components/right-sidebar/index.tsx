@@ -26,6 +26,8 @@ import {
 } from './activity-bar-buttons'
 import { getActiveChecksStatus } from './active-checks-status'
 import { getVisibleRightSidebarActivityItems } from './right-sidebar-activity-visibility'
+import { getPluginPanelActivityItems } from './plugin-panel-activity-items'
+import { usePluginPanels } from '@/store/plugin-panels'
 import { useShortcutLabel } from '@/hooks/useShortcutLabel'
 import {
   RIGHT_SIDEBAR_HEADER_NO_DRAG_CLASS_NAME,
@@ -84,6 +86,7 @@ function RightSidebarInner(): React.JSX.Element {
   const isFolderWorkspace = activeWorkspaceScope?.type === 'folder'
   const isFolder = isFolderWorkspace || (activeRepo ? isFolderRepo(activeRepo) : false)
   const isSshRepo = Boolean(activeRepo?.connectionId)
+  const pluginPanels = usePluginPanels()
 
   const activityItems = useMemo<ActivityBarItem[]>(
     () => [
@@ -136,9 +139,12 @@ function RightSidebarInner(): React.JSX.Element {
         title: translate('auto.components.right.sidebar.index.441733b630', 'Ports'),
         shortcut: portsShortcut === 'Unassigned' ? '' : portsShortcut,
         sshOnly: true
-      }
+      },
+      // Why: plugin panels append after the built-in tabs so core navigation
+      // keeps stable positions regardless of which plugins are installed.
+      ...getPluginPanelActivityItems(pluginPanels)
     ],
-    [checksShortcut, explorerShortcut, portsShortcut, sourceControlShortcut]
+    [checksShortcut, explorerShortcut, portsShortcut, sourceControlShortcut, pluginPanels]
   )
 
   const visibleItems = useMemo(
