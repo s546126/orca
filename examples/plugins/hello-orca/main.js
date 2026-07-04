@@ -16,10 +16,14 @@ async function collectFiles(dir, root, results) {
     return
   }
   for (const entry of entries) {
-    if (results.length >= MAX_RESULTS) return
+    if (results.length >= MAX_RESULTS) {
+      return
+    }
     const full = join(dir, entry.name)
     if (entry.isDirectory()) {
-      if (!SKIP_DIRS.has(entry.name)) await collectFiles(full, root, results)
+      if (!SKIP_DIRS.has(entry.name)) {
+        await collectFiles(full, root, results)
+      }
     } else if (SCAN_EXTENSIONS.has(entry.name.slice(entry.name.lastIndexOf('.')))) {
       results.push(full)
     }
@@ -32,7 +36,9 @@ async function scanTodos(query, context) {
   const symbols = []
   const needle = query.toLowerCase()
   for (const file of files) {
-    if (symbols.length >= MAX_RESULTS) break
+    if (symbols.length >= MAX_RESULTS) {
+      break
+    }
     let text
     try {
       text = await readFile(file, 'utf8')
@@ -42,9 +48,13 @@ async function scanTodos(query, context) {
     const lines = text.split('\n')
     for (let i = 0; i < lines.length; i++) {
       const match = lines[i].match(/(?:TODO|FIXME)[:\s](.*)/)
-      if (!match) continue
+      if (!match) {
+        continue
+      }
       const detail = match[1].trim()
-      if (needle && !detail.toLowerCase().includes(needle)) continue
+      if (needle && !detail.toLowerCase().includes(needle)) {
+        continue
+      }
       symbols.push({
         name: detail.slice(0, 80) || 'TODO',
         kind: 'todo',

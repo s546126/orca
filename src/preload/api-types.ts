@@ -59,6 +59,7 @@ import type { LinearIssueAttributeFilter } from '../shared/linear-issue-attribut
 import type { ProjectExecutionRuntimeResolution } from '../shared/project-execution-runtime'
 import type { StartupCommandDelivery } from '../shared/codex-startup-delivery'
 import type { SleepingAgentLaunchConfig } from '../shared/agent-session-resume'
+import type { PluginPanelActionOutcome } from '../shared/plugins/plugin-panel-bridge'
 import type {
   LocalhostWorktreeLabelResult,
   LocalhostWorktreeLabelRoute
@@ -3174,6 +3175,14 @@ export type PreloadApi = {
       method: string
       args?: unknown
     }) => Promise<unknown>
+    /** Relays a sandboxed panel's bridge request to main, which enforces the
+     *  plugin's manifest permissions before executing. */
+    panelAction: (args: {
+      pluginId: string
+      panelId?: string
+      action: string
+      params?: unknown
+    }) => Promise<PluginPanelActionOutcome>
   }
   agentStatus: {
     /** Listen for agent status updates forwarded from native hook receivers. */

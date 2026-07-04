@@ -12,6 +12,7 @@ import type { StartupCommandDelivery } from '../shared/codex-startup-delivery'
 import type { SleepingAgentLaunchConfig } from '../shared/agent-session-resume'
 import type { MobileRelayStatus } from '../shared/mobile-relay-status'
 import type { MobilePairingConnectionMode } from '../shared/mobile-pairing-connection-mode'
+import type { PluginPanelActionOutcome } from '../shared/plugins/plugin-panel-bridge'
 import type {
   BaseRefSearchResult,
   BaseRefDefaultResult,
@@ -514,7 +515,13 @@ const api = {
       pluginId: string
       method: string
       args?: unknown
-    }): Promise<unknown> => ipcRenderer.invoke('plugins:invokeCodeProvider', args)
+    }): Promise<unknown> => ipcRenderer.invoke('plugins:invokeCodeProvider', args),
+    panelAction: (args: {
+      pluginId: string
+      panelId?: string
+      action: string
+      params?: unknown
+    }): Promise<PluginPanelActionOutcome> => ipcRenderer.invoke('plugins:panelAction', args)
   } satisfies PreloadApi['plugins'],
 
   repos: {

@@ -1,0 +1,145 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      /* Panel UI runs in an opaque-origin sandboxed iframe: self-contained
+         styles only, no access to the host app's DOM or tokens. */
+      body {
+        margin: 0;
+        padding: 14px;
+        font-family: system-ui, sans-serif;
+        font-size: 13px;
+        color: #ddd;
+        background: transparent;
+        user-select: none;
+      }
+      h1 {
+        font-size: 14px;
+        margin: 0 0 2px;
+      }
+      .hint {
+        color: #999;
+        margin: 0 0 12px;
+      }
+      .gate {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        max-width: 240px;
+      }
+      .gear {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        padding: 10px 4px;
+        border: 1px solid #555;
+        border-radius: 8px;
+        background: #2a2a2a;
+        color: #ddd;
+        cursor: pointer;
+        font: inherit;
+      }
+      .gear:hover {
+        border-color: #888;
+      }
+      .gear.engaged {
+        border-color: #7bd88f;
+        background: #23372a;
+      }
+      .gear .num {
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .gear .label {
+        font-size: 10px;
+        color: #aaa;
+      }
+      .status {
+        margin-top: 12px;
+        min-height: 1.4em;
+        color: #999;
+      }
+      .status.err {
+        color: #e07a7a;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ModelShift</h1>
+    <p class="hint">Shift the Claude Code model in the active terminal.</p>
+    <div class="gate" id="gate"></div>
+    <p class="status" id="status"></p>
+    <script>
+      'use strict'
+      // Gear order mimics an H-pattern shifter: R(everse to default), then 1-5.
+      var GEARS = [
+        { gear: 'R', label: 'Default', model: 'default' },
+        { gear: '1', label: 'Haiku', model: 'haiku' },
+        { gear: '2', label: 'Sonnet', model: 'sonnet' },
+        { gear: '3', label: 'Sonnet 1M', model: 'sonnet[1m]' },
+        { gear: '4', label: 'Opus', model: 'opus' },
+        { gear: '5', label: 'Fable', model: 'fable' }
+      ]
+      var statusEl = document.getElementById('status')
+      var gateEl = document.getElementById('gate')
+      var seq = 0
+      var pending = {}
+
+      GEARS.forEach(function (entry) {
+        var button = document.createElement('button')
+        button.className = 'gear'
+        button.innerHTML =
+          '<span class="num">' +
+          entry.gear +
+          '</span><span class="label">' +
+          entry.label +
+          '</span>'
+        button.addEventListener('click', function () {
+          shift(entry, button)
+        })
+        gateEl.appendChild(button)
+      })
+
+      function shift(entry, button) {
+        var requestId = 'shift-' + ++seq
+        pending[requestId] = { entry: entry, button: button }
+        statusEl.className = 'status'
+        statusEl.textContent = 'Shifting to ' + entry.label + '…'
+        // The panel frame is an opaque origin, so '*' is the only usable
+        // targetOrigin; the host verifies the sending window instead.
+        window.parent.postMessage(
+          {
+            type: 'orca-panel-action',
+            requestId: requestId,
+            action: 'terminal.sendText',
+            params: { text: '/model ' + entry.model, enter: true }
+          },
+          '*'
+        )
+      }
+
+      window.addEventListener('message', function (event) {
+        var data = event.data
+        if (!data || data.type !== 'orca-panel-action-result') return
+        var request = pending[data.requestId]
+        if (!request) return
+        delete pending[data.requestId]
+        if (data.ok && data.value && data.value.accepted) {
+          statusEl.className = 'status'
+          statusEl.textContent = 'Engaged ' + request.entry.label
+          Array.prototype.forEach.call(document.querySelectorAll('.gear'), function (el) {
+            el.classList.remove('engaged')
+          })
+          request.button.classList.add('engaged')
+        } else {
+          statusEl.className = 'status err'
+          statusEl.textContent =
+            'Shift failed: ' +
+            (data.error || (data.ok ? 'terminal rejected input' : 'unknown error'))
+        }
+      })
+    </script>
+  </body>
+</html>

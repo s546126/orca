@@ -6,9 +6,21 @@ import {
   CODE_PROVIDER_EXTENSION_POINT,
   normalizeDisabledPlugins
 } from '../../shared/plugins/plugin-extension-registry'
+import {
+  panelActionCallSchema,
+  type PluginPanelActionOutcome
+} from '../../shared/plugins/plugin-panel-bridge'
+import {
+  executePluginPanelAction,
+  type PanelActionTerminalRuntime
+} from '../plugins/plugin-panel-actions'
 import type { PluginService } from '../plugins/plugin-service'
 
-export function registerPluginHandlers(store: Store, pluginService: PluginService): void {
+export function registerPluginHandlers(
+  store: Store,
+  pluginService: PluginService,
+  runtime: PanelActionTerminalRuntime | null
+): void {
   ipcMain.handle('plugins:list', () => {
     return pluginService.listPlugins()
   })
@@ -49,6 +61,24 @@ export function registerPluginHandlers(store: Store, pluginService: PluginServic
       } catch {
         return null
       }
+    }
+  )
+
+  // Panel-originated actions relayed by PluginPanel's postMessage bridge.
+  // Permission enforcement happens here (main), never in the renderer.
+  ipcMain.handle(
+    'plugins:panelAction',
+    async (_event, args: unknown): Promise<PluginPanelActionOutcome> => {
+      const call = panelActionCallSchema.safeParse(args)
+      if (!call.success) {
+        return { ok: false, code: 'invalid_request', error: 'malformed panel action call' }
+      }
+      return executePluginPanelAction({
+        action: call.data.action,
+        params: call.data.params,
+        grantedPermissions: pluginService.getGrantedPermissions(call.data.pluginId),
+        runtime
+      })
     }
   )
 

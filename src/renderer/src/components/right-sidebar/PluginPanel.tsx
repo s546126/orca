@@ -1,5 +1,9 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { isPluginPanelTabKey } from '../../../../shared/plugins/plugin-manifest'
+import {
+  callPanelActionViaPreload,
+  createPanelBridgeMessageHandler
+} from './plugin-panel-bridge-host'
 import { usePluginPanels } from '@/store/plugin-panels'
 import { translate } from '@/i18n/i18n'
 
@@ -26,9 +30,26 @@ function PluginPanel({ tabKey }: PluginPanelProps): React.JSX.Element {
     ? (panels.find((entry) => entry.tabKey === tabKey) ?? null)
     : null
   const [entryState, setEntryState] = useState<PluginPanelEntryState>({ status: 'loading' })
+  const iframeRef = useRef<HTMLIFrameElement | null>(null)
 
   const pluginId = panel?.pluginId ?? null
   const panelId = panel?.id ?? null
+
+  useEffect(() => {
+    if (!pluginId || !panelId || entryState.status !== 'ready') {
+      return
+    }
+    const handler = createPanelBridgeMessageHandler({
+      pluginId,
+      panelId,
+      getPanelWindow: () => iframeRef.current?.contentWindow ?? null,
+      callPanelAction: callPanelActionViaPreload
+    })
+    window.addEventListener('message', handler)
+    return () => {
+      window.removeEventListener('message', handler)
+    }
+  }, [pluginId, panelId, entryState.status])
 
   useEffect(() => {
     if (!pluginId || !panelId) {
@@ -92,6 +113,7 @@ function PluginPanel({ tabKey }: PluginPanelProps): React.JSX.Element {
 
   return (
     <iframe
+      ref={iframeRef}
       // SECURITY: never add allow-same-origin — the srcdoc frame must stay an
       // opaque origin so plugin UI cannot reach the app DOM, storage, or IPC.
       sandbox="allow-scripts"

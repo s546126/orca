@@ -1,0 +1,13 @@
+{
+  "id": "model-shift",
+  "name": "ModelShift",
+  "version": "1.0.0",
+  "description": "Gear-shifter panel that switches the Claude Code model in the active terminal.",
+  "engines": { "orca": ">=1.4.0" },
+  "contributes": {
+    "panels": [
+      { "id": "gear-shifter", "title": "ModelShift", "icon": "gauge", "entry": "panel.html" }
+    ],
+    "permissions": ["terminal.sendText"]
+  }
+}

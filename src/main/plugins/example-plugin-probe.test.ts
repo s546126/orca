@@ -7,6 +7,7 @@ import type { PluginHostChildMessage } from '../../shared/plugins/plugin-host-pr
 import { createPluginHostRuntime } from './plugin-host-runtime'
 
 const EXAMPLE_ROOT = resolve(__dirname, '../../../examples/plugins/hello-orca')
+const MODEL_SHIFT_ROOT = resolve(__dirname, '../../../examples/plugins/model-shift')
 
 describe('shipped hello-orca example plugin', () => {
   it('activates through the real host runtime and answers searchSymbols', async () => {
@@ -15,7 +16,9 @@ describe('shipped hello-orca example plugin', () => {
     )
     const parsed = parsePluginManifest(JSON.parse(manifestRaw))
     expect(parsed.ok).toBe(true)
-    if (!parsed.ok) return
+    if (!parsed.ok) {
+      return
+    }
 
     const messages: PluginHostChildMessage[] = []
     const runtime = createPluginHostRuntime({ send: (m) => messages.push(m) })
@@ -27,7 +30,9 @@ describe('shipped hello-orca example plugin', () => {
     })
     const ready = messages.find((m) => m.type === 'ready')
     expect(ready).toBeTruthy()
-    if (ready?.type !== 'ready') return
+    if (ready?.type !== 'ready') {
+      return
+    }
     expect(ready.registrations[0]).toMatchObject({
       extensionPoint: 'codeProvider',
       providerId: 'todo-scanner',
@@ -46,9 +51,31 @@ describe('shipped hello-orca example plugin', () => {
     })
     const result = messages.find((m) => m.type === 'result')
     expect(result).toMatchObject({ ok: true })
-    if (result?.type !== 'result') return
+    if (result?.type !== 'result') {
+      return
+    }
     expect(result.value).toEqual([
       { name: 'probe the plugin system', kind: 'todo', file: 'sample.ts', line: 1 }
     ])
+  })
+})
+
+describe('shipped model-shift example plugin', () => {
+  it('has a valid manifest granting only terminal.sendText to its panel', async () => {
+    const manifestRaw = await import('node:fs/promises').then((fs) =>
+      fs.readFile(join(MODEL_SHIFT_ROOT, 'orca-plugin.json'), 'utf8')
+    )
+    const parsed = parsePluginManifest(JSON.parse(manifestRaw))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) {
+      return
+    }
+    expect(parsed.manifest.id).toBe('model-shift')
+    expect(parsed.manifest.contributes.permissions).toEqual(['terminal.sendText'])
+    expect(parsed.manifest.contributes.panels).toEqual([
+      { id: 'gear-shifter', title: 'ModelShift', icon: 'gauge', entry: 'panel.html' }
+    ])
+    // Panel-only plugin: no host process should ever be spawned for it.
+    expect(parsed.manifest.main).toBeUndefined()
   })
 })

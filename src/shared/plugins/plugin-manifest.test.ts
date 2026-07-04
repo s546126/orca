@@ -21,7 +21,9 @@ describe('parsePluginManifest', () => {
   it('accepts a valid manifest and applies defaults', () => {
     const result = parsePluginManifest(VALID)
     expect(result.ok).toBe(true)
-    if (!result.ok) return
+    if (!result.ok) {
+      return
+    }
     expect(result.manifest.contributes.commands).toEqual([])
     expect(result.manifest.contributes.codeProviders[0].languages).toEqual(['*'])
   })
@@ -29,7 +31,9 @@ describe('parsePluginManifest', () => {
   it('rejects non-kebab-case ids', () => {
     const result = parsePluginManifest({ ...VALID, id: 'Hello_Orca' })
     expect(result.ok).toBe(false)
-    if (result.ok) return
+    if (result.ok) {
+      return
+    }
     expect(result.error).toContain('id')
   })
 
@@ -46,6 +50,35 @@ describe('parsePluginManifest', () => {
   it('rejects non-semver versions and missing engines', () => {
     expect(parsePluginManifest({ ...VALID, version: 'v1' }).ok).toBe(false)
     expect(parsePluginManifest({ ...VALID, engines: undefined }).ok).toBe(false)
+  })
+
+  it('defaults contributes.permissions to an empty grant', () => {
+    const result = parsePluginManifest(VALID)
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      return
+    }
+    expect(result.manifest.contributes.permissions).toEqual([])
+  })
+
+  it('accepts known permissions and rejects unknown ones', () => {
+    const granted = parsePluginManifest({
+      ...VALID,
+      contributes: { ...VALID.contributes, permissions: ['terminal.sendText'] }
+    })
+    expect(granted.ok).toBe(true)
+    if (granted.ok) {
+      expect(granted.manifest.contributes.permissions).toEqual(['terminal.sendText'])
+    }
+    const unknown = parsePluginManifest({
+      ...VALID,
+      contributes: { ...VALID.contributes, permissions: ['fs.readFile'] }
+    })
+    expect(unknown.ok).toBe(false)
+    if (unknown.ok) {
+      return
+    }
+    expect(unknown.error).toContain('permissions')
   })
 })
 

@@ -167,7 +167,7 @@ export function registerCoreHandlers(
     registerKeybindingHandlers(keybindings)
   }
   if (pluginService) {
-    registerPluginHandlers(store, pluginService)
+    registerPluginHandlers(store, pluginService, runtime)
   }
   registerTelemetryHandlers(store)
   registerOrcaProfileHandlers(store, {

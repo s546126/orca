@@ -170,6 +170,25 @@ describe('PluginService', () => {
     expect(service.listPlugins()[0]!).toMatchObject({ status: 'error', error: 'spawn failed' })
   })
 
+  it('grants manifest permissions only while the plugin is valid and enabled', async () => {
+    await writePlugin(
+      'alpha',
+      manifestJson('alpha', { contributes: { permissions: ['terminal.sendText'] } })
+    )
+    await writePlugin('beta')
+    await writePlugin('broken', '{ not json')
+    const service = createService()
+    await service.initialize()
+
+    expect(service.getGrantedPermissions('alpha')).toEqual(['terminal.sendText'])
+    expect(service.getGrantedPermissions('beta')).toEqual([])
+    expect(service.getGrantedPermissions('broken')).toBeNull()
+    expect(service.getGrantedPermissions('missing')).toBeNull()
+
+    disabledPlugins = ['alpha']
+    expect(service.getGrantedPermissions('alpha')).toBeNull()
+  })
+
   it('resolves panel entry paths and returns null for unknown ids', async () => {
     await writePlugin('alpha')
     const service = createService()

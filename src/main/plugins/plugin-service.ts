@@ -139,6 +139,16 @@ export class PluginService {
     return this.registry
   }
 
+  /** Manifest permissions for an *active* plugin; `null` when the plugin is
+   *  unknown, invalid, or disabled so callers deny uniformly. */
+  getGrantedPermissions(pluginId: string): string[] | null {
+    const plugin = this.findValidPlugin(pluginId)
+    if (!plugin || !isPluginEnabled(pluginId, this.options.getDisabledPlugins())) {
+      return null
+    }
+    return plugin.manifest.contributes.permissions
+  }
+
   getPanelEntryPath(pluginId: string, panelId: string): string | null {
     const plugin = this.findValidPlugin(pluginId)
     const panel = plugin?.manifest.contributes.panels.find((entry) => entry.id === panelId)

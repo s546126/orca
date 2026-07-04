@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { PLUGIN_PANEL_ACTIONS } from './plugin-panel-bridge'
 
 /**
  * Plugin manifest (`orca-plugin.json` at the plugin root). The `contributes`
@@ -59,9 +60,13 @@ export const pluginManifestSchema = z.object({
     .object({
       codeProviders: z.array(codeProviderContributionSchema).default([]),
       panels: z.array(panelContributionSchema).default([]),
-      commands: z.array(commandContributionSchema).default([])
+      commands: z.array(commandContributionSchema).default([]),
+      // Why: permission ids are a closed enum so a typo (or a permission from
+      // a newer Orca) fails manifest validation instead of silently granting
+      // nothing at action time.
+      permissions: z.array(z.enum(PLUGIN_PANEL_ACTIONS)).default([])
     })
-    .default({ codeProviders: [], panels: [], commands: [] })
+    .default({ codeProviders: [], panels: [], commands: [], permissions: [] })
 })
 
 export type PluginManifest = z.infer<typeof pluginManifestSchema>
