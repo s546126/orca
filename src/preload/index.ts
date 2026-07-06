@@ -513,8 +513,9 @@ const api = {
     }): Promise<{ html: string } | null> => ipcRenderer.invoke('plugins:readPanelEntry', args),
     invokeCodeProvider: (args: {
       pluginId: string
+      providerId?: string
       method: string
-      args?: unknown
+      args?: unknown[]
     }): Promise<unknown> => ipcRenderer.invoke('plugins:invokeCodeProvider', args),
     panelAction: (args: {
       pluginId: string

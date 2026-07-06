@@ -173,8 +173,10 @@ import { AgentAwakeService } from './agent-awake-service'
 import { registerSystemResumeBroadcast } from './system-resume-broadcast'
 import { PluginService } from './plugins/plugin-service'
 import { resolvePluginHostEntryPath } from './plugins/plugin-host-process'
+import { applyPluginEnablement } from './plugins/plugin-enablement'
+import { promptForPendingPlugins } from './plugins/plugin-first-run-consent'
 import { setPluginServiceForRpc } from './runtime/rpc/methods/plugins'
-import { normalizeDisabledPlugins } from '../shared/plugins/plugin-extension-registry'
+import { normalizePluginIdList } from '../shared/plugins/plugin-extension-registry'
 import {
   recordCoalescedCrashBreadcrumb,
   recordCrashBreadcrumb
@@ -1907,17 +1909,34 @@ app.whenReady().then(async () => {
   })
   pluginService = new PluginService({
     userDataPath: app.getPath('userData'),
-    getDisabledPlugins: () => normalizeDisabledPlugins(store?.getSettings().disabledPlugins),
+    getDisabledPlugins: () => normalizePluginIdList(store?.getSettings().disabledPlugins),
+    getApprovedPlugins: () => normalizePluginIdList(store?.getSettings().approvedPlugins),
     hostEntryPath: resolvePluginHostEntryPath(app.getAppPath(), app.isPackaged)
   })
+  const applyEnablement = (pluginId: string, enabled: boolean) =>
+    applyPluginEnablement({ store: store!, pluginService: pluginService!, pluginId, enabled })
   // Why: headless `orca serve` clients reach plugins through the runtime RPC
   // methods, which resolve the service via this module-level setter.
-  setPluginServiceForRpc(pluginService)
+  setPluginServiceForRpc(pluginService, applyEnablement)
   // Why: plugin host startup forks child processes; it must not block window
   // startup, and a broken plugin surfaces via listPlugins() status instead.
-  void pluginService.initialize().catch((error) => {
-    console.warn('[plugins] failed to initialize plugin service:', error)
-  })
+  void pluginService
+    .initialize()
+    .then(() => {
+      // Why: serve mode has no display for a consent dialog; pending plugins
+      // stay inert there until an explicit plugins.setEnabled RPC call.
+      if (isServeMode) {
+        return
+      }
+      return promptForPendingPlugins({
+        pluginService: pluginService!,
+        showMessageBox: (options) => dialog.showMessageBox(options),
+        applyEnablement
+      })
+    })
+    .catch((error) => {
+      console.warn('[plugins] failed to initialize plugin service:', error)
+    })
   starNag = new StarNagService(store, stats)
   starNag.start()
   starNag.registerIpcHandlers()

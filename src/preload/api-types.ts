@@ -952,7 +952,8 @@ export type PluginHostPanel = {
   tabKey: `plugin:${string}`
 }
 
-export type PluginHostStatus = 'active' | 'disabled' | 'error'
+/** `pending` = discovered but not yet user-approved; the plugin never ran. */
+export type PluginHostStatus = 'active' | 'pending' | 'disabled' | 'error'
 
 export type PluginHostListEntry = {
   pluginId: string
@@ -3169,11 +3170,16 @@ export type PreloadApi = {
     setEnabled: (args: { pluginId: string; enabled: boolean }) => Promise<PluginHostListEntry[]>
     /** Returns the panel's HTML entry contents, or null when the plugin or
      *  panel is missing/disabled. Rendered only inside a sandboxed iframe. */
-    readPanelEntry: (args: { pluginId: string; panelId: string }) => Promise<{ html: string } | null>
+    readPanelEntry: (args: {
+      pluginId: string
+      panelId: string
+    }) => Promise<{ html: string } | null>
     invokeCodeProvider: (args: {
       pluginId: string
+      /** Required to reach the second+ provider of a multi-provider plugin. */
+      providerId?: string
       method: string
-      args?: unknown
+      args?: unknown[]
     }) => Promise<unknown>
     /** Relays a sandboxed panel's bridge request to main, which enforces the
      *  plugin's manifest permissions before executing. */

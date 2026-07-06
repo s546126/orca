@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  isPluginPanelTabKey,
-  parsePluginManifest,
-  pluginPanelTabKey
-} from './plugin-manifest'
+import { isPluginPanelTabKey, parsePluginManifest, pluginPanelTabKey } from './plugin-manifest'
 
 const VALID = {
   id: 'hello-orca',
@@ -64,11 +60,18 @@ describe('parsePluginManifest', () => {
   it('accepts known permissions and rejects unknown ones', () => {
     const granted = parsePluginManifest({
       ...VALID,
-      contributes: { ...VALID.contributes, permissions: ['terminal.sendText'] }
+      contributes: {
+        ...VALID.contributes,
+        permissions: ['terminal.sendText', 'workspace.readContext', 'notifications.show']
+      }
     })
     expect(granted.ok).toBe(true)
     if (granted.ok) {
-      expect(granted.manifest.contributes.permissions).toEqual(['terminal.sendText'])
+      expect(granted.manifest.contributes.permissions).toEqual([
+        'terminal.sendText',
+        'workspace.readContext',
+        'notifications.show'
+      ])
     }
     const unknown = parsePluginManifest({
       ...VALID,

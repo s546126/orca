@@ -2768,6 +2768,10 @@ export type GlobalSettings = {
   /** Plugin ids the user disabled. Discovered plugins stay listed but are not
    *  activated, mirroring the disabledTuiAgents model. */
   disabledPlugins: string[]
+  /** Plugin ids the user explicitly approved. A discovered plugin that is in
+   *  neither list is pending: dropping a folder into the plugins directory
+   *  must never execute code without consent. */
+  approvedPlugins: string[]
   /** One-shot guard: start Claude Agent Teams hidden for existing profiles without overriding later opt-ins. */
   claudeAgentTeamsDefaultDisabledMigrated?: boolean
   /** Why: worktree deletion is destructive (rm -rf of the working dir), so confirm by default. */

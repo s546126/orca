@@ -10,7 +10,11 @@ import { z } from 'zod'
 
 /** Panel actions a plugin may call; each doubles as the manifest permission
  *  id (`contributes.permissions`) that must grant it. */
-export const PLUGIN_PANEL_ACTIONS = ['terminal.sendText'] as const
+export const PLUGIN_PANEL_ACTIONS = [
+  'terminal.sendText',
+  'workspace.readContext',
+  'notifications.show'
+] as const
 
 export type PluginPanelAction = (typeof PLUGIN_PANEL_ACTIONS)[number]
 
@@ -26,8 +30,19 @@ export const terminalSendTextParamsSchema = z.object({
   enter: z.boolean().default(false)
 })
 
+/** No params; strict so a panel passing junk gets invalid_params, not
+ *  silently ignored input. */
+export const workspaceReadContextParamsSchema = z.object({}).strict().optional()
+
+export const notificationsShowParamsSchema = z.object({
+  title: z.string().min(1).max(120),
+  body: z.string().max(1000).optional()
+})
+
 export const PANEL_ACTION_PARAM_SCHEMAS: Record<PluginPanelAction, z.ZodTypeAny> = {
-  'terminal.sendText': terminalSendTextParamsSchema
+  'terminal.sendText': terminalSendTextParamsSchema,
+  'workspace.readContext': workspaceReadContextParamsSchema,
+  'notifications.show': notificationsShowParamsSchema
 }
 
 export const panelActionRequestSchema = z.object({

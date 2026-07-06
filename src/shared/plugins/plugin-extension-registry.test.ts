@@ -4,8 +4,9 @@ import { supportsCodeProviderMethod } from './code-provider'
 import {
   CODE_PROVIDER_EXTENSION_POINT,
   createPluginExtensionRegistry,
+  getPluginActivationState,
   isPluginEnabled,
-  normalizeDisabledPlugins
+  normalizePluginIdList
 } from './plugin-extension-registry'
 
 const provider = (id: string): CodeProvider => ({
@@ -28,6 +29,18 @@ describe('createPluginExtensionRegistry', () => {
     unregister()
     expect(registry.resolve(CODE_PROVIDER_EXTENSION_POINT, 'plugin-a')).toBeNull()
     expect(registry.resolveAll(CODE_PROVIDER_EXTENSION_POINT)).toHaveLength(1)
+  })
+
+  it('addresses each provider of a multi-provider plugin by providerId', () => {
+    const registry = createPluginExtensionRegistry()
+    registry.register(CODE_PROVIDER_EXTENSION_POINT, 'plugin-a', provider('first'), 'first')
+    registry.register(CODE_PROVIDER_EXTENSION_POINT, 'plugin-a', provider('second'), 'second')
+
+    expect(registry.resolve(CODE_PROVIDER_EXTENSION_POINT, 'plugin-a', 'second')?.id).toBe('second')
+    expect(registry.resolve(CODE_PROVIDER_EXTENSION_POINT, 'plugin-a', 'first')?.id).toBe('first')
+    // Without a providerId the first registration wins (single-provider path).
+    expect(registry.resolve(CODE_PROVIDER_EXTENSION_POINT, 'plugin-a')?.id).toBe('first')
+    expect(registry.resolve(CODE_PROVIDER_EXTENSION_POINT, 'plugin-a', 'ghost')).toBeNull()
   })
 
   it('clears every registration owned by a plugin', () => {
@@ -59,7 +72,17 @@ describe('plugin enablement', () => {
   })
 
   it('normalizes persisted disabled lists defensively', () => {
-    expect(normalizeDisabledPlugins(['a', 'a', '', 42, null, 'b'])).toEqual(['a', 'b'])
-    expect(normalizeDisabledPlugins('not-an-array')).toEqual([])
+    expect(normalizePluginIdList(['a', 'a', '', 42, null, 'b'])).toEqual(['a', 'b'])
+    expect(normalizePluginIdList('not-an-array')).toEqual([])
+  })
+
+  it('derives the consent state: disabled beats approved, unknown is pending', () => {
+    const lists = { approvedPlugins: ['a'], disabledPlugins: ['b', 'a'] }
+    expect(getPluginActivationState('a', lists)).toBe('disabled')
+    expect(getPluginActivationState('b', lists)).toBe('disabled')
+    expect(getPluginActivationState('new', lists)).toBe('pending')
+    expect(getPluginActivationState('a', { approvedPlugins: ['a'], disabledPlugins: [] })).toBe(
+      'approved'
+    )
   })
 })

@@ -3,7 +3,8 @@ import { pluginPanelTabKey } from '../../shared/plugins/plugin-manifest'
 import {
   CODE_PROVIDER_EXTENSION_POINT,
   createPluginExtensionRegistry,
-  isPluginEnabled,
+  getPluginActivationState,
+  type PluginActivationState,
   type PluginExtensionRegistry
 } from '../../shared/plugins/plugin-extension-registry'
 import {
@@ -30,7 +31,8 @@ export type PluginListEntry = {
   pluginId: string
   name: string
   version: string
-  status: 'active' | 'disabled' | 'error'
+  /** `pending` = discovered but never approved by the user; nothing ran. */
+  status: 'active' | 'pending' | 'disabled' | 'error'
   error?: string
   panels: PluginPanelListEntry[]
 }
@@ -45,6 +47,8 @@ export type PluginHostFactory = (options: {
 export type PluginServiceOptions = {
   userDataPath: string
   getDisabledPlugins: () => string[]
+  /** Plugin ids the user consented to. Anything else stays pending/inert. */
+  getApprovedPlugins: () => string[]
   /** Absolute path to the compiled plugin-host-entry.js. Unused with a custom hostFactory. */
   hostEntryPath?: string
   hostFactory?: PluginHostFactory
@@ -57,6 +61,7 @@ export class PluginService {
   private readonly hosts = new Map<string, PluginHostHandle>()
   private readonly runtimeErrors = new Map<string, string>()
   private discovered: DiscoveredPlugin[] = []
+  private initPromise: Promise<void> | null = null
   private disposed = false
 
   constructor(options: PluginServiceOptions) {
@@ -72,18 +77,43 @@ export class PluginService {
   }
 
   async initialize(): Promise<void> {
+    this.initPromise ??= this.runInitialize()
+    return this.initPromise
+  }
+
+  /** Resolves once startup discovery settled (even if it failed). IPC/RPC
+   *  handlers await this so an early plugins:list can't observe the empty
+   *  pre-discovery state and leave the sidebar permanently pluginless. */
+  async whenReady(): Promise<void> {
+    try {
+      await (this.initPromise ?? Promise.resolve())
+    } catch {
+      // initialize() failures are logged by its caller; readiness only means
+      // discovery is no longer in flight.
+    }
+  }
+
+  private async runInitialize(): Promise<void> {
     this.discovered = await discoverPlugins(getUserPluginsDir(this.options.userDataPath))
-    const disabledPlugins = this.options.getDisabledPlugins()
     for (const plugin of this.discovered) {
-      if (isInvalidDiscoveredPlugin(plugin) || !isPluginEnabled(plugin.pluginId, disabledPlugins)) {
+      if (isInvalidDiscoveredPlugin(plugin)) {
+        continue
+      }
+      if (this.getActivationState(plugin.pluginId) !== 'approved') {
         continue
       }
       await this.activatePlugin(plugin)
     }
   }
 
+  private getActivationState(pluginId: string): PluginActivationState {
+    return getPluginActivationState(pluginId, {
+      approvedPlugins: this.options.getApprovedPlugins(),
+      disabledPlugins: this.options.getDisabledPlugins()
+    })
+  }
+
   listPlugins(): PluginListEntry[] {
-    const disabledPlugins = this.options.getDisabledPlugins()
     return this.discovered.map((plugin) => {
       if (isInvalidDiscoveredPlugin(plugin)) {
         // The directory name stands in for the id/name when the manifest is
@@ -99,11 +129,15 @@ export class PluginService {
         }
       }
       const runtimeError = this.runtimeErrors.get(plugin.pluginId)
-      const status = !isPluginEnabled(plugin.pluginId, disabledPlugins)
-        ? ('disabled' as const)
-        : runtimeError
-          ? ('error' as const)
-          : ('active' as const)
+      const activation = this.getActivationState(plugin.pluginId)
+      const status =
+        activation !== 'approved'
+          ? activation === 'disabled'
+            ? ('disabled' as const)
+            : ('pending' as const)
+          : runtimeError
+            ? ('error' as const)
+            : ('active' as const)
       return {
         pluginId: plugin.pluginId,
         name: plugin.manifest.name,
@@ -127,6 +161,11 @@ export class PluginService {
       return
     }
     if (enabled) {
+      // Consent invariant: callers persist approval before enabling; refuse to
+      // start a host for a plugin the user never approved.
+      if (this.getActivationState(pluginId) !== 'approved') {
+        return
+      }
       this.runtimeErrors.delete(pluginId)
       await this.activatePlugin(plugin)
     } else {
@@ -139,11 +178,11 @@ export class PluginService {
     return this.registry
   }
 
-  /** Manifest permissions for an *active* plugin; `null` when the plugin is
-   *  unknown, invalid, or disabled so callers deny uniformly. */
+  /** Manifest permissions for an *approved* plugin; `null` when the plugin is
+   *  unknown, invalid, pending, or disabled so callers deny uniformly. */
   getGrantedPermissions(pluginId: string): string[] | null {
     const plugin = this.findValidPlugin(pluginId)
-    if (!plugin || !isPluginEnabled(pluginId, this.options.getDisabledPlugins())) {
+    if (!plugin || this.getActivationState(pluginId) !== 'approved') {
       return null
     }
     return plugin.manifest.contributes.permissions
@@ -152,7 +191,7 @@ export class PluginService {
   getPanelEntryPath(pluginId: string, panelId: string): string | null {
     const plugin = this.findValidPlugin(pluginId)
     const panel = plugin?.manifest.contributes.panels.find((entry) => entry.id === panelId)
-    if (!plugin || !panel) {
+    if (!plugin || !panel || this.getActivationState(pluginId) !== 'approved') {
       return null
     }
     const rootDir = resolve(plugin.rootDir)
@@ -209,7 +248,8 @@ export class PluginService {
         this.registry.register(
           CODE_PROVIDER_EXTENSION_POINT,
           pluginId,
-          createCodeProviderProxy(host, registration)
+          createCodeProviderProxy(host, registration),
+          registration.providerId
         )
       }
     }

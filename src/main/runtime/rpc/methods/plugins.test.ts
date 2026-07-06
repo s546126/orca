@@ -36,7 +36,19 @@ function makeRuntime(): { runtime: OrcaRuntimeService; sendTerminal: ReturnType<
 }
 
 function stubPluginService(permissions: string[] | null): PluginService {
-  return { getGrantedPermissions: () => permissions } as unknown as PluginService
+  return {
+    getGrantedPermissions: () => permissions,
+    whenReady: async () => undefined,
+    listPlugins: () => []
+  } as unknown as PluginService
+}
+
+function getMethod(name: string): RpcMethod {
+  const method = PLUGIN_METHODS.find((entry) => entry.name === name)
+  if (!method) {
+    throw new Error(`${name} method is not registered`)
+  }
+  return method
 }
 
 afterEach(() => {
@@ -99,5 +111,39 @@ describe('plugins.panelAction RPC method', () => {
         )
       )
     ).rejects.toThrow('Plugin service is not available')
+  })
+})
+
+describe('plugins.setEnabled RPC method', () => {
+  it('routes through the injected enablement closure (headless consent path)', async () => {
+    const applyEnablement = vi.fn().mockResolvedValue([{ pluginId: 'model-shift' }])
+    setPluginServiceForRpc(stubPluginService([]), applyEnablement)
+    const { runtime } = makeRuntime()
+
+    const result = await callMethod(
+      getMethod('plugins.setEnabled'),
+      { pluginId: 'model-shift', enabled: true },
+      runtime
+    )
+
+    expect(applyEnablement).toHaveBeenCalledWith('model-shift', true)
+    expect(result).toEqual([{ pluginId: 'model-shift' }])
+  })
+
+  it('errors when enablement is not wired', async () => {
+    setPluginServiceForRpc(stubPluginService([]))
+    const { runtime } = makeRuntime()
+
+    await expect(
+      Promise.resolve(
+        callMethod(getMethod('plugins.setEnabled'), { pluginId: 'x', enabled: false }, runtime)
+      )
+    ).rejects.toThrow('Plugin enablement is not available')
+  })
+
+  it('rejects malformed params at the schema boundary', () => {
+    const method = getMethod('plugins.setEnabled')
+    expect(() => method.params?.parse({ pluginId: 'x' })).toThrow()
+    expect(() => method.params?.parse({ pluginId: '', enabled: true })).toThrow()
   })
 })

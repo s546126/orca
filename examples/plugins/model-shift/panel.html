@@ -68,7 +68,7 @@
   </head>
   <body>
     <h1>ModelShift</h1>
-    <p class="hint">Shift the Claude Code model in the active terminal.</p>
+    <p class="hint" id="hint">Shift the Claude Code model in the active terminal.</p>
     <div class="gate" id="gate"></div>
     <p class="status" id="status"></p>
     <script>
@@ -120,9 +120,22 @@
         )
       }
 
+      // workspace.readContext demo: show which worktree the shifter targets.
+      window.parent.postMessage(
+        { type: 'orca-panel-action', requestId: 'ctx-1', action: 'workspace.readContext' },
+        '*'
+      )
+
       window.addEventListener('message', function (event) {
         var data = event.data
         if (!data || data.type !== 'orca-panel-action-result') return
+        if (data.requestId === 'ctx-1') {
+          if (data.ok && data.value && data.value.branch) {
+            document.getElementById('hint').textContent =
+              'Shift the Claude Code model on ' + data.value.branch + '.'
+          }
+          return
+        }
         var request = pending[data.requestId]
         if (!request) return
         delete pending[data.requestId]

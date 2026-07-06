@@ -8,6 +8,6 @@
     "panels": [
       { "id": "gear-shifter", "title": "ModelShift", "icon": "gauge", "entry": "panel.html" }
     ],
-    "permissions": ["terminal.sendText"]
+    "permissions": ["terminal.sendText", "workspace.readContext"]
   }
 }

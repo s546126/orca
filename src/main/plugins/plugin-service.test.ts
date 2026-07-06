@@ -40,12 +40,16 @@ function manifestJson(id: string, overrides: Record<string, unknown> = {}): stri
 describe('PluginService', () => {
   let userDataPath: string
   let disabledPlugins: string[]
+  let approvedPlugins: string[]
   let hosts: Map<string, StubHost>
   let hostFactory: ReturnType<typeof vi.fn>
 
   beforeEach(async () => {
     userDataPath = await mkdtemp(join(tmpdir(), 'orca-plugin-service-'))
     disabledPlugins = []
+    // Tests exercise post-consent behavior by default; consent-specific tests
+    // clear this list.
+    approvedPlugins = ['alpha', 'beta', 'sneaky']
     hosts = new Map()
     hostFactory = vi.fn(async (options: { pluginId: string }) => {
       const host = createStubHost(`${options.pluginId}-provider`)
@@ -68,6 +72,7 @@ describe('PluginService', () => {
     return new PluginService({
       userDataPath,
       getDisabledPlugins: () => disabledPlugins,
+      getApprovedPlugins: () => approvedPlugins,
       hostFactory: hostFactory as unknown as PluginHostFactory
     })
   }
@@ -187,6 +192,44 @@ describe('PluginService', () => {
 
     disabledPlugins = ['alpha']
     expect(service.getGrantedPermissions('alpha')).toBeNull()
+
+    // Pending (never-approved) plugins are denied like disabled ones.
+    disabledPlugins = []
+    approvedPlugins = []
+    expect(service.getGrantedPermissions('alpha')).toBeNull()
+  })
+
+  it('keeps unapproved plugins pending and inert until consent', async () => {
+    await writePlugin('alpha')
+    approvedPlugins = []
+    const service = createService()
+    await service.initialize()
+
+    expect(hostFactory).not.toHaveBeenCalled()
+    expect(service.listPlugins()[0]!.status).toBe('pending')
+    expect(service.getGrantedPermissions('alpha')).toBeNull()
+    expect(service.getPanelEntryPath('alpha', 'panel')).toBeNull()
+
+    // setPluginEnabled(true) without persisted approval must refuse to start.
+    await service.setPluginEnabled('alpha', true)
+    expect(hostFactory).not.toHaveBeenCalled()
+    expect(service.listPlugins()[0]!.status).toBe('pending')
+
+    // Approval recorded (as applyPluginEnablement does) → enable works.
+    approvedPlugins = ['alpha']
+    await service.setPluginEnabled('alpha', true)
+    expect(hostFactory).toHaveBeenCalledTimes(1)
+    expect(service.listPlugins()[0]!.status).toBe('active')
+  })
+
+  it('whenReady resolves once startup discovery finished', async () => {
+    await writePlugin('alpha')
+    const service = createService()
+    // Simulates the composition root: fire-and-forget initialize, then an
+    // early plugins:list awaiting whenReady must see the discovered plugin.
+    void service.initialize()
+    await service.whenReady()
+    expect(service.listPlugins()).toHaveLength(1)
   })
 
   it('resolves panel entry paths and returns null for unknown ids', async () => {

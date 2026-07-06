@@ -61,7 +61,7 @@ describe('shipped hello-orca example plugin', () => {
 })
 
 describe('shipped model-shift example plugin', () => {
-  it('has a valid manifest granting only terminal.sendText to its panel', async () => {
+  it('has a valid manifest granting only panel-bridge permissions', async () => {
     const manifestRaw = await import('node:fs/promises').then((fs) =>
       fs.readFile(join(MODEL_SHIFT_ROOT, 'orca-plugin.json'), 'utf8')
     )
@@ -71,7 +71,10 @@ describe('shipped model-shift example plugin', () => {
       return
     }
     expect(parsed.manifest.id).toBe('model-shift')
-    expect(parsed.manifest.contributes.permissions).toEqual(['terminal.sendText'])
+    expect(parsed.manifest.contributes.permissions).toEqual([
+      'terminal.sendText',
+      'workspace.readContext'
+    ])
     expect(parsed.manifest.contributes.panels).toEqual([
       { id: 'gear-shifter', title: 'ModelShift', icon: 'gauge', entry: 'panel.html' }
     ])
