@@ -59,6 +59,7 @@ export class PluginService {
   private readonly hostFactory: PluginHostFactory
   private readonly registry: PluginExtensionRegistry = createPluginExtensionRegistry()
   private readonly hosts = new Map<string, PluginHostHandle>()
+  private readonly activating = new Map<string, Promise<void>>()
   private readonly runtimeErrors = new Map<string, string>()
   private discovered: DiscoveredPlugin[] = []
   private initPromise: Promise<void> | null = null
@@ -220,7 +221,21 @@ export class PluginService {
     return null
   }
 
-  private async activatePlugin(plugin: ValidDiscoveredPlugin): Promise<void> {
+  private activatePlugin(plugin: ValidDiscoveredPlugin): Promise<void> {
+    // Why: the hosts.has guard below runs before an await; two concurrent
+    // enables would otherwise both fork a host and orphan the untracked one.
+    const inFlight = this.activating.get(plugin.pluginId)
+    if (inFlight) {
+      return inFlight
+    }
+    const task = this.doActivatePlugin(plugin).finally(() => {
+      this.activating.delete(plugin.pluginId)
+    })
+    this.activating.set(plugin.pluginId, task)
+    return task
+  }
+
+  private async doActivatePlugin(plugin: ValidDiscoveredPlugin): Promise<void> {
     const { pluginId, rootDir, manifest } = plugin
     // Panels/commands need no host process; only `main` runs code.
     if (!manifest.main || this.hosts.has(pluginId) || this.disposed) {
@@ -265,6 +280,9 @@ export class PluginService {
   }
 
   private async deactivatePlugin(pluginId: string): Promise<void> {
+    // Why: a disable racing an in-flight enable must wait for the host to
+    // land in the map; otherwise it no-ops and leaves the host running.
+    await this.activating.get(pluginId)
     const host = this.hosts.get(pluginId)
     if (!host) {
       return

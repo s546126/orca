@@ -23,7 +23,10 @@ const relativeEntrySchema = z
   .min(1)
   .refine(
     (value) =>
-      !value.startsWith('/') && !value.startsWith('\\') && !/^[a-zA-Z]:/.test(value) && !value.split(/[\\/]/).includes('..'),
+      !value.startsWith('/') &&
+      !value.startsWith('\\') &&
+      !/^[a-zA-Z]:/.test(value) &&
+      !value.split(/[\\/]/).includes('..'),
     'must be a relative path inside the plugin directory'
   )
 
@@ -48,26 +51,39 @@ const commandContributionSchema = z.object({
   title: z.string().min(1)
 })
 
-export const pluginManifestSchema = z.object({
-  id: pluginIdSchema,
-  name: z.string().min(1),
-  version: z.string().regex(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/, 'must be semver'),
-  description: z.string().optional(),
-  engines: z.object({ orca: z.string().min(1) }),
-  /** Node entry executed inside the out-of-process plugin host. */
-  main: relativeEntrySchema.optional(),
-  contributes: z
-    .object({
-      codeProviders: z.array(codeProviderContributionSchema).default([]),
-      panels: z.array(panelContributionSchema).default([]),
-      commands: z.array(commandContributionSchema).default([]),
-      // Why: permission ids are a closed enum so a typo (or a permission from
-      // a newer Orca) fails manifest validation instead of silently granting
-      // nothing at action time.
-      permissions: z.array(z.enum(PLUGIN_PANEL_ACTIONS)).default([])
-    })
-    .default({ codeProviders: [], panels: [], commands: [], permissions: [] })
-})
+export const pluginManifestSchema = z
+  .object({
+    id: pluginIdSchema,
+    name: z.string().min(1),
+    version: z.string().regex(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/, 'must be semver'),
+    description: z.string().optional(),
+    engines: z.object({ orca: z.string().min(1) }),
+    /** Node entry executed inside the out-of-process plugin host. */
+    main: relativeEntrySchema.optional(),
+    contributes: z
+      .object({
+        codeProviders: z.array(codeProviderContributionSchema).default([]),
+        panels: z.array(panelContributionSchema).default([]),
+        commands: z.array(commandContributionSchema).default([]),
+        // Why: permission ids are a closed enum so a typo (or a permission from
+        // a newer Orca) fails manifest validation instead of silently granting
+        // nothing at action time.
+        permissions: z.array(z.enum(PLUGIN_PANEL_ACTIONS)).default([])
+      })
+      .default({ codeProviders: [], panels: [], commands: [], permissions: [] })
+  })
+  // Why: providers register from the main entry's activate() export, so a
+  // manifest declaring codeProviders without `main` is inert — fail at parse
+  // time instead of silently never registering.
+  .superRefine((manifest, ctx) => {
+    if (manifest.contributes.codeProviders.length > 0 && !manifest.main) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['main'],
+        message: 'required when contributes.codeProviders is non-empty'
+      })
+    }
+  })
 
 export type PluginManifest = z.infer<typeof pluginManifestSchema>
 export type PluginCodeProviderContribution = z.infer<typeof codeProviderContributionSchema>

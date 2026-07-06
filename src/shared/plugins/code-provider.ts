@@ -8,41 +8,53 @@
  * and the headless `orca serve` runtime.
  */
 
+import { z } from 'zod'
+
 export type CodeProviderContext = {
   /** Absolute root of the workspace/worktree the request is scoped to. */
   workspaceRoot: string
 }
 
-export type CodeSymbolKind =
-  | 'file'
-  | 'class'
-  | 'function'
-  | 'variable'
-  | 'constant'
-  | 'interface'
-  | 'todo'
-  | 'other'
+export const CODE_SYMBOL_KINDS = [
+  'file',
+  'class',
+  'function',
+  'variable',
+  'constant',
+  'interface',
+  'todo',
+  'other'
+] as const
 
-export type CodeSymbol = {
-  name: string
-  kind: CodeSymbolKind
+export type CodeSymbolKind = (typeof CODE_SYMBOL_KINDS)[number]
+
+// Why: method results cross the plugin-host fork boundary as structured-clone
+// data; proxies decode with these schemas so a malformed plugin response
+// fails loudly at the boundary instead of reaching consumers untyped.
+export const codeSymbolSchema = z.object({
+  name: z.string().min(1),
+  kind: z.enum(CODE_SYMBOL_KINDS),
   /** Path relative to the workspace root. */
-  file: string
+  file: z.string(),
   /** 1-based line number. */
-  line: number
-  detail?: string
-}
+  line: z.number(),
+  detail: z.string().optional()
+})
 
-export type CodeHover = {
+export const codeHoverSchema = z.object({
   /** Markdown contents shown in the hover widget. */
-  contents: string
-}
+  contents: z.string()
+})
 
-export type CodeLocation = {
-  file: string
-  line: number
-  column: number
-}
+export const codeLocationSchema = z.object({
+  file: z.string(),
+  line: z.number(),
+  column: z.number()
+})
+
+export type CodeSymbol = z.infer<typeof codeSymbolSchema>
+export type CodeHover = z.infer<typeof codeHoverSchema>
+export type CodeLocation = z.infer<typeof codeLocationSchema>
 
 /**
  * All methods are optional so a provider can implement exactly the surface it

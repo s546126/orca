@@ -135,7 +135,14 @@ export async function startPluginHost(options: StartPluginHostOptions): Promise<
         reject(error)
       }
     }
-    child.on('error', (error) => fail(new Error(`${tag} failed to start host: ${error.message}`)))
+    child.on('error', (error) => {
+      const failure = new Error(`${tag} host process error: ${error.message}`)
+      fail(failure)
+      // Why: fail() no-ops once ready; a post-ready error (e.g. IPC channel
+      // fault) must still reject in-flight invokes instead of letting each
+      // one sit until its own timeout.
+      rejectAllPending(failure.message)
+    })
     child.on('exit', (code) => fail(new Error(`${tag} host exited before ready (code ${code})`)))
     child.on('message', (raw) => {
       const parsed = pluginHostChildMessageSchema.safeParse(raw)

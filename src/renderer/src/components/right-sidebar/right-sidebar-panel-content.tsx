@@ -41,8 +41,13 @@ export function RightSidebarPanelContent({
           />
         )}
         {/* Plugin-contributed tabs route by key prefix; the panel itself
-            handles plugins that have since been uninstalled or disabled. */}
-        {isPluginPanelTabKey(effectiveTab) && <PluginPanel tabKey={effectiveTab} />}
+            handles plugins that have since been uninstalled or disabled.
+            Why key: switching plugin tabs must remount the sandboxed iframe —
+            a reused frame could keep posting messages while the bridge is
+            rebound under the next plugin's identity. */}
+        {isPluginPanelTabKey(effectiveTab) && (
+          <PluginPanel key={effectiveTab} tabKey={effectiveTab} />
+        )}
       </Suspense>
     </div>
   )

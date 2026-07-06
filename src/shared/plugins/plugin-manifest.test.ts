@@ -43,6 +43,23 @@ describe('parsePluginManifest', () => {
     }
   })
 
+  it('rejects codeProviders without a main entry (providers register from main)', () => {
+    const inert = parsePluginManifest({ ...VALID, main: undefined })
+    expect(inert.ok).toBe(false)
+    if (inert.ok) {
+      return
+    }
+    expect(inert.error).toContain('main')
+
+    // Panel-only manifests stay valid without main.
+    const panelOnly = parsePluginManifest({
+      ...VALID,
+      main: undefined,
+      contributes: { panels: VALID.contributes.panels }
+    })
+    expect(panelOnly.ok).toBe(true)
+  })
+
   it('rejects non-semver versions and missing engines', () => {
     expect(parsePluginManifest({ ...VALID, version: 'v1' }).ok).toBe(false)
     expect(parsePluginManifest({ ...VALID, engines: undefined }).ok).toBe(false)

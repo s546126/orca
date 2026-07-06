@@ -15,7 +15,9 @@ function createStubHost(providerId: string): StubHost {
   const exitCallbacks: ((code: number | null) => void)[] = []
   return {
     registrations: [{ extensionPoint: 'codeProvider', providerId, methods: ['searchSymbols'] }],
-    invoke: vi.fn(async (...args: unknown[]) => ({ echoed: args })),
+    // Why: the proxy decodes results against the CodeProvider schemas, so the
+    // stub must answer with a valid (empty) symbol list, not an echo object.
+    invoke: vi.fn(async () => []),
     dispose: vi.fn(async () => undefined),
     onExit: (callback) => exitCallbacks.push(callback),
     exitCallbacks
@@ -105,7 +107,14 @@ describe('PluginService', () => {
 
   it('does not activate disabled plugins or plugins without main', async () => {
     await writePlugin('alpha')
-    await writePlugin('beta', manifestJson('beta', { main: undefined }))
+    // Panel-only plugin: no main is only valid without codeProviders.
+    await writePlugin(
+      'beta',
+      manifestJson('beta', {
+        main: undefined,
+        contributes: { panels: [{ id: 'panel', title: 'Panel', entry: 'panel/index.html' }] }
+      })
+    )
     disabledPlugins = ['alpha']
     const service = createService()
     await service.initialize()
@@ -153,6 +162,64 @@ describe('PluginService', () => {
     expect(hostFactory).toHaveBeenCalledTimes(2)
     expect(service.getRegistry().resolve(CODE_PROVIDER_EXTENSION_POINT, 'alpha')).not.toBeNull()
     expect(service.listPlugins()[0]!.status).toBe('active')
+  })
+
+  it('de-dupes concurrent activations so only one host is forked', async () => {
+    await writePlugin('alpha')
+    disabledPlugins = ['alpha']
+    const service = createService()
+    await service.initialize()
+    disabledPlugins = []
+
+    let releaseFactory!: () => void
+    const gate = new Promise<void>((resolve) => {
+      releaseFactory = resolve
+    })
+    hostFactory.mockImplementation(async (options: { pluginId: string }) => {
+      await gate
+      const host = createStubHost(`${options.pluginId}-provider`)
+      hosts.set(options.pluginId, host)
+      return host
+    })
+
+    // Both enables pass the hosts.has guard before the factory resolves.
+    const first = service.setPluginEnabled('alpha', true)
+    const second = service.setPluginEnabled('alpha', true)
+    releaseFactory()
+    await Promise.all([first, second])
+
+    expect(hostFactory).toHaveBeenCalledTimes(1)
+    expect(service.listPlugins()[0]!.status).toBe('active')
+  })
+
+  it('disable racing an in-flight enable waits and stops the new host', async () => {
+    await writePlugin('alpha')
+    disabledPlugins = ['alpha']
+    const service = createService()
+    await service.initialize()
+    disabledPlugins = []
+
+    let releaseFactory!: () => void
+    const gate = new Promise<void>((resolve) => {
+      releaseFactory = resolve
+    })
+    hostFactory.mockImplementation(async (options: { pluginId: string }) => {
+      await gate
+      const host = createStubHost(`${options.pluginId}-provider`)
+      hosts.set(options.pluginId, host)
+      return host
+    })
+
+    const enabling = service.setPluginEnabled('alpha', true)
+    disabledPlugins = ['alpha']
+    const disabling = service.setPluginEnabled('alpha', false)
+    releaseFactory()
+    await Promise.all([enabling, disabling])
+
+    // Without awaiting the in-flight activation, disable would no-op and
+    // leave the freshly forked host running while settings say disabled.
+    expect(hosts.get('alpha')!.dispose).toHaveBeenCalledTimes(1)
+    expect(service.listPlugins()[0]!.status).toBe('disabled')
   })
 
   it('marks a plugin errored and clears its registrations when the host crashes', async () => {
