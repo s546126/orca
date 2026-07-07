@@ -29,7 +29,7 @@ export function createCodeProviderProxy(
   const decode = <T>(method: string, schema: z.ZodType<T>, value: unknown): T => {
     const parsed = schema.safeParse(value)
     if (!parsed.success) {
-      throw new Error(`plugin returned a malformed ${method} result`)
+      throw new Error(`plugin returned a malformed ${method} result`, { cause: parsed.error })
     }
     return parsed.data
   }
