@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { LigaturesAddon } from '@xterm/addon-ligatures'
+import { ImageAddon } from '@xterm/addon-image'
 import { Moon, Sun } from 'lucide-react'
 import '@xterm/xterm/css/xterm.css'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -61,6 +62,7 @@ export function TerminalSettingsPreview({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const ligaturesAddonRef = useRef<LigaturesAddon | null>(null)
+  const imageAddonRef = useRef<ImageAddon | null>(null)
   const skipInitialOptionMutationRef = useRef(false)
   const skipInitialThemeRewriteRef = useRef(false)
 
@@ -147,6 +149,22 @@ export function TerminalSettingsPreview({
 
     try {
       terminal.open(container)
+      // Why: image addon for protocol parity with live panes.
+      try {
+        const imgAddon = new ImageAddon({
+          enableSizeReports: false,
+          sixelSupport: true,
+          sixelScrolling: true,
+          iipSupport: true,
+          kittySupport: true,
+          storageLimit: 16,
+          showPlaceholder: true
+        })
+        terminal.loadAddon(imgAddon)
+        imageAddonRef.current = imgAddon
+      } catch (err) {
+        console.warn('[settings preview] image addon failed to attach', err)
+      }
       terminal.write(PREVIEW_BUFFER)
     } catch (err) {
       terminalRef.current = null
@@ -157,6 +175,8 @@ export function TerminalSettingsPreview({
     return () => {
       ligaturesAddonRef.current?.dispose()
       ligaturesAddonRef.current = null
+      imageAddonRef.current?.dispose()
+      imageAddonRef.current = null
       terminal.dispose()
       terminalRef.current = null
     }
