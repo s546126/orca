@@ -56,17 +56,11 @@ export function openTerminal(pane: ManagedPaneInternal): void {
   terminal.loadAddon(serializeAddon)
   terminal.loadAddon(unicode11Addon)
   terminal.loadAddon(webLinksAddon)
-  // Why: enables inline image rendering via SIXEL, iTerm2 IIP, and Kitty TGP.
-  // Storage limited to 64MB (half default) since Orca may have many panes.
-  const imageAddon = new ImageAddon({
-    enableSizeReports: true,
-    sixelSupport: true,
-    sixelScrolling: true,
-    iipSupport: true,
-    kittySupport: true,
-    storageLimit: 64,
-    showPlaceholder: true
-  })
+  // Why size reports stay off: Orca's capability responder already answers
+  // CSI 14t/16t (pty-connection), so xterm's built-in responder would send a
+  // second reply that leaks stray bytes into program stdin (#7329 class).
+  // Storage capped at 64MB (half default) since Orca may have many panes.
+  const imageAddon = new ImageAddon({ enableSizeReports: false, storageLimit: 64 })
   terminal.loadAddon(imageAddon)
   pane.imageAddon = imageAddon
   attachTerminalMouseWheelMultiplier(terminal, {
