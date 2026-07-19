@@ -6321,6 +6321,7 @@
           "removeSetup": "削除",
           "hostSetupBlockedVersion": "Orca server version is incompatible",
           "hostSetupMissingCapability": "Update Orca on this host to set up projects",
+          "hostSetupConnectionRequired": "プロジェクトをインポートまたはクローンする前に、このホストに接続してください",
           "setupProjectOnHost": "別のホストで設定",
           "setupProjectOnHostHelp": "Choose a host, then import an existing checkout, clone the repository there, or track a setup that will be provisioned later.",
           "setupExistingFolder": "既存フォルダをインポート",

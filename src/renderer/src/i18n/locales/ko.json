@@ -6284,6 +6284,7 @@
           "removeSetup": "제거",
           "hostSetupBlockedVersion": "Orca 서버 버전이 호환되지 않습니다.",
           "hostSetupMissingCapability": "프로젝트를 설정하려면 이 호스트의 Orca를 업데이트하세요.",
+          "hostSetupConnectionRequired": "프로젝트를 가져오거나 클론하기 전에 이 호스트에 연결하세요.",
           "setupProjectOnHost": "다른 호스트에 설정",
           "setupProjectOnHostHelp": "호스트를 선택한 뒤 기존 체크아웃을 가져오거나, repos를 클론하거나, 나중에 준비될 설정을 추적합니다.",
           "setupExistingFolder": "기존 폴더 가져오기",

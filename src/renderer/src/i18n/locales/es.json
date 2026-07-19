@@ -6299,6 +6299,7 @@
           "removeSetup": "Eliminar",
           "hostSetupBlockedVersion": "La versión del servidor Orca no es compatible",
           "hostSetupMissingCapability": "Actualiza Orca en este host para configurar proyectos",
+          "hostSetupConnectionRequired": "Conecta este host antes de importar o clonar el proyecto",
           "setupProjectOnHost": "Configurar en otro host",
           "setupProjectOnHostHelp": "Elige un host y luego importa un checkout existente, clona el repositorio allí o registra una configuración que se aprovisionará más tarde.",
           "setupExistingFolder": "Importar carpeta existente",
