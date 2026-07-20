@@ -15,6 +15,7 @@ import { registerWorkspaceCleanupHandlers } from '../ipc/workspace-cleanup'
 import { getLocalPtyProvider, registerPtyHandlers } from '../ipc/pty'
 import { registerDaemonManagementHandlers } from '../ipc/pty-management'
 import { registerSshHandlers } from '../ipc/ssh'
+import { registerSshOrcaRuntimeConversionHandlers } from '../ipc/ssh-orca-runtime-conversion'
 import { registerRemoteWorkspaceHandlers } from '../ipc/remote-workspace'
 import { browserManager } from '../browser/browser-manager'
 import { hasSystemMediaAccess, requestSystemMediaAccess } from '../browser/browser-media-access'
@@ -119,6 +120,7 @@ export function attachMainWindowServices(
       })
   }
   registerSshHandlers(store, () => mainWindow, runtime)
+  registerSshOrcaRuntimeConversionHandlers()
   registerRemoteWorkspaceHandlers(store, () => mainWindow)
   registerFileDropRelay(mainWindow)
   // Why: setupAutoUpdater sync-require()s electron-updater (slow on cold Windows w/ Defender, #7225), so defer past first paint; timer fallback covers crash-looping renderers.

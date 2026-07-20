@@ -4652,7 +4652,10 @@
           "59b553e2aa": "Disconnect",
           "2d3e4f5a6b": "Check connection",
           "3c4d5e6f7a": "Manage host…",
-          "6e7f8a9b0c": "Remove host…"
+          "6e7f8a9b0c": "Remove host…",
+          "9a1b2c3d4e": "Added \"{{value0}}\" as a runtime environment",
+          "5f6a7b8c9d": "Could not convert this host into an Orca runtime",
+          "3b4c5d6e7f": "Convert to Orca runtime…"
         },
         "LinearAgentSkillSetupPrompt": {
           "missingCliAndSkill": "Orca CLI and Linear agent skill are missing.",

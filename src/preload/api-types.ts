@@ -3111,6 +3111,9 @@ export type PreloadApi = {
     ) => () => void
     onCredentialResolved: (callback: (data: { requestId: string }) => void) => () => void
     submitCredential: (args: { requestId: string; value: string | null }) => Promise<void>
+    convertToOrcaRuntime: (args: {
+      targetId: string
+    }) => Promise<{ environment: PublicKnownRuntimeEnvironment }>
   }
   automations: {
     list: () => Promise<Automation[]>

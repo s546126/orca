@@ -13,6 +13,7 @@ export type HostHeaderMenuAction =
   | 'manage'
   | 'ssh-reconnect'
   | 'ssh-disconnect'
+  | 'ssh-convert-to-runtime'
   | 'runtime-check-connection'
   | 'remove'
 
@@ -35,8 +36,10 @@ export type HostHeaderMenuInput = {
 
 function sshActions(connected: boolean): HostHeaderMenuAction[] {
   // Why: only offer the action that changes state — Disconnect when up,
-  // Reconnect otherwise — to avoid a dead menu item.
-  return connected ? ['ssh-disconnect'] : ['ssh-reconnect']
+  // Reconnect otherwise — to avoid a dead menu item. Convert-to-runtime needs
+  // a live connection to run remote setup commands, so it's hidden until
+  // connected rather than shown disabled.
+  return connected ? ['ssh-disconnect', 'ssh-convert-to-runtime'] : ['ssh-reconnect']
 }
 
 export function buildHostHeaderMenuModel(input: HostHeaderMenuInput): HostHeaderMenuModel {

@@ -4682,7 +4682,10 @@
           "59b553e2aa": "연결 해제",
           "2d3e4f5a6b": "연결 확인",
           "3c4d5e6f7a": "호스트 관리…",
-          "6e7f8a9b0c": "호스트 제거…"
+          "6e7f8a9b0c": "호스트 제거…",
+          "9a1b2c3d4e": "Added \"{{value0}}\" as a runtime environment",
+          "5f6a7b8c9d": "Could not convert this host into an Orca runtime",
+          "3b4c5d6e7f": "Convert to Orca runtime…"
         },
         "WorkspaceKanbanDrawer": {
           "1975a4e480": "작업 상태 동기화 실패",

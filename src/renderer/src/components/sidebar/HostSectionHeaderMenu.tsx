@@ -7,6 +7,7 @@ import {
   Plug,
   PlugZap,
   RefreshCw,
+  Server,
   Settings2,
   Trash2
 } from 'lucide-react'
@@ -125,6 +126,42 @@ export function HostSectionHeaderMenu({ row }: { row: HostHeaderRow }): React.JS
     },
     [mountedRef, row.hostId]
   )
+
+  const handleConvertToRuntime = useCallback(async () => {
+    const parsed = parseExecutionHostId(row.hostId)
+    if (parsed?.kind !== 'ssh') {
+      return
+    }
+    setBusy(true)
+    try {
+      const { environment } = await window.api.ssh.convertToOrcaRuntime({
+        targetId: parsed.targetId
+      })
+      // Why: the new runtime environment must appear in the sidebar/host
+      // pickers immediately rather than waiting for the next periodic poll.
+      await useAppStore.getState().hydrateRuntimeEnvironmentStatuses()
+      toast.success(
+        translate(
+          'auto.components.sidebar.HostSectionHeaderMenu.9a1b2c3d4e',
+          'Added "{{value0}}" as a runtime environment',
+          { value0: environment.name }
+        )
+      )
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : translate(
+              'auto.components.sidebar.HostSectionHeaderMenu.5f6a7b8c9d',
+              'Could not convert this host into an Orca runtime'
+            )
+      )
+    } finally {
+      if (mountedRef.current) {
+        setBusy(false)
+      }
+    }
+  }, [mountedRef, row.hostId])
 
   const handleCheckConnection = useCallback(async () => {
     const parsed = parseExecutionHostId(row.hostId)
@@ -249,6 +286,15 @@ export function HostSectionHeaderMenu({ row }: { row: HostHeaderRow }): React.JS
           <DropdownMenuItem onSelect={() => void runSshAction('disconnect')}>
             <PlugZap className="size-3.5" />
             {translate('auto.components.sidebar.HostSectionHeaderMenu.59b553e2aa', 'Disconnect')}
+          </DropdownMenuItem>
+        )}
+        {model.actions.includes('ssh-convert-to-runtime') && (
+          <DropdownMenuItem onSelect={() => void handleConvertToRuntime()}>
+            <Server className="size-3.5" />
+            {translate(
+              'auto.components.sidebar.HostSectionHeaderMenu.3b4c5d6e7f',
+              'Convert to Orca runtime…'
+            )}
           </DropdownMenuItem>
         )}
         {model.actions.includes('runtime-check-connection') && (

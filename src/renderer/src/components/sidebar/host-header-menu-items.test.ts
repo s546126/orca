@@ -18,13 +18,28 @@ describe('buildHostHeaderMenuModel', () => {
     expect(model.actions).toEqual(['rename', 'ssh-reconnect', 'manage', 'remove'])
   })
 
-  it('offers Disconnect + Remove for a connected SSH host', () => {
+  it('offers Disconnect + Convert to runtime + Remove for a connected SSH host', () => {
     const model = buildHostHeaderMenuModel({
       kind: 'ssh',
       health: 'available',
       sshConnected: true
     })
-    expect(model.actions).toEqual(['rename', 'ssh-disconnect', 'manage', 'remove'])
+    expect(model.actions).toEqual([
+      'rename',
+      'ssh-disconnect',
+      'ssh-convert-to-runtime',
+      'manage',
+      'remove'
+    ])
+  })
+
+  it('does not offer Convert to runtime for a disconnected SSH host', () => {
+    const model = buildHostHeaderMenuModel({
+      kind: 'ssh',
+      health: 'disconnected',
+      sshConnected: false
+    })
+    expect(model.actions).not.toContain('ssh-convert-to-runtime')
   })
 
   it('offers Check connection + Remove for a runtime host', () => {

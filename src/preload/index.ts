@@ -4159,7 +4159,12 @@ const api = {
     },
 
     submitCredential: (args: { requestId: string; value: string | null }): Promise<void> =>
-      ipcRenderer.invoke('ssh:submitCredential', args)
+      ipcRenderer.invoke('ssh:submitCredential', args),
+
+    convertToOrcaRuntime: (args: {
+      targetId: string
+    }): Promise<{ environment: PublicKnownRuntimeEnvironment }> =>
+      ipcRenderer.invoke('ssh:convertToOrcaRuntime', args)
   },
 
   automations: {

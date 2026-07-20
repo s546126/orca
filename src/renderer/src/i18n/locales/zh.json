@@ -4682,7 +4682,10 @@
           "59b553e2aa": "断开连接",
           "2d3e4f5a6b": "检查连接",
           "3c4d5e6f7a": "管理主机…",
-          "6e7f8a9b0c": "删除主机..."
+          "6e7f8a9b0c": "删除主机...",
+          "9a1b2c3d4e": "Added \"{{value0}}\" as a runtime environment",
+          "5f6a7b8c9d": "Could not convert this host into an Orca runtime",
+          "3b4c5d6e7f": "Convert to Orca runtime…"
         },
         "WorkspaceKanbanDrawer": {
           "1975a4e480": "任务状态同步失败",
