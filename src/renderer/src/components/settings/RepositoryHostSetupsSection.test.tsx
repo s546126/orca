@@ -567,7 +567,7 @@ describe('RepositoryHostSetupsSection', () => {
     expect(openSettingsTarget).not.toHaveBeenCalled()
   })
 
-  it('blocks path setup on a disconnected SSH host but keeps placeholders available', () => {
+  it('blocks path setup until an SSH host connects but keeps placeholders available', () => {
     const localRepo = makeRepo({
       id: 'local-repo',
       displayName: 'Orca',
@@ -597,6 +597,13 @@ describe('RepositoryHostSetupsSection', () => {
     expect(findButton('Browse folder')?.disabled).toBe(true)
     expect(findButton('Clone from URL')?.disabled).toBe(true)
     expect(findButton('Add host placeholder')?.disabled).toBe(false)
+
+    act(() => {
+      useAppStore.getState().setSshConnectionState('openclaw 2', connectedSshState('openclaw 2'))
+    })
+
+    expect(findButton('Browse folder')?.disabled).toBe(false)
+    expect(findButton('Clone from URL')?.disabled).toBe(false)
   })
 
   it('creates pending setup metadata for a known host without requiring a path', async () => {
