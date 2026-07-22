@@ -6,6 +6,7 @@ import { bootCompletedArgs, isBootCompleted } from './adb-devices'
 import { bootAvdArgs, listAvdsArgs, parseAvdList } from './avd-manager'
 import { findRunningAvdSerial, listRunningAdbDevices } from './android-device-inventory'
 import { emulatorProbeError } from '../emulator-probe'
+import { isAdbNetworkSerial } from './adb-network-endpoint'
 
 export type AndroidBootOptions = {
   bootTimeoutMs: number
@@ -25,13 +26,31 @@ export async function bootAndroidDevice(
   if (running.some((device) => device.serial === deviceOrName)) {
     return deviceOrName
   }
+  // AVD name resolution (`emu avd name`) needs no emulator binary, so this still
+  // works on a platform-tools-only SDK for an already-running AVD serial.
   const existing = await findRunningAvdSerial(runner, sdk, deviceOrName, running)
   if (existing) {
     return existing
   }
+  // A configured-but-offline network address is not an AVD: fail with actionable
+  // guidance instead of falling into AVD listing/spawn, and never auto-connect.
+  if (isAdbNetworkSerial(deviceOrName)) {
+    throw new EmulatorError(
+      'emulator_adb_not_connected',
+      `ADB device ${deviceOrName} is not connected. Connect it in Settings > Mobile Emulator.`
+    )
+  }
+  const avdTools = sdk.avdTools
+  if (!avdTools) {
+    throw new EmulatorError(
+      'emulator_device_not_found',
+      `"${deviceOrName}" is not a running device, and AVD tooling (the "emulator" binary) is ` +
+        `unavailable to boot it. Connect the device instead in Settings > Mobile Emulator.`
+    )
+  }
   // Validate the target is a real AVD before spawning, so a stale/offline serial
   // doesn't launch an invalid `-avd` and burn the full boot timeout.
-  const avds = parseAvdList((await runner(sdk.emulator, listAvdsArgs)).stdout)
+  const avds = parseAvdList((await runner(avdTools.emulator, listAvdsArgs)).stdout)
   if (!avds.includes(deviceOrName)) {
     throw new EmulatorError(
       'emulator_device_not_found',
@@ -39,7 +58,7 @@ export async function bootAndroidDevice(
     )
   }
   const known = new Set(running.map((device) => device.serial))
-  launchAvd(sdk.emulator, deviceOrName)
+  launchAvd(avdTools.emulator, deviceOrName)
   return waitForNewBootedSerial(runner, sdk, deviceOrName, known, options)
 }
 
