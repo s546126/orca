@@ -245,7 +245,7 @@ export function MobileEmulatorAdbConnection({
   }
 
   function handleDisconnect(): void {
-    const address = settings.mobileEmulatorAdbAddress
+    const address = settings.mobileEmulatorAdbAddress ?? status?.address
     if (!address) {
       return
     }
@@ -342,7 +342,7 @@ export function MobileEmulatorAdbConnection({
               size="sm"
               variant="outline"
               onClick={handleDisconnect}
-              disabled={controlsDisabled || !settings.mobileEmulatorAdbAddress}
+              disabled={controlsDisabled || !(settings.mobileEmulatorAdbAddress || status?.address)}
             >
               {translate(
                 'auto.components.settings.MobileEmulatorAdbConnection.6f152886ba',
