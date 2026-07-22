@@ -8,6 +8,15 @@ export class EmulatorError extends Error {
   }
 }
 
+// One message for every path that hits a configured-but-disconnected ADB
+// network serial (boot, resolve, input, shutdown), so guidance never drifts.
+export function adbDeviceNotConnectedError(serial: string): EmulatorError {
+  return new EmulatorError(
+    'emulator_adb_not_connected',
+    `ADB device ${serial} is not connected. Connect it in Settings > Mobile Emulator.`
+  )
+}
+
 export type EmulatorErrorCode =
   | 'emulator_no_active'
   | 'emulator_device_not_found'
