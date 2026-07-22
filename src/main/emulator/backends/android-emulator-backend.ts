@@ -1,4 +1,4 @@
-import { EmulatorError } from '../emulator-errors'
+import { EmulatorError, adbDeviceNotConnectedError } from '../emulator-errors'
 import type { EmulatorSessionInfo } from '../emulator-types'
 import type {
   BackendAvailability,
@@ -22,6 +22,7 @@ import {
   type AndroidCommandRunner
 } from '../android/android-command-runner'
 import { ensureAdbOk } from '../android/android-adb-result'
+import { isAdbNetworkSerial } from '../android/adb-network-endpoint'
 import { AdbDeviceConnection } from '../android/adb-device-connection'
 import { AndroidScreenSizeCache } from '../android/android-screen-size-cache'
 import {
@@ -129,7 +130,8 @@ export class AndroidEmulatorBackend implements EmulatorBackend {
       return {
         available: false,
         devices: [],
-        message: 'Android SDK not found. Install Android Studio and set ANDROID_HOME.'
+        message:
+          'Android platform-tools (adb) not found. Install Android Studio or standalone platform-tools, then set ANDROID_HOME.'
       }
     }
     const sdkPath = sdk.sdkRoot
@@ -178,6 +180,11 @@ export class AndroidEmulatorBackend implements EmulatorBackend {
     const serial = await findRunningAvdSerial(this.runner, sdk, deviceOrName, running)
     if (serial) {
       return serial
+    }
+    // A host:port serial can never be booted locally — "Boot it first" would
+    // mislead; every device verb routed through here gets the connect guidance.
+    if (isAdbNetworkSerial(deviceOrName)) {
+      throw adbDeviceNotConnectedError(deviceOrName)
     }
     throw new EmulatorError(
       'emulator_device_not_found',

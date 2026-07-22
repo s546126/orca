@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { EmulatorError } from '../emulator-errors'
+import { EmulatorError, adbDeviceNotConnectedError } from '../emulator-errors'
 import type { AndroidCommandRunner } from './android-command-runner'
 import type { AndroidSdkPaths } from './android-sdk-discovery'
 import { bootCompletedArgs, isBootCompleted } from './adb-devices'
@@ -35,10 +35,7 @@ export async function bootAndroidDevice(
   // A configured-but-offline network address is not an AVD: fail with actionable
   // guidance instead of falling into AVD listing/spawn, and never auto-connect.
   if (isAdbNetworkSerial(deviceOrName)) {
-    throw new EmulatorError(
-      'emulator_adb_not_connected',
-      `ADB device ${deviceOrName} is not connected. Connect it in Settings > Mobile Emulator.`
-    )
+    throw adbDeviceNotConnectedError(deviceOrName)
   }
   const avdTools = sdk.avdTools
   if (!avdTools) {

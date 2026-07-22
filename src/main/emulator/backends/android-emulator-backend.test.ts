@@ -127,6 +127,19 @@ describe('AndroidEmulatorBackend', () => {
     })
   })
 
+  it('reports a disconnected network serial as not-connected, not "boot it"', async () => {
+    const android = backend(runner)
+    await expect(android.resolveDeviceId('127.0.0.1:5555')).rejects.toMatchObject({
+      code: 'emulator_adb_not_connected',
+      message: expect.stringContaining('Settings > Mobile Emulator')
+    })
+    // Every device verb funnels through resolveDeviceId, so input verbs get the
+    // same guidance instead of emulator_device_not_found.
+    await expect(android.tap('cloud-phone.internal:5555', 0.5, 0.5)).rejects.toMatchObject({
+      code: 'emulator_adb_not_connected'
+    })
+  })
+
   it('taps using device pixels from the live screen size', async () => {
     await backend(runner).tap('emulator-5554', 0.5, 0.5)
     expect(runner).toHaveBeenCalledWith(SDK.adb, [
