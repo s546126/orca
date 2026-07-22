@@ -12,6 +12,7 @@ import type { EmulatorSessionInfo } from '../emulator/emulator-types'
 import type { SimulatorDevice } from '../emulator/simctl-simulator-devices'
 import type { EmulatorDevice } from '../emulator/backends/emulator-backend'
 import type { GlobalSettings } from '../../shared/global-settings-types'
+import { RuntimeEmulatorAdbCommands } from './orca-runtime-emulator-adb'
 
 // Settings slice the emulator surface needs; keeps the host contract honest (no widening cast).
 type EmulatorHostSettings = Pick<
@@ -31,7 +32,13 @@ export type RuntimeEmulatorCommandHost = {
 type EmulatorTargetParams = { device?: string; emulator?: string; worktree?: string }
 
 export class RuntimeEmulatorCommands {
-  constructor(private readonly host: RuntimeEmulatorCommandHost) {}
+  private readonly adbCommands: RuntimeEmulatorAdbCommands
+
+  constructor(private readonly host: RuntimeEmulatorCommandHost) {
+    this.adbCommands = new RuntimeEmulatorAdbCommands({
+      requireEmulatorBridge: () => this.requireEmulatorBridge()
+    })
+  }
 
   private requireEmulatorBridge(): EmulatorBridge {
     const bridge = this.host.getEmulatorBridge()
@@ -233,6 +240,16 @@ export class RuntimeEmulatorCommands {
   private async resolveCleanupWorktreeId(worktree?: string): Promise<string | undefined> {
     return worktree ? await this.host.resolveEmulatorCleanupWorkspaceId(worktree) : undefined
   }
+
+  // ── ADB network device connection ── (RuntimeEmulatorAdbCommands, own file,
+  // keeps this file under the max-lines limit.)
+  emulatorAdbConnect: RuntimeEmulatorAdbCommands['emulatorAdbConnect'] = (params) =>
+    this.adbCommands.emulatorAdbConnect(params)
+  emulatorAdbDisconnect: RuntimeEmulatorAdbCommands['emulatorAdbDisconnect'] = (params) =>
+    this.adbCommands.emulatorAdbDisconnect(params)
+  emulatorAdbConnectionStatus: RuntimeEmulatorAdbCommands['emulatorAdbConnectionStatus'] = (
+    params
+  ) => this.adbCommands.emulatorAdbConnectionStatus(params)
 
   async emulatorInstall(
     params: EmulatorTargetParams & { path: string; reinstall?: boolean }
