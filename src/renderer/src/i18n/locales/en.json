@@ -9665,7 +9665,15 @@
               "9595354cff": "Configure mobile emulator support for Orca and coding agents.",
               "cdd3c31918": "Mobile Emulator",
               "849bb5184b": "ADB Device Connection",
-              "a7b8188acc": "Connect an Android device or cloud phone over ADB by address."
+              "a7b8188acc": "Connect an Android device or cloud phone over ADB by address.",
+              "252f15438e": "adb",
+              "7878a18ec0": "device",
+              "badd8f59c3": "address",
+              "ceceed63a7": "tcp",
+              "5a84794ca0": "cloud phone",
+              "4551927ee8": "connect",
+              "78a62cc352": "disconnect",
+              "ded8cfc31c": "network"
             }
           },
           "pane": {
