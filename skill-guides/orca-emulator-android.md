@@ -37,11 +37,11 @@ tunnels, port-forwards, adb pairing, or remote USB.
 
 ## Prerequisites
 
-- Android Studio or the Android SDK installed, with `ANDROID_HOME` or `ANDROID_SDK_ROOT`
-  set. Orca also checks the per-OS default location (`%LOCALAPPDATA%\Android\Sdk`,
-  `~/Library/Android/sdk`, `~/Android/Sdk`). `adb` alone (platform-tools, no full SDK) is
-  enough for a connected device — the `emulator` and `avdmanager` binaries are only needed
-  for local AVDs.
+- **`adb` (platform-tools)** with `ANDROID_HOME` or `ANDROID_SDK_ROOT` set. Orca also
+  checks the per-OS default location (`%LOCALAPPDATA%\Android\Sdk`,
+  `~/Library/Android/sdk`, `~/Android/Sdk`). This alone is enough for connected devices
+  (USB or network). The full Android Studio / SDK install — the `emulator` and
+  `avdmanager` binaries — is only needed for local AVDs.
 - At least one AVD (Android Studio ▸ Device Manager), a connected device with USB
   debugging, or a device/cloud phone connected via Settings ▸ Mobile Emulator ▸ ADB Device
   Connection (see below).
@@ -49,8 +49,9 @@ tunnels, port-forwards, adb pairing, or remote USB.
   listed with `state: shutdown` and must be started first, by `ORCA emulator attach`,
   Android Studio, or `emulator @<avd>`.
 
-Orca returns a clear message when the SDK is missing
-(`Android SDK not found. Install Android Studio and set ANDROID_HOME.`).
+Orca returns a clear message when adb is missing (`Android platform-tools (adb)
+not found. Install Android Studio or standalone platform-tools, then set
+ANDROID_HOME.`).
 
 ## Connecting a network / cloud-phone device
 
