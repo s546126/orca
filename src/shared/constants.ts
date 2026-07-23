@@ -273,6 +273,7 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     showTitlebarAppName: true,
     showTasksButton: true,
     showAutomationsButton: true,
+    showOrchestrationButton: true,
     showMobileButton: true,
     ctrlTabOrderMode: 'mru',
     // Why: switching worktrees and opening command surfaces from a focused

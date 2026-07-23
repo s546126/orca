@@ -1,5 +1,5 @@
 import React from 'react'
-import { Bell, CalendarClock, Search, Smartphone } from 'lucide-react'
+import { Bell, CalendarClock, Search, Smartphone, Waypoints } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { cn } from '@/lib/utils'
 import type { GlobalSettings } from '../../../../shared/types'
@@ -32,24 +32,36 @@ export function shouldShowAutomationsButton(
   return settings?.showAutomationsButton !== false
 }
 
+export function shouldShowOrchestrationButton(
+  settings: Pick<GlobalSettings, 'showOrchestrationButton'> | null | undefined
+): boolean {
+  return settings?.showOrchestrationButton !== false
+}
+
 const SidebarNav = React.memo(function SidebarNav() {
   const worktreePaletteShortcut = useShortcutLabel('worktree.palette')
   const openAutomationsPage = useAppStore((s) => s.openAutomationsPage)
   const openActivityPage = useAppStore((s) => s.openActivityPage)
+  const openOrchestrationPage = useAppStore((s) => s.openOrchestrationPage)
   const openMobilePage = useAppStore((s) => s.openMobilePage)
   const openModal = useAppStore((s) => s.openModal)
   const updateSettings = useAppStore((s) => s.updateSettings)
   const activeView = useAppStore((s) => s.activeView)
   const showAgentsButton = useAppStore((s) => shouldShowAgentsButton(s.settings))
   const showAutomationsButton = useAppStore((s) => shouldShowAutomationsButton(s.settings))
+  const showOrchestrationButton = useAppStore((s) => shouldShowOrchestrationButton(s.settings))
   const showMobileButton = useAppStore((s) => shouldShowMobileButton(s.settings))
   const automationsActive = activeView === 'automations'
   const activityActive = activeView === 'activity'
+  const orchestrationActive = activeView === 'orchestration'
   const mobileActive = activeView === 'mobile'
   const activityUnreadCount = useActivityUnreadCount(showAgentsButton, 'sidebar-badge')
   const mobileOnboardingBadge = useMobileSidebarOnboardingBadge(showMobileButton)
   const hideAutomationsButton = React.useCallback(() => {
     void updateSettings({ showAutomationsButton: false })
+  }, [updateSettings])
+  const hideOrchestrationButton = React.useCallback(() => {
+    void updateSettings({ showOrchestrationButton: false })
   }, [updateSettings])
   const hideMobileButton = React.useCallback(() => {
     void updateSettings({ showMobileButton: false })
@@ -119,6 +131,35 @@ const SidebarNav = React.memo(function SidebarNav() {
             </span>
           ) : null}
         </button>
+      ) : null}
+      {showOrchestrationButton ? (
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <button
+              type="button"
+              onClick={openOrchestrationPage}
+              aria-current={orchestrationActive ? 'page' : undefined}
+              className={cn(
+                'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] font-medium tracking-tight transition-colors',
+                orchestrationActive
+                  ? 'bg-worktree-sidebar-accent text-worktree-sidebar-accent-foreground'
+                  : 'text-worktree-sidebar-foreground/60 hover:bg-worktree-sidebar-foreground/8'
+              )}
+            >
+              <Waypoints
+                className={cn(
+                  'size-4 shrink-0',
+                  !orchestrationActive && 'text-worktree-sidebar-foreground/30'
+                )}
+                strokeWidth={orchestrationActive ? 2.25 : 1.75}
+              />
+              <span className="flex-1">
+                {translate('auto.components.sidebar.SidebarNav.orchestration', 'Orchestration')}
+              </span>
+            </button>
+          </ContextMenuTrigger>
+          <HideSidebarMenu onHide={hideOrchestrationButton} />
+        </ContextMenu>
       ) : null}
       {showMobileButton ? (
         <ContextMenu>

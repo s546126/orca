@@ -553,6 +553,7 @@ export type UISlice = {
     | 'space'
     | 'skills'
     | 'mobile'
+    | 'orchestration'
   previousViewBeforeTasks:
     | 'terminal'
     | 'settings'
@@ -561,6 +562,7 @@ export type UISlice = {
     | 'space'
     | 'skills'
     | 'mobile'
+    | 'orchestration'
   previousViewBeforeSettings:
     | 'terminal'
     | 'tasks'
@@ -569,6 +571,7 @@ export type UISlice = {
     | 'space'
     | 'skills'
     | 'mobile'
+    | 'orchestration'
   previousViewBeforeActivity:
     | 'terminal'
     | 'settings'
@@ -577,6 +580,7 @@ export type UISlice = {
     | 'space'
     | 'skills'
     | 'mobile'
+    | 'orchestration'
   previousViewBeforeAutomations:
     | 'terminal'
     | 'settings'
@@ -585,6 +589,7 @@ export type UISlice = {
     | 'space'
     | 'skills'
     | 'mobile'
+    | 'orchestration'
   previousViewBeforeSpace:
     | 'terminal'
     | 'settings'
@@ -593,6 +598,7 @@ export type UISlice = {
     | 'automations'
     | 'skills'
     | 'mobile'
+    | 'orchestration'
   previousViewBeforeSkills:
     | 'terminal'
     | 'settings'
@@ -601,6 +607,7 @@ export type UISlice = {
     | 'automations'
     | 'space'
     | 'mobile'
+    | 'orchestration'
   previousViewBeforeMobile:
     | 'terminal'
     | 'settings'
@@ -609,6 +616,16 @@ export type UISlice = {
     | 'automations'
     | 'space'
     | 'skills'
+    | 'orchestration'
+  previousViewBeforeOrchestration:
+    | 'terminal'
+    | 'settings'
+    | 'tasks'
+    | 'activity'
+    | 'automations'
+    | 'space'
+    | 'skills'
+    | 'mobile'
   setActiveView: (view: UISlice['activeView']) => void
   taskPageData: {
     preselectedRepoId?: string
@@ -671,6 +688,8 @@ export type UISlice = {
   closeTaskPage: () => void
   openActivityPage: () => void
   closeActivityPage: () => void
+  openOrchestrationPage: () => void
+  closeOrchestrationPage: () => void
   selectedAutomationId: string | null
   setSelectedAutomationId: (id: string | null) => void
   pendingAutomationRunNavigation: {
@@ -1136,6 +1155,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   previousViewBeforeSpace: 'terminal',
   previousViewBeforeSkills: 'terminal',
   previousViewBeforeMobile: 'terminal',
+  previousViewBeforeOrchestration: 'terminal',
   setActiveView: (view) => set({ activeView: view }),
   taskPageData: {},
   taskResumeState: undefined,
@@ -1352,6 +1372,18 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   closeActivityPage: () =>
     set((state) => ({
       activeView: state.previousViewBeforeActivity
+    })),
+  openOrchestrationPage: () =>
+    set((state) => ({
+      activeView: 'orchestration',
+      previousViewBeforeOrchestration:
+        state.activeView === 'orchestration'
+          ? state.previousViewBeforeOrchestration
+          : state.activeView
+    })),
+  closeOrchestrationPage: () =>
+    set((state) => ({
+      activeView: state.previousViewBeforeOrchestration
     })),
   selectedAutomationId: null,
   setSelectedAutomationId: (id) => set({ selectedAutomationId: id }),

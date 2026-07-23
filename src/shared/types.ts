@@ -2561,6 +2561,9 @@ export type GlobalSettings = {
   /** Why: Automations can be restored from Settings or the View menu, so this
    *  only controls whether the top-level sidebar shortcut is shown. */
   showAutomationsButton?: boolean
+  /** Why: the Orchestration graph is a top-level sidebar shortcut that can be
+   *  hidden; the view itself stays reachable from the View menu. */
+  showOrchestrationButton?: boolean
   /** Why: Orca Mobile remains reachable from Settings; this only controls
    *  whether the top-level sidebar shortcut is shown. */
   showMobileButton?: boolean

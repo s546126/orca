@@ -3699,7 +3699,8 @@
           "196c1b5362": "Abrir tareas de GitLab",
           "0ccba862b8": "Abrir tareas de GitHub",
           "fee535205b": "Tareas",
-          "d599269755": "Ocultar de la barra lateral"
+          "d599269755": "Ocultar de la barra lateral",
+          "orchestration": "Orchestration"
         },
         "SidebarRepositoryFilterSection": {
           "d3a9c4cea1": "Claro",
@@ -11909,6 +11910,34 @@
             "dismiss": "Descartar",
             "later": "Later"
           }
+        }
+      },
+      "orchestration": {
+        "OrchestrationPage": {
+          "status": {
+            "pending": "Pending",
+            "ready": "Ready",
+            "dispatched": "Dispatched",
+            "completed": "Completed",
+            "failed": "Failed",
+            "blocked": "Blocked"
+          },
+          "loading": "Loading orchestration state…",
+          "retry": "Retry",
+          "emptyTasks": "No orchestration tasks yet. Dispatch work with the orchestration skill or the Orca CLI to see the task graph here.",
+          "emptyAgents": "No agents or messages yet. Launch agents and let them coordinate to see the flow here.",
+          "back": "Back",
+          "title": "Orchestration",
+          "subtitle": "{{tasks}} tasks · {{agents}} agents",
+          "subtitleIdle": "Live view of the multi-agent task graph",
+          "tasksTab": "Tasks",
+          "agentsTab": "Agents",
+          "refresh": "Refresh orchestration state",
+          "statusHeading": "Status",
+          "runningHeading": "Running now",
+          "agentsHeading": "Agents",
+          "messageEdges": "{{count}} message links",
+          "truncatedTasks": "Showing {{shown}} of {{total}} tasks"
         }
       }
     },
