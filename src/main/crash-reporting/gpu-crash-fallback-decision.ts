@@ -94,7 +94,7 @@ export function isGpuFallbackCrashCandidate({
   reason: string
 }): boolean {
   return (
-    platform === 'win32' &&
+    (platform === 'win32' || platform === 'linux') &&
     isGpuChildProcessType(processType) &&
     GPU_FALLBACK_CRASH_REASONS.has(reason)
   )
