@@ -27,6 +27,7 @@ function makePane(): ManagedPaneInternal {
     webglAddon: null,
     ligaturesAddon: null,
     imageAddon: null,
+    imageCursorAdvanceDisposable: null,
     panePointerDownHandler: vi.fn(),
     paneMouseEnterHandler: vi.fn(),
     compositionHandler: null,

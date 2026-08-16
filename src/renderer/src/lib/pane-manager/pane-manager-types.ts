@@ -168,6 +168,8 @@ export type ManagedPaneInternal = {
   ligaturesAddon: LigaturesAddon | null
   // Why nullable: image addon is loaded in openTerminal; null means not yet attached.
   imageAddon: ImageAddon | null
+  // Why nullable: attached alongside imageAddon; null before openTerminal runs.
+  imageCursorAdvanceDisposable: IDisposable | null
   fitResizeObserver: ResizeObserver | null
   // Why: fit-element pixel size at the last successful fit; the reveal fit compares
   // against it to tell a real hidden-time resize from a transient cell-metric wobble.

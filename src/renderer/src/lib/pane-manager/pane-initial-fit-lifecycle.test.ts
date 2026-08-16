@@ -32,6 +32,7 @@ function createPane(pendingInitialFitRafId: number | null): ManagedPaneInternal 
     webglAddon: null,
     ligaturesAddon: null,
     imageAddon: null,
+    imageCursorAdvanceDisposable: null,
     compositionHandler: null,
     pendingSplitScrollState: null,
     pendingSplitScrollBufferDisposable: null,

@@ -31,6 +31,7 @@ function createPane(id: number, container: HTMLElement): ManagedPaneInternal {
     webglAddon: null,
     ligaturesAddon: null,
     imageAddon: null,
+    imageCursorAdvanceDisposable: null,
     fitResizeObserver: null,
     pendingObservedFitRafId: null,
     fitAddon: {} as never,
