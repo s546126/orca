@@ -76,6 +76,7 @@ function createPane(id: number, leafId: TerminalLeafId): ManagedPaneInternal {
     webglAddon: null,
     ligaturesAddon: null,
     imageAddon: null,
+    imageCursorAdvanceDisposable: null,
     fitResizeObserver: null,
     pendingObservedFitRafId: null,
     fitAddon: {} as never,

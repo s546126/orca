@@ -66,6 +66,7 @@ function createPane(bufferType: 'normal' | 'alternate'): {
     webglAddon: null,
     ligaturesAddon: null,
     imageAddon: null,
+    imageCursorAdvanceDisposable: null,
     fitResizeObserver: null,
     pendingObservedFitRafId: null,
     fitAddon: {} as never,

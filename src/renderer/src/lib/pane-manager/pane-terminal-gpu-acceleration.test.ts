@@ -25,6 +25,7 @@ function createPane(): ManagedPaneInternal {
     } as never,
     ligaturesAddon: null,
     imageAddon: null,
+    imageCursorAdvanceDisposable: null,
     fitResizeObserver: null,
     pendingObservedFitRafId: null,
     fitAddon: {

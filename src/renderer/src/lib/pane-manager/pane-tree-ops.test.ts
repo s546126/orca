@@ -126,6 +126,7 @@ function createPane({
     webglAddon: null,
     ligaturesAddon: null,
     imageAddon: null,
+    imageCursorAdvanceDisposable: null,
     compositionHandler: null,
     pendingSplitScrollState: null,
     debugLabel: null

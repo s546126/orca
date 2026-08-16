@@ -75,6 +75,7 @@ function createPane(id: number, container = createMockElement('pane')): ManagedP
     webglAddon: {} as never,
     ligaturesAddon: null,
     imageAddon: null,
+    imageCursorAdvanceDisposable: null,
     fitResizeObserver: null,
     pendingObservedFitRafId: null,
     compositionHandler: null,
