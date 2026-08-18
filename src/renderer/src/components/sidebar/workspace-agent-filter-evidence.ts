@@ -17,6 +17,7 @@ import { resolveAgentTypeFromTerminalTitle } from './worktree-title-derived-agen
  * The filter must read those same records instead of persisting a parallel field.
  */
 type AgentFilterTabEvidence = {
+  id?: string
   launchAgent?: TerminalTab['launchAgent']
   title?: string | null
 }
@@ -107,4 +108,39 @@ export function collectAgentTypesByWorktree(args: {
   }
 
   return out
+}
+
+export function filterWorktreesBySelectedAgents<
+  T extends { id: string; createdWithAgent?: string | null }
+>(
+  worktrees: readonly T[],
+  selectedAgentIds: FilterAgentIds,
+  lookup: {
+    tabsByWorktree?: Record<string, readonly AgentFilterTabEvidence[]> | null
+    agentTypesByWorktree?: Record<string, readonly (string | null | undefined)[]> | null
+  }
+): T[] {
+  if (!selectedAgentIds) {
+    return worktrees as T[]
+  }
+  return worktrees.filter((worktree) =>
+    worktreeMatchesAgentFilter(worktree, selectedAgentIds, lookup)
+  )
+}
+
+export function collectScopedAgentTypesByWorktree(args: {
+  filterAgentIds: FilterAgentIds
+  agentStatusByPaneKey?: Parameters<typeof collectAgentTypesByWorktree>[0]['agentStatusByPaneKey']
+  retainedAgentsByPaneKey?: Parameters<
+    typeof collectAgentTypesByWorktree
+  >[0]['retainedAgentsByPaneKey']
+  sleepingAgentSessionsByPaneKey?: Parameters<
+    typeof collectAgentTypesByWorktree
+  >[0]['sleepingAgentSessionsByPaneKey']
+  tabsByWorktree?: Parameters<typeof collectAgentTypesByWorktree>[0]['tabsByWorktree']
+}): Record<string, string[]> | null {
+  if (!args.filterAgentIds) {
+    return null
+  }
+  return collectAgentTypesByWorktree(args)
 }
