@@ -18,6 +18,10 @@ import {
   normalizeExecutionHostOrder
 } from '../../../shared/execution-host'
 import { normalizeManualRepoOrder } from '../../../shared/manual-repo-order'
+import {
+  normalizeFilterAgentIds,
+  resolvePersistedFilterAgentIds
+} from '../../../shared/workspace-agent-filter'
 import { normalizeBrowserPageZoomLevel } from '../../../shared/browser-page-zoom'
 import { normalizeFeatureTipIds } from '../../../shared/feature-tips'
 import { normalizeContextualTourIds } from '../../../shared/contextual-tours'
@@ -156,6 +160,10 @@ export function updatePersistedUI(
       sanitizedUpdates.agentsVisibleHostIds !== undefined
         ? normalizeVisibleExecutionHostIds(sanitizedUpdates.agentsVisibleHostIds)
         : normalizeVisibleExecutionHostIds(operations.state.ui?.agentsVisibleHostIds),
+    filterAgentIds:
+      sanitizedUpdates.filterAgentIds !== undefined
+        ? normalizeFilterAgentIds(sanitizedUpdates.filterAgentIds)
+        : resolvePersistedFilterAgentIds(operations.state.ui),
     workspaceHostOrder:
       sanitizedUpdates.workspaceHostOrder !== undefined
         ? normalizeExecutionHostOrder(sanitizedUpdates.workspaceHostOrder)

@@ -7,6 +7,10 @@ import {
 } from '@/components/sidebar/visible-worktrees'
 import { getStructuredChatWorktreeIds } from '@/components/sidebar/visible-worktree-activity-inputs'
 import { isDefaultBranchWorkspace } from '@/components/sidebar/default-branch-workspace'
+import {
+  collectAgentTypesByWorktree,
+  worktreeMatchesAgentFilter
+} from '@/components/sidebar/workspace-agent-filter-evidence'
 import { sortWorktreesSmart } from '@/components/sidebar/smart-sort'
 import { buildWorktreeChecksReviewIndex } from '@/components/cmd-j/worktree-checks-review-index'
 import { getLiveAgentStatusByWorktreeId, isInactiveWorkspace } from '@/lib/worktree-activity-state'
@@ -43,6 +47,9 @@ export function useWorktreeJumpPaletteWorktrees({
   hideWorkspacesFromOtherDevices,
   showSleepingWorkspaces,
   alwaysShowDefaultBranchWorkspace,
+  filterAgentIds,
+  retainedAgentsByPaneKey,
+  sleepingAgentSessionsByPaneKey,
   ptyIdsByTabId,
   browserTabsByWorktree,
   unifiedTabsByWorktree,
@@ -88,67 +95,80 @@ export function useWorktreeJumpPaletteWorktrees({
     showSleepingWorkspaces,
     unifiedTabsByWorktree
   )
-  const emptyQueryVisibleWorktrees = useMemo(
-    () =>
-      allWorktrees.filter((worktree) => {
-        if (worktree.isArchived) {
-          return false
-        }
-        if (filterPredicate && !filterPredicate.matchesWorktree(worktree)) {
-          return false
-        }
-        if (hideDefaultBranchWorkspace && isDefaultBranchWorkspace(worktree)) {
-          return false
-        }
-        if (hideAutomationGeneratedWorkspaces && isAutomationGeneratedWorkspace(worktree)) {
-          return false
-        }
-        if (hideCliCreatedWorkspaces && isCliCreatedWorkspace(worktree)) {
-          return false
-        }
-        if (hideDetachedHeadWorkspaces && isDetachedHeadWorkspace(worktree)) {
-          return false
-        }
-        if (
-          hideWorkspacesFromOtherDevices &&
-          isWorkspaceFromOtherDevice(worktree, pairedDeviceIdsByEnvironment)
-        ) {
-          return false
-        }
-        if (
-          !showSleepingWorkspaces &&
-          !isSleepingSweepExemptWorkspace(worktree, alwaysShowDefaultBranchWorkspace) &&
-          isInactiveWorkspace(
-            worktree.id,
-            tabsByWorktree,
-            ptyIdsByTabId,
-            browserTabsByWorktree,
-            worktreeIdsWithLiveAgent,
-            worktreeIdsWithStructuredChat
-          )
-        ) {
-          return false
-        }
-        return true
-      }),
-    [
-      allWorktrees,
-      alwaysShowDefaultBranchWorkspace,
-      browserTabsByWorktree,
-      filterPredicate,
-      hideAutomationGeneratedWorkspaces,
-      hideCliCreatedWorkspaces,
-      hideDefaultBranchWorkspace,
-      hideDetachedHeadWorkspaces,
-      hideWorkspacesFromOtherDevices,
-      pairedDeviceIdsByEnvironment,
-      ptyIdsByTabId,
-      showSleepingWorkspaces,
-      tabsByWorktree,
-      worktreeIdsWithLiveAgent,
-      worktreeIdsWithStructuredChat
-    ]
-  )
+  const emptyQueryVisibleWorktrees = useMemo(() => {
+    const agentTypesByWorktree = filterAgentIds
+      ? collectAgentTypesByWorktree({
+          agentStatusByPaneKey,
+          retainedAgentsByPaneKey,
+          sleepingAgentSessionsByPaneKey,
+          tabsByWorktree
+        })
+      : null
+    return allWorktrees.filter((worktree) => {
+      if (worktree.isArchived) {
+        return false
+      }
+      if (filterPredicate && !filterPredicate.matchesWorktree(worktree)) {
+        return false
+      }
+      if (hideDefaultBranchWorkspace && isDefaultBranchWorkspace(worktree)) {
+        return false
+      }
+      if (hideAutomationGeneratedWorkspaces && isAutomationGeneratedWorkspace(worktree)) {
+        return false
+      }
+      if (hideCliCreatedWorkspaces && isCliCreatedWorkspace(worktree)) {
+        return false
+      }
+      if (hideDetachedHeadWorkspaces && isDetachedHeadWorkspace(worktree)) {
+        return false
+      }
+      if (
+        hideWorkspacesFromOtherDevices &&
+        isWorkspaceFromOtherDevice(worktree, pairedDeviceIdsByEnvironment)
+      ) {
+        return false
+      }
+      if (
+        !showSleepingWorkspaces &&
+        !isSleepingSweepExemptWorkspace(worktree, alwaysShowDefaultBranchWorkspace) &&
+        isInactiveWorkspace(
+          worktree.id,
+          tabsByWorktree,
+          ptyIdsByTabId,
+          browserTabsByWorktree,
+          worktreeIdsWithLiveAgent,
+          worktreeIdsWithStructuredChat
+        )
+      ) {
+        return false
+      }
+      return worktreeMatchesAgentFilter(worktree, filterAgentIds, {
+        tabsByWorktree,
+        agentTypesByWorktree
+      })
+    })
+  }, [
+    agentStatusByPaneKey,
+    allWorktrees,
+    alwaysShowDefaultBranchWorkspace,
+    browserTabsByWorktree,
+    filterAgentIds,
+    filterPredicate,
+    hideAutomationGeneratedWorkspaces,
+    hideCliCreatedWorkspaces,
+    hideDefaultBranchWorkspace,
+    hideDetachedHeadWorkspaces,
+    hideWorkspacesFromOtherDevices,
+    pairedDeviceIdsByEnvironment,
+    ptyIdsByTabId,
+    retainedAgentsByPaneKey,
+    showSleepingWorkspaces,
+    sleepingAgentSessionsByPaneKey,
+    tabsByWorktree,
+    worktreeIdsWithLiveAgent,
+    worktreeIdsWithStructuredChat
+  ])
   const { visibleWorktreesForState, switchableWorktreesForRows } = useMemo(
     () =>
       orderEmptyQueryWorktrees({
