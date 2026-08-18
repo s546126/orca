@@ -16,10 +16,14 @@ Thanks for contributing to Orca.
 
 ## Local Setup
 
+The desktop app is a Tauri v2 / Pake-style host (system webview) plus an Electron-free Node sidecar. You need Node, pnpm, and a Rust toolchain.
+
 ```bash
 pnpm install
 pnpm dev
 ```
+
+`pnpm dev` launches the Tauri window, the Vite desktop renderer, and the desktop host on `127.0.0.1:6769`. It does not start Electron. The old Electron runner remains only as `pnpm dev:electron` while host capabilities finish moving off `src/main`.
 
 ## Branch Naming
 
@@ -111,7 +115,6 @@ All stable kinds (`patch`, `minor`, `major`) are computed off the latest _stable
 - **Minor or major bump:** `kind=minor` or `kind=major`.
 
 The scheduled 2x/day RC cron in [`release-rc.yml`](../../actions/workflows/release-rc.yml) is independent and continues to run automatically from `main`.
-
 
 ## Release Channels
 
