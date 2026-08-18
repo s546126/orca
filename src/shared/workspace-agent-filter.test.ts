@@ -5,6 +5,7 @@ import {
   migrateLegacyFilterHarnessId,
   normalizeFilterAgentId,
   normalizeFilterAgentIds,
+  resolveIncomingFilterAgentIds,
   resolvePersistedFilterAgentIds,
   toggleAllFilterAgents,
   toggleFilterAgentId,
@@ -67,6 +68,53 @@ describe('resolvePersistedFilterAgentIds', () => {
     expect(resolvePersistedFilterAgentIds({ filterHarnessId: 'codex' })).toEqual(['codex'])
     expect(resolvePersistedFilterAgentIds({ filterHarnessId: 'unknown' })).toBeNull()
     expect(resolvePersistedFilterAgentIds({})).toBeNull()
+  })
+})
+
+describe('resolveIncomingFilterAgentIds', () => {
+  it('uses incoming filterAgentIds when present, including explicit null', () => {
+    expect(
+      resolveIncomingFilterAgentIds({
+        current: { filterAgentIds: ['claude'] },
+        incoming: { filterAgentIds: ['openclaude'], filterAgentId: 'codex' }
+      })
+    ).toEqual(['openclaude'])
+    expect(
+      resolveIncomingFilterAgentIds({
+        current: { filterAgentIds: ['claude'] },
+        incoming: { filterAgentIds: null, filterHarnessId: 'cc' }
+      })
+    ).toBeNull()
+  })
+
+  it('resolves leftover singular and harness-only payloads instead of the stored list', () => {
+    expect(
+      resolveIncomingFilterAgentIds({
+        current: { filterAgentIds: ['claude'] },
+        incoming: { filterAgentId: 'openclaude' }
+      })
+    ).toEqual(['openclaude'])
+    expect(
+      resolveIncomingFilterAgentIds({
+        current: { filterAgentIds: ['openclaude'] },
+        incoming: { filterHarnessId: 'cc' }
+      })
+    ).toEqual(['claude'])
+    expect(
+      resolveIncomingFilterAgentIds({
+        current: { filterAgentIds: ['openclaude'] },
+        incoming: { filterHarnessId: 'codex' }
+      })
+    ).toEqual(['codex'])
+  })
+
+  it('keeps the stored filter when the update has no agent-filter fields', () => {
+    expect(
+      resolveIncomingFilterAgentIds({
+        current: { filterAgentIds: ['claude', 'codex'] },
+        incoming: {}
+      })
+    ).toEqual(['claude', 'codex'])
   })
 })
 
