@@ -4497,10 +4497,10 @@
           "680043342f": "コンパクト",
           "c7591b6014": "repo",
           "hosts": "ホスト",
-          "agents": "エージェント",
+          "agents": "Agent",
           "showSection": "表示",
           "allHostsDetail": "すべてのホストを表示",
-          "allAgentsDetail": "すべてのエージェントを表示",
+          "allAgentsDetail": "すべての Agent を表示",
           "configuredSshHost": "設定済み SSH",
           "projectSshHost": "プロジェクト SSH",
           "activeRuntimeHost": "アクティブサーバー",
@@ -5107,15 +5107,15 @@
           "visibleHostsCount": "{{value0}} 台のホスト"
         },
         "sidebarAgentOptions": {
-          "allAgents": "すべてのエージェント",
-          "visibleAgentsCount": "{{value0}} エージェント"
+          "allAgents": "すべての Agent",
+          "visibleAgentsCount": "{{value0}} Agent"
         },
         "SidebarAgentFilterSection": {
-          "agent": "エージェント"
+          "agent": "Agent"
         },
         "SidebarAgentScopeStrip": {
           "scopedTo": "{{value0}} を表示中",
-          "backToAll": "すべてのエージェント"
+          "backToAll": "すべての Agent"
         },
         "SidebarHostScopeStrip": {
           "scopedTo": "{{value0}} 件を表示中",
