@@ -20,6 +20,26 @@ export function isMacAppDataPath(path: string | null | undefined, userAgent?: st
   return MAC_APP_DATA_SEGMENT_RE.test(path.replace(/\\/g, '/'))
 }
 
+export const GIT_STATUS_FOREGROUND_POLL_MS = 3_000
+export const GIT_STATUS_IDLE_POLL_MS = 15_000
+
+export function resolveGitStatusPollIntervalMs(
+  args: Parameters<typeof shouldPollActiveGitStatus>[0]
+): number | null {
+  if (!shouldPollActiveGitStatus(args)) {
+    return null
+  }
+  if (
+    args.rightSidebarOpen &&
+    (args.rightSidebarTab === 'source-control' || args.rightSidebarTab === 'checks')
+  ) {
+    return GIT_STATUS_FOREGROUND_POLL_MS
+  }
+  // Why: idle explorer / background identity can rely on file-watch plus a
+  // slower backup. A 3s tick kept renderer IPC and store updates hot.
+  return GIT_STATUS_IDLE_POLL_MS
+}
+
 export function shouldPollActiveGitStatus(args: {
   activeWorktreeId: string | null
   worktreePath: string | null

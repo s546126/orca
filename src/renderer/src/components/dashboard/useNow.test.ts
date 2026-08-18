@@ -65,4 +65,36 @@ describe('createSharedNowClock', () => {
     expect(second).toHaveBeenCalledTimes(1)
     expect(setIntervalMock).toHaveBeenCalledTimes(2)
   })
+
+  it('does not keep the timer running while the window is hidden', () => {
+    let visible = false
+    const handle = {} as ReturnType<typeof setInterval>
+    const setIntervalMock = vi.fn(() => handle)
+    const clearIntervalMock = vi.fn()
+    const visibility = { listener: null as (() => void) | null }
+    const clock = createSharedNowClock(30_000, {
+      now: () => 1_000,
+      setInterval: setIntervalMock,
+      clearInterval: clearIntervalMock,
+      isVisible: () => visible,
+      addVisibilityListener: (listener) => {
+        visibility.listener = listener
+        return () => {
+          visibility.listener = null
+        }
+      }
+    })
+
+    const unsubscribe = clock.subscribe(() => {})
+    expect(setIntervalMock).not.toHaveBeenCalled()
+
+    visible = true
+    visibility.listener?.()
+    expect(setIntervalMock).toHaveBeenCalledTimes(1)
+
+    visible = false
+    visibility.listener?.()
+    expect(clearIntervalMock).toHaveBeenCalledWith(handle)
+    unsubscribe()
+  })
 })

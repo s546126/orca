@@ -1,9 +1,12 @@
 import { useSyncExternalStore } from 'react'
+import { isWindowVisible } from '@/lib/window-visibility-interval'
 
 type ClockDeps = {
   now: () => number
   setInterval: (callback: () => void, intervalMs: number) => ReturnType<typeof setInterval>
   clearInterval: (handle: ReturnType<typeof setInterval>) => void
+  isVisible?: () => boolean
+  addVisibilityListener?: (listener: () => void) => () => void
 }
 
 type SharedNowClock = {
@@ -18,12 +21,22 @@ export function createSharedNowClock(
   deps: ClockDeps = {
     now: () => Date.now(),
     setInterval: (callback, ms) => setInterval(callback, ms),
-    clearInterval: (handle) => clearInterval(handle)
+    clearInterval: (handle) => clearInterval(handle),
+    isVisible: () => isWindowVisible(),
+    addVisibilityListener: (listener) => {
+      if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') {
+        return () => {}
+      }
+      document.addEventListener('visibilitychange', listener)
+      return () => document.removeEventListener('visibilitychange', listener)
+    }
   }
 ): SharedNowClock {
   let now = deps.now()
   let timer: ReturnType<typeof setInterval> | null = null
+  let stopVisibilityWatcher: (() => void) | null = null
   const listeners = new Set<() => void>()
+  const isVisible = deps.isVisible ?? (() => true)
 
   const tick = (): void => {
     now = deps.now()
@@ -32,22 +45,50 @@ export function createSharedNowClock(
     }
   }
 
+  const stopTimer = (): void => {
+    if (!timer) {
+      return
+    }
+    deps.clearInterval(timer)
+    timer = null
+  }
+
+  const startTimer = (): void => {
+    if (timer || !isVisible()) {
+      return
+    }
+    // Why: all mounted relative-time labels at the same cadence can share
+    // one timer. Refresh immediately on restart so remounted labels don't
+    // display the stale timestamp left from the previous subscriber set.
+    tick()
+    timer = deps.setInterval(tick, intervalMs)
+  }
+
+  const reconcileVisibility = (): void => {
+    if (isVisible()) {
+      startTimer()
+    } else {
+      stopTimer()
+    }
+  }
+
   return {
     getSnapshot: () => now,
     subscribe: (listener) => {
       listeners.add(listener)
+      if (stopVisibilityWatcher === null && deps.addVisibilityListener) {
+        stopVisibilityWatcher = deps.addVisibilityListener(reconcileVisibility)
+      }
+      startTimer()
       if (!timer) {
-        // Why: all mounted relative-time labels at the same cadence can share
-        // one timer. Refresh immediately on restart so remounted labels don't
-        // display the stale timestamp left from the previous subscriber set.
         tick()
-        timer = deps.setInterval(tick, intervalMs)
       }
       return () => {
         listeners.delete(listener)
-        if (listeners.size === 0 && timer) {
-          deps.clearInterval(timer)
-          timer = null
+        if (listeners.size === 0) {
+          stopTimer()
+          stopVisibilityWatcher?.()
+          stopVisibilityWatcher = null
         }
       }
     }

@@ -21,6 +21,8 @@ pnpm install
 pnpm dev
 ```
 
+Desktop packaging stays on electron-builder (`pnpm run build:linux` / AppImage). After `pnpm run build:web`, `pnpm run build:pake` is an optional Pake web-shell experiment only — see [`docs/reference/pake-web-shell.md`](../docs/reference/pake-web-shell.md). Daemon, PTY, native modules, and the packaged CLI are Electron-only.
+
 ## Branch Naming
 
 Use a clear, descriptive branch name that reflects the change.
@@ -113,7 +115,6 @@ All stable kinds (`patch`, `minor`, `major`) are computed off the latest _stable
 - **Minor or major bump:** `kind=minor` or `kind=major`.
 
 The scheduled 2x/day RC cron in [`release-rc.yml`](../../actions/workflows/release-rc.yml) is independent and continues to run automatically from `main`.
-
 
 ## Release Channels
 

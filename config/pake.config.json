@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tw93/Pake/main/schema/pake.schema.json",
+  "url": "out/pake-web",
+  "name": "Orca",
+  "title": "Orca",
+  "identifier": "com.stablyai.orca.web-shell",
+  "icon": "resources/build/icon.png",
+  "width": 1280,
+  "height": 800,
+  "useLocalFile": true,
+  "targets": "appimage,deb",
+  "appVersion": "1.0.0"
+}

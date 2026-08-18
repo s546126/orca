@@ -323,6 +323,25 @@ function classify(row, rootPid) {
   return 'other-descendant'
 }
 
+async function collectRendererOccupancySnapshot(page) {
+  try {
+    const snapshot = await page.evaluate(() => window.api.memory.getSnapshot())
+    return {
+      source: 'memory:getSnapshot',
+      collectedAt: snapshot?.collectedAt ?? null,
+      renderer: snapshot?.app?.renderer ?? null,
+      main: snapshot?.app?.main ?? null,
+      other: snapshot?.app?.other ?? null,
+      app: snapshot?.app ? { cpu: snapshot.app.cpu, memory: snapshot.app.memory } : null
+    }
+  } catch (error) {
+    return {
+      source: 'memory:getSnapshot',
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
 async function collectRendererIdleState(page) {
   return page.evaluate(() => {
     const describeElement = (element) => {
@@ -513,6 +532,7 @@ async function main() {
     )
     await sleep(options.warmupMs)
     const rendererIdleState = await collectRendererIdleState(page)
+    const occupancySnapshot = await collectRendererOccupancySnapshot(page)
     const deadline = Date.now() + options.sampleMs
     const samples = []
     let previousSnapshot = null
@@ -550,6 +570,7 @@ async function main() {
       rootPid,
       platform: { platform: process.platform, arch: process.arch, cpus: os.cpus().length },
       rendererIdleState,
+      occupancySnapshot,
       sampleCount: samples.length,
       summary: summarizeSamples(samples),
       processInventory: summarizeProcessInventory(samples),
@@ -564,6 +585,7 @@ async function main() {
       JSON.stringify(
         {
           summary: report.summary,
+          occupancySnapshot: report.occupancySnapshot,
           processInventory: report.processInventory,
           sampleCount: report.sampleCount
         },

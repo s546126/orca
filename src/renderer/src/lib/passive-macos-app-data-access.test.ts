@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { isMacAppDataPath, shouldPollActiveGitStatus } from './passive-macos-app-data-access'
+import {
+  GIT_STATUS_FOREGROUND_POLL_MS,
+  GIT_STATUS_IDLE_POLL_MS,
+  isMacAppDataPath,
+  resolveGitStatusPollIntervalMs,
+  shouldPollActiveGitStatus
+} from './passive-macos-app-data-access'
 import type { ActiveRightSidebarTab, OpenFile } from '@/store/slices/editor'
 
 const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
@@ -79,5 +85,49 @@ describe('shouldPollActiveGitStatus', () => {
 
   it('keeps existing background polling for ordinary paths', () => {
     expect(shouldPollActiveGitStatus(pollArgs({ worktreePath: '/Users/me/dev/repo' }))).toBe(true)
+  })
+})
+
+describe('resolveGitStatusPollIntervalMs', () => {
+  it('keeps a fast tick only while Source Control or Checks is visible', () => {
+    expect(
+      resolveGitStatusPollIntervalMs(
+        pollArgs({
+          worktreePath: '/Users/me/dev/repo',
+          rightSidebarOpen: true,
+          rightSidebarTab: 'source-control'
+        })
+      )
+    ).toBe(GIT_STATUS_FOREGROUND_POLL_MS)
+    expect(
+      resolveGitStatusPollIntervalMs(
+        pollArgs({
+          worktreePath: '/Users/me/dev/repo',
+          rightSidebarOpen: true,
+          rightSidebarTab: 'checks'
+        })
+      )
+    ).toBe(GIT_STATUS_FOREGROUND_POLL_MS)
+  })
+
+  it('slows explorer and background identity polling', () => {
+    expect(
+      resolveGitStatusPollIntervalMs(
+        pollArgs({
+          worktreePath: '/Users/me/dev/repo',
+          rightSidebarOpen: true,
+          rightSidebarTab: 'explorer'
+        })
+      )
+    ).toBe(GIT_STATUS_IDLE_POLL_MS)
+    expect(
+      resolveGitStatusPollIntervalMs(
+        pollArgs({ worktreePath: '/Users/me/dev/repo', rightSidebarOpen: false })
+      )
+    ).toBe(GIT_STATUS_IDLE_POLL_MS)
+  })
+
+  it('does not schedule a timer when polling is skipped', () => {
+    expect(resolveGitStatusPollIntervalMs(pollArgs())).toBeNull()
   })
 })

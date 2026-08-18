@@ -47,7 +47,6 @@ import {
   configureElectronNetworkCompatibility,
   configureDevUserDataPath,
   configureOrcaUserDataPathEnv,
-  enableMainProcessGpuFeatures,
   installDevParentDisconnectQuit,
   installDevParentSignalQuit,
   installDevParentWatchdog,
@@ -56,6 +55,7 @@ import {
   patchPackagedProcessPath,
   shouldInstallManagedHooks
 } from './startup/configure-process'
+import { enableMainProcessGpuFeatures } from './startup/gpu-fallback'
 import { ensureVirtualDisplayForHeadlessServe } from './startup/ensure-virtual-display'
 import {
   shouldSuppressDevEducation,

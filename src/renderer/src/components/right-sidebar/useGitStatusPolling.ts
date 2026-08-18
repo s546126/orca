@@ -8,11 +8,13 @@ import { getRuntimeGitConflictOperation } from '@/runtime/runtime-git-client'
 import { refreshGitStatusForWorktree } from './git-status-refresh'
 import { type CoalescedPollRunner, createCoalescedPollRunner } from './coalesced-poll-runner'
 import { installWindowVisibilityInterval } from '@/lib/window-visibility-interval'
-import { shouldPollActiveGitStatus } from '@/lib/passive-macos-app-data-access'
+import {
+  GIT_STATUS_FOREGROUND_POLL_MS,
+  resolveGitStatusPollIntervalMs,
+  shouldPollActiveGitStatus
+} from '@/lib/passive-macos-app-data-access'
 import { getRightSidebarWorktreeRuntimeSettings } from './file-explorer-runtime-owner'
 import { useGitStatusFileWatchRefresh } from './git-status-file-watch-refresh'
-
-const POLL_INTERVAL_MS = 3000
 
 export function useGitStatusPolling(options: { enabled?: boolean } = {}): void {
   const enabled = options.enabled ?? true
@@ -147,7 +149,7 @@ export function useGitStatusPolling(options: { enabled?: boolean } = {}): void {
   const statusPollRunnerRef = useRef<CoalescedPollRunner | null>(null)
   useEffect(() => {
     const runner = createCoalescedPollRunner(() => runFetchStatusRef.current(), {
-      minIntervalMs: POLL_INTERVAL_MS
+      minIntervalMs: GIT_STATUS_FOREGROUND_POLL_MS
     })
     statusPollRunnerRef.current = runner
     return () => {
@@ -160,14 +162,26 @@ export function useGitStatusPolling(options: { enabled?: boolean } = {}): void {
     statusPollRunnerRef.current?.run()
   }, [activeWorktreeId])
 
+  const gitStatusPollIntervalMs = resolveGitStatusPollIntervalMs({
+    activeWorktreeId,
+    worktreePath,
+    rightSidebarOpen,
+    rightSidebarTab,
+    rightSidebarExplorerView,
+    openFiles
+  })
+
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || gitStatusPollIntervalMs == null) {
       return
     }
     // Why: this root-level poll should pause while hidden, but visible
     // unfocused windows still need fresh status for second-display workflows.
-    return installWindowVisibilityInterval({ run: fetchStatus, intervalMs: POLL_INTERVAL_MS })
-  }, [enabled, fetchStatus])
+    return installWindowVisibilityInterval({
+      run: fetchStatus,
+      intervalMs: gitStatusPollIntervalMs
+    })
+  }, [enabled, fetchStatus, gitStatusPollIntervalMs])
 
   useGitStatusFileWatchRefresh({
     activeConnectionId,
@@ -225,7 +239,7 @@ export function useGitStatusPolling(options: { enabled?: boolean } = {}): void {
     // visible unfocused windows, but do not poll disconnected hidden windows.
     const stopVisiblePoll = installWindowVisibilityInterval({
       run: () => pollRunner.run(),
-      intervalMs: POLL_INTERVAL_MS
+      intervalMs: GIT_STATUS_FOREGROUND_POLL_MS
     })
     return () => {
       pollRunner.dispose()
