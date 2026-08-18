@@ -1,5 +1,6 @@
 import type { Repo } from '../../../../shared/repo-types'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
+import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { WorktreeLineage } from '../../../../shared/worktree/lineage-types'
 export type { SidebarFilterState } from './visible-worktree-kinds'
 export {
@@ -48,6 +49,10 @@ import {
 } from './workspace-creator-visibility'
 import { isDefaultBranchWorkspace } from './default-branch-workspace'
 import { getLineageAncestorIndex, getSortedWorktreeRankIndex } from './visible-worktree-indexes'
+import {
+  collectAgentTypesByWorktree,
+  worktreeMatchesAgentFilter
+} from './workspace-agent-filter-evidence'
 import { getWorktreeHostIdentity } from '../../../../shared/worktree/host-qualified-identity'
 
 /**
@@ -65,7 +70,10 @@ import { getWorktreeHostIdentity } from '../../../../shared/worktree/host-qualif
 type VisibleWorktreeOptions = {
   filterRepoIds: readonly string[]
   showSleepingWorkspaces: boolean
-  tabsByWorktree: Record<string, Pick<TerminalTab, 'id'>[]> | null
+  tabsByWorktree: Record<
+    string,
+    (Pick<TerminalTab, 'id'> & { launchAgent?: TerminalTab['launchAgent']; title?: string })[]
+  > | null
   ptyIdsByTabId: Record<string, string[]> | null
   browserTabsByWorktree?: Record<string, { id: string }[]> | null
   worktreeIdsWithLiveAgent: ReadonlySet<string>
@@ -76,6 +84,8 @@ type VisibleWorktreeOptions = {
   hideWorkspacesFromOtherDevices: boolean
   pairedDeviceIdsByEnvironment: ReadonlyMap<string, string>
   alwaysShowDefaultBranchWorkspace?: boolean
+  filterAgentIds: TuiAgent[] | null
+  agentTypesByWorktree?: Record<string, readonly (string | null | undefined)[]> | null
   repoMap: Map<string, Repo>
   workspaceHostScope: ExecutionHostScope
   visibleWorkspaceHostIds?: readonly ExecutionHostId[] | null
@@ -119,6 +129,15 @@ export function computeVisibleWorktrees(
 
   if (opts.hideDetachedHeadWorkspaces) {
     all = all.filter((w) => !isDetachedHeadWorkspace(w))
+  }
+
+  if (opts.filterAgentIds) {
+    all = all.filter((w) =>
+      worktreeMatchesAgentFilter(w, opts.filterAgentIds, {
+        tabsByWorktree: opts.tabsByWorktree,
+        agentTypesByWorktree: opts.agentTypesByWorktree
+      })
+    )
   }
 
   const visibleHostIds =
@@ -293,6 +312,15 @@ export function buildVisibleWorktreeOptionsFromState(
         )
       : EMPTY_PAIRED_DEVICE_IDS_BY_ENVIRONMENT,
     alwaysShowDefaultBranchWorkspace: state.alwaysShowDefaultBranchWorkspace,
+    filterAgentIds: state.filterAgentIds,
+    agentTypesByWorktree: state.filterAgentIds
+      ? collectAgentTypesByWorktree({
+          agentStatusByPaneKey: state.agentStatusByPaneKey,
+          retainedAgentsByPaneKey: state.retainedAgentsByPaneKey,
+          sleepingAgentSessionsByPaneKey: state.sleepingAgentSessionsByPaneKey,
+          tabsByWorktree: state.tabsByWorktree
+        })
+      : null,
     repoMap,
     workspaceHostScope: state.workspaceHostScope,
     visibleWorkspaceHostIds: state.visibleWorkspaceHostIds,
