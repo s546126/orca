@@ -20,6 +20,10 @@ import { installWebPreloadApi } from './web-preload-api'
 import { I18nProvider } from '../i18n/I18nProvider'
 import { translate } from '../i18n/i18n'
 
+// Why: Pake local packaging loads index.html (copy of web-index.html). Mark the
+// web client before pairing so chrome/location checks do not treat it as Electron.
+;(window as unknown as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__ = true
+
 const App = lazy(() => import('../App'))
 
 function WebRoot(): React.JSX.Element {

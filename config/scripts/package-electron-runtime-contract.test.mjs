@@ -55,6 +55,14 @@ describe('Electron runtime package contract', () => {
     expect(packageJson.scripts['build:web']).toContain('node config/scripts/verify-web-build.mjs')
   })
 
+  it('keeps optional Pake packaging next to Electron and does not replace build:linux', () => {
+    expect(packageJson.scripts['build:pake']).toBe('node config/scripts/run-pake-build.mjs')
+    expect(packageJson.scripts['build:linux']).toContain('electron-builder')
+    expect(packageJson.scripts['build:linux']).toContain('--linux AppImage deb')
+    expect(packageJson.scripts['build:linux']).not.toContain('build:pake')
+    expect(packageJson.scripts['build:pake']).not.toContain('electron-builder')
+  })
+
   it('guards release publishing before electron-builder runs', () => {
     const releaseWorkflow = readFileSync(
       join(projectDir, '.github/workflows/release-cut.yml'),

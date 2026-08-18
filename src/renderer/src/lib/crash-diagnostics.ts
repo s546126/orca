@@ -3,6 +3,7 @@ import type {
   CrashReportDetailValue
 } from '../../../shared/crash-reporting'
 import { getBrowserWebviewMemoryProfile } from '../components/browser-pane/webview-registry'
+import { isWindowVisible } from './window-visibility-interval'
 
 const RENDERER_MEMORY_SAMPLE_INTERVAL_MS = 60_000
 const BYTES_PER_MEGABYTE = 1024 * 1024
@@ -15,6 +16,7 @@ type BrowserPerformanceMemory = {
 
 let rendererCrashDiagnosticsInstalled = false
 let rendererMemoryInterval: number | null = null
+let rendererMemoryVisibilityListener: (() => void) | null = null
 
 export function recordRendererCrashBreadcrumb(
   name: string,
@@ -44,10 +46,26 @@ export function installRendererCrashDiagnostics(): void {
 
   if (getPerformanceMemory()) {
     recordRendererMemory('startup')
-    rendererMemoryInterval = window.setInterval(
-      () => recordRendererMemory('interval'),
-      RENDERER_MEMORY_SAMPLE_INTERVAL_MS
-    )
+    const reconcileMemoryInterval = (): void => {
+      if (isWindowVisible()) {
+        if (rendererMemoryInterval === null) {
+          rendererMemoryInterval = window.setInterval(
+            () => recordRendererMemory('interval'),
+            RENDERER_MEMORY_SAMPLE_INTERVAL_MS
+          )
+        }
+        return
+      }
+      if (rendererMemoryInterval !== null) {
+        window.clearInterval(rendererMemoryInterval)
+        rendererMemoryInterval = null
+      }
+    }
+    reconcileMemoryInterval()
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      rendererMemoryVisibilityListener = reconcileMemoryInterval
+      document.addEventListener('visibilitychange', reconcileMemoryInterval)
+    }
   }
 }
 
@@ -65,6 +83,10 @@ function disposeRendererCrashDiagnostics(): void {
   if (rendererMemoryInterval !== null) {
     window.clearInterval(rendererMemoryInterval)
     rendererMemoryInterval = null
+  }
+  if (rendererMemoryVisibilityListener && typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', rendererMemoryVisibilityListener)
+    rendererMemoryVisibilityListener = null
   }
 }
 

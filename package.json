@@ -57,6 +57,7 @@
     "build:cli": "tsc -p config/tsconfig.cli.json --outDir out --composite false --incremental false && node config/scripts/verify-cli-bin.mjs --fix-executable && node config/scripts/install-dev-cli.mjs",
     "build:electron-vite": "node config/scripts/run-electron-vite-build.mjs",
     "build:web": "node config/scripts/run-vite-web-build.mjs && node config/scripts/verify-web-build.mjs",
+    "build:pake": "node config/scripts/run-pake-build.mjs",
     "build:desktop": "pnpm run typecheck && pnpm run build:relay && pnpm run build:cli && pnpm run build:electron-vite && pnpm run build:web",
     "build": "pnpm run build:desktop && pnpm run build:native",
     "build:release": "pnpm run build:relay && pnpm run build:native && pnpm run verify:computer-native && pnpm run build:cli && pnpm run build:electron-vite && pnpm run build:web",
