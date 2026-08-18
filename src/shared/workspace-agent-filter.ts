@@ -45,16 +45,18 @@ export function migrateLegacyFilterHarnessId(value: unknown): TuiAgent | null {
   return null
 }
 
+export type PersistedAgentFilterFields = {
+  filterAgentIds?: unknown
+  filterAgentId?: unknown
+  filterHarnessId?: unknown
+}
+
 /**
  * Why: after the first persist, leftover `filterAgentId` / `filterHarnessId`
  * can still sit on disk. A present `filterAgentIds` (including explicit null)
  * is authoritative.
  */
-export function resolvePersistedFilterAgentIds(ui: {
-  filterAgentIds?: unknown
-  filterAgentId?: unknown
-  filterHarnessId?: unknown
-}): FilterAgentIds {
+export function resolvePersistedFilterAgentIds(ui: PersistedAgentFilterFields): FilterAgentIds {
   if (ui.filterAgentIds !== undefined) {
     return normalizeFilterAgentIds(ui.filterAgentIds)
   }
@@ -64,6 +66,29 @@ export function resolvePersistedFilterAgentIds(ui: {
   }
   const harness = migrateLegacyFilterHarnessId(ui.filterHarnessId)
   return harness ? [harness] : null
+}
+
+function incomingUpdatesIncludeLeftoverAgentFilter(
+  incoming: Pick<PersistedAgentFilterFields, 'filterAgentId' | 'filterHarnessId'>
+): boolean {
+  return incoming.filterAgentId !== undefined || incoming.filterHarnessId !== undefined
+}
+
+/**
+ * Why: older clients write leftover keys without filterAgentIds. Do not merge
+ * leftovers into current UI — defaults already set filterAgentIds: null.
+ */
+export function resolveIncomingFilterAgentIds(params: {
+  current: PersistedAgentFilterFields
+  incoming: PersistedAgentFilterFields
+}): FilterAgentIds {
+  if (params.incoming.filterAgentIds !== undefined) {
+    return normalizeFilterAgentIds(params.incoming.filterAgentIds)
+  }
+  if (incomingUpdatesIncludeLeftoverAgentFilter(params.incoming)) {
+    return resolvePersistedFilterAgentIds(params.incoming)
+  }
+  return resolvePersistedFilterAgentIds(params.current)
 }
 
 export function collectWorkspaceAgentIds(

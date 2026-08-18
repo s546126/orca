@@ -5146,7 +5146,7 @@
           "agent": "Agente"
         },
         "SidebarAgentScopeStrip": {
-          "scopedTo": "{{value0}} visible",
+          "scopedTo": "Mostrando {{value0}}",
           "backToAll": "Todos los agentes"
         },
         "SidebarHostScopeStrip": {
