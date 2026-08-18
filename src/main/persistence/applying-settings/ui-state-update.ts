@@ -18,10 +18,7 @@ import {
   normalizeExecutionHostOrder
 } from '../../../shared/execution-host'
 import { normalizeManualRepoOrder } from '../../../shared/manual-repo-order'
-import {
-  normalizeFilterAgentIds,
-  resolvePersistedFilterAgentIds
-} from '../../../shared/workspace-agent-filter'
+import { resolveIncomingFilterAgentIds } from '../../../shared/workspace-agent-filter'
 import { normalizeBrowserPageZoomLevel } from '../../../shared/browser-page-zoom'
 import { normalizeFeatureTipIds } from '../../../shared/feature-tips'
 import { normalizeContextualTourIds } from '../../../shared/contextual-tours'
@@ -160,10 +157,10 @@ export function updatePersistedUI(
       sanitizedUpdates.agentsVisibleHostIds !== undefined
         ? normalizeVisibleExecutionHostIds(sanitizedUpdates.agentsVisibleHostIds)
         : normalizeVisibleExecutionHostIds(operations.state.ui?.agentsVisibleHostIds),
-    filterAgentIds:
-      sanitizedUpdates.filterAgentIds !== undefined
-        ? normalizeFilterAgentIds(sanitizedUpdates.filterAgentIds)
-        : resolvePersistedFilterAgentIds(operations.state.ui),
+    filterAgentIds: resolveIncomingFilterAgentIds({
+      current: operations.state.ui,
+      incoming: sanitizedUpdates
+    }),
     workspaceHostOrder:
       sanitizedUpdates.workspaceHostOrder !== undefined
         ? normalizeExecutionHostOrder(sanitizedUpdates.workspaceHostOrder)
@@ -200,6 +197,10 @@ export function updatePersistedUI(
           )
         : normalizeFeatureInteractions(operations.state.ui?.featureInteractions)
   }
+  // Why: leftover singular/harness keys must not remain after a write; older
+  // clients send them, but only filterAgentIds is durable going forward.
+  delete nextUI.filterAgentId
+  delete nextUI.filterHarnessId
   if (persistedUIValuesEqual(previousUI, nextUI)) {
     if (activeViewChanged) {
       operations.notifyUIChanged()
