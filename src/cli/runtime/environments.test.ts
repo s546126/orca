@@ -1,7 +1,8 @@
-import { mkdtempSync, statSync } from 'node:fs'
+import { mkdtempSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { E2EE_KEYPAIR_FILENAME } from '../../shared/local-runtime-public-key'
 import { encodePairingOffer } from '../../shared/pairing'
 import {
   addEnvironmentFromPairingCode,
@@ -80,5 +81,24 @@ describe('CLI runtime environments', () => {
       'ws://127.0.0.1:1111'
     )
     expect(listEnvironments(userDataPath)[0]?.id).toBe(first.id)
+  })
+
+  it('rejects adding this host as a remote environment', () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-env-store-'))
+    // Why: the CLI shares userData with the desktop app, so the running
+    // server's keypair identifies a pairing code that points back at it.
+    writeFileSync(
+      join(userDataPath, E2EE_KEYPAIR_FILENAME),
+      JSON.stringify({
+        v: 1,
+        publicKeyB64: Buffer.from(new Uint8Array(32).fill(1)).toString('base64'),
+        secretKeyB64: 'unused'
+      })
+    )
+
+    expect(() =>
+      addEnvironmentFromPairingCode(userDataPath, { name: 'itself', pairingCode: pairingCode() })
+    ).toThrow('This pairing code belongs to this Orca server.')
+    expect(listEnvironments(userDataPath)).toEqual([])
   })
 })

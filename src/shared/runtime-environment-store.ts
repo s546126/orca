@@ -3,6 +3,8 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { JsonStringifyByteLimitError } from './node-bounded-json-stringify'
 import { readNodeFileSyncWithinLimit } from './node-bounded-file-reader'
+import { publicKeyFromBase64, publicKeyToBase64 } from './e2ee-crypto'
+import { readLocalRuntimePublicKeyB64 } from './local-runtime-public-key'
 import { parsePairingCode, type PairingOffer } from './pairing'
 import { classifyRemotePairingHostname } from './remote-pairing-address'
 import { writeSecureJsonFileWithinLimit } from './bounded-secure-json-file'
@@ -40,6 +42,12 @@ export function listEnvironments(userDataPath: string): KnownRuntimeEnvironment[
   return readEnvironmentStore(userDataPath).environments
 }
 
+/**
+ * Parses a pairing code and persists the offered server as a known remote
+ * environment. Throws when the code is invalid, the name is taken, or the offer
+ * identifies this server itself — matched on the E2EE public key rather than the
+ * endpoint, so an SSH-forwarded remote server still pairs from 127.0.0.1.
+ */
 export function addEnvironmentFromPairingCode(
   userDataPath: string,
   args: {
@@ -55,6 +63,19 @@ export function addEnvironmentFromPairingCode(
     throw new RuntimeEnvironmentStoreError(
       'invalid_argument',
       'Invalid pairing code. Expected an orca://pair?... URL or bare pairing payload.'
+    )
+  }
+  // Why: reading this host's server identity here covers every entry point —
+  // desktop IPC, the CLI, and ephemeral-VM wiring — instead of one call site.
+  const localRuntimePublicKeyB64 = readLocalRuntimePublicKeyB64(userDataPath)
+  if (
+    localRuntimePublicKeyB64 &&
+    pairingPublicKeysMatch(offer.publicKeyB64, localRuntimePublicKeyB64)
+  ) {
+    // Why: connecting the local runtime back to itself creates recursive host state.
+    throw new RuntimeEnvironmentStoreError(
+      'invalid_argument',
+      'This pairing code belongs to this Orca server. Add a different remote server.'
     )
   }
   const store = readEnvironmentStore(userDataPath)
@@ -84,6 +105,21 @@ export function addEnvironmentFromPairingCode(
   }
   writeEnvironmentStore(userDataPath, next)
   return environment
+}
+
+/**
+ * Compares two base64 pairing public keys after decode/re-encode
+ * normalization, so padding or whitespace differences cannot defeat the
+ * self-pairing check. Malformed keys never match.
+ */
+function pairingPublicKeysMatch(left: string, right: string): boolean {
+  try {
+    return (
+      publicKeyToBase64(publicKeyFromBase64(left)) === publicKeyToBase64(publicKeyFromBase64(right))
+    )
+  } catch {
+    return false
+  }
 }
 
 export function removeEnvironment(userDataPath: string, selector: string): KnownRuntimeEnvironment {

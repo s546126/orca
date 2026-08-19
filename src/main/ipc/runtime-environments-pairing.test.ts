@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { E2EE_KEYPAIR_FILENAME } from '../../shared/local-runtime-public-key'
 import {
   ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES,
   MIN_COMPATIBLE_RUNTIME_SERVER_VERSION
@@ -398,6 +399,30 @@ describe('registerRuntimeEnvironmentHandlers', () => {
     )
     expect(activeRuntimeEnvironmentId).toBe(added.environment.id)
     expect(store.updateSettings).not.toHaveBeenCalled()
+  })
+
+  it('rejects adding the local Orca server as a remote environment', () => {
+    // Why: the store reads this host's server identity from userData, so the
+    // handler rejects a self-referential code without extra IPC plumbing.
+    writeFileSync(
+      join(userDataPath, E2EE_KEYPAIR_FILENAME),
+      JSON.stringify({
+        v: 1,
+        publicKeyB64: Buffer.from(new Uint8Array(32).fill(1)).toString('base64'),
+        secretKeyB64: 'unused'
+      })
+    )
+    registerRuntimeEnvironmentHandlers(store as never)
+
+    const add = handler<
+      { name: string; pairingCode: string },
+      { environment: { id: string; name: string } }
+    >('runtimeEnvironments:addFromPairingCode')
+
+    expect(() => add(null, { name: 'this server', pairingCode: pairingCode() })).toThrow(
+      'This pairing code belongs to this Orca server.'
+    )
+    expect(environmentStore.listEnvironments(userDataPath)).toEqual([])
   })
 
   it('disconnects a saved runtime without removing it', async () => {
