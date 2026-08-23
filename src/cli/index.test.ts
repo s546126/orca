@@ -154,6 +154,9 @@ describe('orca root help', () => {
     expect(logSpy.mock.calls[0][0]).toContain(
       'project setup-delete      Remove a project host setup'
     )
+    expect(logSpy.mock.calls[0][0]).toContain(
+      'cdp connect               Start a view-scoped CDP gateway for Playwright/Browser Use'
+    )
     expect(logSpy.mock.calls[0][0]).toContain('Agent Sessions And Worktrees:')
     expect(logSpy.mock.calls[0][0]).toContain(
       '`worktree create --agent` creates a new checkout with an agent.'

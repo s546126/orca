@@ -2,6 +2,7 @@
    trust boundary (isTrustedBrowserRenderer) and handler teardown stay consistent. */
 import { BrowserWindow, ipcMain, webContents } from 'electron'
 import { browserManager } from '../browser/browser-manager'
+import { cdpViewGatewayManager } from '../browser/cdp-view-gateway-manager'
 import type { AgentBrowserBridge } from '../browser/agent-browser-bridge'
 import { browserSessionRegistry } from '../browser/browser-session-registry'
 import {
@@ -217,6 +218,14 @@ export function registerBrowserHandlers(): void {
       const pendingAnyResolves = new Set(pendingAnyTabRegistrations)
       pendingAnyTabRegistrations.clear()
       resolvePendingRegistrations(pendingAnyResolves)
+      const guest = webContents.fromId(args.webContentsId)
+      const liveGuest = guest && !guest.isDestroyed() ? guest : null
+      cdpViewGatewayManager.notifyTargetCreated(args.worktreeId, {
+        targetId: args.browserPageId,
+        url: typeof liveGuest?.getURL === 'function' ? liveGuest.getURL() : '',
+        title: typeof liveGuest?.getTitle === 'function' ? liveGuest.getTitle() : '',
+        active: false
+      })
       return true
     }
   )
@@ -228,10 +237,14 @@ export function registerBrowserHandlers(): void {
     // Why: notify bridge before unregistering so it can destroy the session
     // process and proxy. Must happen before unregisterGuest clears the mapping.
     const wcId = browserManager.getGuestWebContentsId(args.browserPageId)
+    const worktreeId = browserManager.getWorktreeIdForTab(args.browserPageId)
     if (wcId !== null && agentBrowserBridgeRef) {
       agentBrowserBridgeRef.onTabClosed(wcId)
     }
     browserManager.unregisterGuest(args.browserPageId)
+    if (worktreeId) {
+      cdpViewGatewayManager.notifyTargetDestroyed(worktreeId, args.browserPageId)
+    }
     return true
   })
 

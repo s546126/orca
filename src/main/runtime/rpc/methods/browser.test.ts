@@ -8,6 +8,7 @@ import {
   CLIPBOARD_TEXT_WRITE_TOO_LARGE_ERROR
 } from '../../../../shared/clipboard-text'
 import { BROWSER_CORE_METHODS } from './browser-core'
+import { BROWSER_CDP_METHODS } from './browser-cdp'
 import { BROWSER_EXTRA_METHODS } from './browser-extras'
 import { BROWSER_SCREENCAST_METHODS } from './browser-screencast'
 import { ClipboardWrite, Fill, KeyboardInsert, Type } from './browser-schemas'
@@ -82,6 +83,28 @@ describe('browser RPC methods', () => {
       browserFamily: 'chrome',
       browserProfile: 'Default'
     })
+  })
+
+  it('routes cdp attach commands to the runtime server', async () => {
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      browserCdpViews: vi.fn().mockResolvedValue({ views: [] }),
+      browserCdpConnect: vi.fn().mockResolvedValue({
+        contractVersion: 1,
+        viewId: 'wt-1',
+        cdpHttpUrl: 'http://127.0.0.1:9333'
+      }),
+      browserCdpStop: vi.fn().mockResolvedValue({ stopped: true, viewId: 'wt-1' })
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({ runtime, methods: BROWSER_CDP_METHODS })
+
+    await dispatcher.dispatch(makeRequest('browser.cdpViews', { worktree: 'id:wt-1' }))
+    await dispatcher.dispatch(makeRequest('browser.cdpConnect', { worktree: 'id:wt-1' }))
+    await dispatcher.dispatch(makeRequest('browser.cdpStop', { worktree: 'id:wt-1' }))
+
+    expect(runtime.browserCdpViews).toHaveBeenCalledWith({ worktree: 'id:wt-1' })
+    expect(runtime.browserCdpConnect).toHaveBeenCalledWith({ worktree: 'id:wt-1' })
+    expect(runtime.browserCdpStop).toHaveBeenCalledWith({ worktree: 'id:wt-1' })
   })
 
   it('routes browser screencast over the streaming dispatcher', async () => {

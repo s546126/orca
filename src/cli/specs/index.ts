@@ -1,6 +1,7 @@
 import type { CommandSpec } from '../args'
 import { BROWSER_ADVANCED_COMMAND_SPECS } from './browser-advanced'
 import { BROWSER_BASIC_COMMAND_SPECS } from './browser-basic'
+import { BROWSER_CDP_COMMAND_SPECS } from './browser-cdp'
 import { AUTOMATION_COMMAND_SPECS } from './automations'
 import { CORE_COMMAND_SPECS } from './core'
 import { FILE_COMMAND_SPECS } from './file'
@@ -20,6 +21,7 @@ export const COMMAND_SPECS: CommandSpec[] = [
   ...AUTOMATION_COMMAND_SPECS,
   ...BROWSER_BASIC_COMMAND_SPECS,
   ...BROWSER_ADVANCED_COMMAND_SPECS,
+  ...BROWSER_CDP_COMMAND_SPECS,
   ...ORCHESTRATION_COMMAND_SPECS,
   ...COMPUTER_COMMAND_SPECS,
   ...AGENT_HOOK_COMMAND_SPECS,

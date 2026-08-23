@@ -134,6 +134,9 @@ Browser Automation:
   tab profile clone         Clone a browser tab into another profile
   tab switch                Switch the active browser tab by --index or --page
   tab close                 Close a browser tab by --index/--page or the current tab
+  cdp views                 List browser views that can expose a CDP endpoint
+  cdp connect               Start a view-scoped CDP gateway for Playwright/Browser Use
+  cdp stop                  Stop a view-scoped CDP gateway
   snapshot                  Accessibility snapshot with element refs (e.g. @e1, @e2)
   goto                      Navigate the active tab to --url
   click                     Click element by --element ref
@@ -321,7 +324,9 @@ Examples:
   $ orca goto --url https://example.com/login
   $ orca keypress --key Enter
   $ orca eval --expression "document.title"
-  $ orca tab list --json`
+  $ orca tab list --json
+  $ orca cdp views --json
+  $ orca cdp connect --worktree active --json`
 
 export function printHelp(specs: CommandSpec[], commandPath: string[] = []): void {
   const exactSpec = findCommandSpec(specs, commandPath)
@@ -544,6 +549,7 @@ export function formatFlagHelp(flag: string): string {
     amount: '--amount <pixels>      Scroll distance in pixels',
     index: '--index <n>            Tab index to switch to',
     page: '--page <id>            Stable browser page id from `orca tab list --json`',
+    view: '--view <selector>      Browser view id (same selectors as --worktree)',
     profile: '--profile <id>        Browser profile id',
     'show-profile': '--show-profile        Include tab profile in text output',
     format: '--format <png|jpeg>    Screenshot image format'
