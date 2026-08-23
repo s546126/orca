@@ -11,11 +11,12 @@ import {
 } from './cdp-view-gateway-protocol'
 import { CdpViewPageSession, type CdpPageSessionSink } from './cdp-view-page-session'
 import {
-  createGatewayClient,
-  emitTargetLifecycle,
-  handleGatewayClientMessage,
-  type CdpGatewayClient
-} from './cdp-view-gateway-socket'
+  announceCreatedTarget,
+  announceDestroyedTarget,
+  pageTargetInfo
+} from './cdp-view-gateway-auto-attach'
+import { sendCdp, type CdpGatewayClient } from './cdp-view-gateway-client'
+import { createGatewayClient, handleGatewayClientMessage } from './cdp-view-gateway-socket'
 
 export async function startCdpViewGateway(
   controller: CdpViewGatewayController
@@ -130,16 +131,24 @@ export async function startCdpViewGateway(
     browserWebSocketUrl: urls.browserWebSocketUrl,
     pageWebSocketUrl: urls.pageWebSocketUrl,
     notifyTargetCreated: (tab: CdpViewTab) => {
-      emitTargetLifecycle(clients, 'Target.targetCreated', tab)
+      void announceCreatedTarget(clients, tab, controller.viewId, sessionRegistry)
     },
     notifyTargetDestroyed: (targetId: string) => {
       const session = pageSessions.get(targetId)
       session?.dispose()
       pageSessions.delete(targetId)
-      emitTargetLifecycle(clients, 'Target.targetDestroyed', targetId)
+      announceDestroyedTarget(clients, targetId)
     },
     notifyTargetInfoChanged: (tab: CdpViewTab) => {
-      emitTargetLifecycle(clients, 'Target.targetInfoChanged', tab)
+      for (const client of clients) {
+        if (client.kind !== 'browser' || !client.autoAttach.discoverTargets) {
+          continue
+        }
+        sendCdp(client.socket, {
+          method: 'Target.targetInfoChanged',
+          params: { targetInfo: pageTargetInfo(client, tab, controller.viewId, false) }
+        })
+      }
     },
     close: async () => {
       if (closed) {

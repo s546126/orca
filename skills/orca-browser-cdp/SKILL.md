@@ -42,7 +42,10 @@ CDP.
 Tool bootstrap:
 
 - Browser Use: set `BU_CDP_URL` to `cdpHttpUrl` or `BU_CDP_WS` to `browserWsUrl`.
-- Playwright: call `chromium.connectOverCDP(cdpHttpUrl)`.
+- Playwright: call `chromium.connectOverCDP(cdpHttpUrl)`. The gateway speaks
+  Chrome's browser-level handshake (`Target.setAutoAttach` emits
+  `attachedToTarget` for the visible tabs, dummy `Target.getTargetInfo` returns
+  the browser target, and `Target.createTarget` auto-attaches the new page).
 - Playwright MCP: pass `--cdp-endpoint=<cdpHttpUrl>`.
 - Chrome DevTools MCP: pass `--browser-url=<cdpHttpUrl>`.
 

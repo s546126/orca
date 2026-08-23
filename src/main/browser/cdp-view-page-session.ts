@@ -15,6 +15,17 @@ export type CdpPageCommand = {
 
 const ROOT_SESSION_PLACEHOLDER = 'orca-view-session'
 
+function commandReply(
+  command: CdpPageCommand,
+  payload: { result?: unknown; error?: { code: number; message: string } }
+): Record<string, unknown> {
+  // Why: flatten-mode clients (Playwright) route replies by sessionId. Dropping
+  // it leaves Page.enable / Runtime.enable hanging on the child session.
+  return command.sessionId
+    ? { id: command.id, sessionId: command.sessionId, ...payload }
+    : { id: command.id, ...payload }
+}
+
 type BoundPageSink = {
   sink: CdpPageSessionSink
   sessionId: string
@@ -68,25 +79,30 @@ export class CdpViewPageSession {
 
   handleCommand(command: CdpPageCommand, sink: CdpPageSessionSink): void {
     if (this.webContents.isDestroyed()) {
-      sink.send({
-        id: command.id,
-        error: { code: -32000, message: 'Browser tab is no longer available' }
-      })
+      sink.send(
+        commandReply(command, {
+          error: { code: -32000, message: 'Browser tab is no longer available' }
+        })
+      )
       return
     }
 
     if (command.method === 'Page.bringToFront') {
       this.webContents.focus()
-      sink.send({ id: command.id, result: {} })
+      sink.send(commandReply(command, { result: {} }))
       return
     }
     if (command.method === 'Page.captureScreenshot') {
       captureScreenshot(
         this.webContents,
         command.params,
-        (result) => sink.send({ id: command.id, result }),
-        (message) => sink.send({ id: command.id, error: { code: -32000, message } })
+        (result) => sink.send(commandReply(command, { result })),
+        (message) => sink.send(commandReply(command, { error: { code: -32000, message } }))
       )
+      return
+    }
+    if (command.method === 'Page.getFrameTree') {
+      void this.frameTreeOrFallback(command, sink)
       return
     }
     if (command.method === 'Page.navigate') {
@@ -142,6 +158,42 @@ export class CdpViewPageSession {
     this.attached = false
   }
 
+  private async frameTreeOrFallback(
+    command: CdpPageCommand,
+    sink: CdpPageSessionSink
+  ): Promise<void> {
+    try {
+      const result = (await this.webContents.debugger.sendCommand(
+        'Page.getFrameTree',
+        command.params
+      )) as { frameTree?: { frame?: { url?: string } } }
+      if (result?.frameTree?.frame) {
+        sink.send(commandReply(command, { result }))
+        return
+      }
+    } catch {
+      /* Electron webview CDP sometimes omits Page.getFrameTree */
+    }
+    // Why: Playwright page init awaits a frame tree. Synthesize one from the
+    // visible guest so connectOverCDP can finish when Electron CDP is incomplete.
+    sink.send(
+      commandReply(command, {
+        result: {
+          frameTree: {
+            frame: {
+              id: this.targetId,
+              loaderId: this.targetId,
+              url: this.webContents.isDestroyed() ? '' : this.webContents.getURL(),
+              securityOrigin: '',
+              mimeType: 'text/html'
+            },
+            childFrames: []
+          }
+        }
+      })
+    )
+  }
+
   private async navigateWithLifecycleEnsured(
     command: CdpPageCommand,
     sink: CdpPageSessionSink
@@ -172,22 +224,20 @@ export class CdpViewPageSession {
           : this.webContents.debugger.sendCommand(command.method, command.params)
       )
         .then((result) => {
-          sink.send({ id: command.id, result })
+          sink.send(commandReply(command, { result }))
         })
         .catch((error: Error) => {
-          sink.send({
-            id: command.id,
-            error: { code: -32000, message: error.message }
-          })
+          sink.send(commandReply(command, { error: { code: -32000, message: error.message } }))
         })
     } catch (error) {
-      sink.send({
-        id: command.id,
-        error: {
-          code: -32000,
-          message: error instanceof Error ? error.message : String(error)
-        }
-      })
+      sink.send(
+        commandReply(command, {
+          error: {
+            code: -32000,
+            message: error instanceof Error ? error.message : String(error)
+          }
+        })
+      )
     }
   }
 

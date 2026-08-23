@@ -1,108 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import WebSocket from 'ws'
 import { startCdpViewGateway } from './cdp-view-gateway'
-import type {
-  CdpViewGateway,
-  CdpViewGatewayController,
-  CdpViewTab
-} from './cdp-view-gateway-protocol'
+import { cdpCall, createController, openBrowserSocket } from './cdp-view-gateway-harness'
+import type { CdpViewGateway } from './cdp-view-gateway-protocol'
 
 vi.mock('electron', () => ({
   webContents: { fromId: vi.fn() }
 }))
-
-type DebuggerListener = (...args: unknown[]) => void
-
-function createMockWebContents() {
-  const listeners = new Map<string, DebuggerListener[]>()
-  let debuggerAttached = false
-  const debuggerObj = {
-    isAttached: vi.fn(() => debuggerAttached),
-    attach: vi.fn(() => {
-      debuggerAttached = true
-    }),
-    detach: vi.fn(() => {
-      debuggerAttached = false
-    }),
-    sendCommand: vi.fn(async () => ({})),
-    on: vi.fn((event: string, handler: DebuggerListener) => {
-      const arr = listeners.get(event) ?? []
-      arr.push(handler)
-      listeners.set(event, arr)
-    }),
-    removeListener: vi.fn((event: string, handler: DebuggerListener) => {
-      const arr = listeners.get(event) ?? []
-      listeners.set(
-        event,
-        arr.filter((item) => item !== handler)
-      )
-    })
-  }
-  return {
-    debugger: debuggerObj,
-    isDestroyed: () => false,
-    focus: vi.fn(),
-    getTitle: vi.fn(() => 'Example'),
-    getURL: vi.fn(() => 'https://example.com')
-  }
-}
-
-function createController(tabs: CdpViewTab[]): CdpViewGatewayController {
-  const owned = new Set(tabs.map((tab) => tab.targetId))
-  const guests = new Map(tabs.map((tab) => [tab.targetId, createMockWebContents()]))
-  return {
-    viewId: 'wt-1',
-    listTabs: async () => tabs,
-    ownsTarget: (targetId) => owned.has(targetId),
-    getWebContents: (targetId) => guests.get(targetId) as never,
-    createTarget: async (url) => {
-      const tab = { targetId: 'page-new', url, title: 'New', active: true }
-      tabs.push(tab)
-      owned.add(tab.targetId)
-      guests.set(tab.targetId, createMockWebContents())
-      return tab
-    },
-    activateTarget: async (targetId) => {
-      for (const tab of tabs) {
-        tab.active = tab.targetId === targetId
-      }
-      const tab = tabs.find((entry) => entry.targetId === targetId)
-      if (!tab) {
-        throw new Error(`missing ${targetId}`)
-      }
-      return tab
-    },
-    closeTarget: async (targetId) => {
-      const index = tabs.findIndex((tab) => tab.targetId === targetId)
-      if (index >= 0) {
-        tabs.splice(index, 1)
-      }
-      owned.delete(targetId)
-    }
-  }
-}
-
-async function cdpCall(
-  ws: WebSocket,
-  id: number,
-  method: string,
-  params: Record<string, unknown> = {},
-  sessionId?: string
-): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    const onMessage = (data: WebSocket.RawData): void => {
-      const message = JSON.parse(data.toString()) as Record<string, unknown>
-      if (message.id !== id) {
-        return
-      }
-      ws.off('message', onMessage)
-      resolve(message)
-    }
-    ws.on('message', onMessage)
-    ws.send(JSON.stringify({ id, method, params, sessionId }))
-    setTimeout(() => reject(new Error(`CDP timeout for ${method}`)), 2_000)
-  })
-}
 
 describe('CdpViewGateway', () => {
   const gateways: CdpViewGateway[] = []
@@ -146,8 +49,7 @@ describe('CdpViewGateway', () => {
     ).json()
     expect(created.id).toBe('page-new')
 
-    const ws = new WebSocket(gateway.browserWebSocketUrl)
-    await new Promise<void>((resolve) => ws.on('open', () => resolve()))
+    const ws = await openBrowserSocket(gateway.browserWebSocketUrl)
     const targets = await cdpCall(ws, 1, 'Target.getTargets')
     const infos = (targets.result as { targetInfos: { targetId: string }[] }).targetInfos
     expect(infos.map((info) => info.targetId)).toEqual(['page-1', 'page-new'])
@@ -170,8 +72,7 @@ describe('CdpViewGateway', () => {
     )
     gateways.push(gateway)
 
-    const ws = new WebSocket(gateway.browserWebSocketUrl)
-    await new Promise<void>((resolve) => ws.on('open', () => resolve()))
+    const ws = await openBrowserSocket(gateway.browserWebSocketUrl)
     const error = await cdpCall(ws, 1, 'Target.activateTarget', { targetId: 'other-view-page' })
     expect(error.error).toMatchObject({
       message: expect.stringContaining('not owned by browser view wt-1')
@@ -193,12 +94,11 @@ describe('CdpViewGateway', () => {
     if (!guest) {
       throw new Error('expected page-1 webContents')
     }
-    ;(guest.debugger.sendCommand as ReturnType<typeof vi.fn>).mockResolvedValue({
+    guest.debugger.sendCommand = vi.fn(async () => ({
       result: { value: 'ok' }
-    })
+    }))
 
-    const ws = new WebSocket(gateway.browserWebSocketUrl)
-    await new Promise<void>((resolve) => ws.on('open', () => resolve()))
+    const ws = await openBrowserSocket(gateway.browserWebSocketUrl)
     const attached = await cdpCall(ws, 1, 'Target.attachToTarget', {
       targetId: 'page-1',
       flatten: true
@@ -206,6 +106,7 @@ describe('CdpViewGateway', () => {
     const sessionId = (attached.result as { sessionId: string }).sessionId
     const evaluated = await cdpCall(ws, 2, 'Runtime.evaluate', { expression: '1+1' }, sessionId)
     expect(evaluated.result).toEqual({ result: { value: 'ok' } })
+    expect(evaluated.sessionId).toBe(sessionId)
     expect(guest.debugger.sendCommand).toHaveBeenCalledWith('Runtime.evaluate', {
       expression: '1+1'
     })

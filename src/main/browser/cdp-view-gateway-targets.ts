@@ -3,31 +3,64 @@ import { requiredTargetId } from './cdp-view-gateway-protocol'
 
 export type CdpTargetInfo = {
   targetId: string
-  type: 'page'
+  type: 'page' | 'browser'
   title: string
   url: string
   attached: boolean
   canAccessOpener: boolean
+  browserContextId?: string
 }
 
 export type CdpAutoAttachState = {
   discoverTargets: boolean
   autoAttach: boolean
   flatten: boolean
+  waitForDebuggerOnStart: boolean
 }
 
 export function emptyAutoAttachState(): CdpAutoAttachState {
-  return { discoverTargets: false, autoAttach: false, flatten: true }
+  return {
+    discoverTargets: false,
+    autoAttach: false,
+    flatten: true,
+    waitForDebuggerOnStart: false
+  }
 }
 
-export function targetInfoFromTab(tab: CdpViewTab, attached: boolean): CdpTargetInfo {
+export function defaultViewBrowserContextId(viewId: string): string {
+  return `orca-view-${viewId}`
+}
+
+export function browserTargetId(viewId: string): string {
+  return `orca-browser-${viewId}`
+}
+
+export function browserTargetInfo(viewId: string): CdpTargetInfo {
+  return {
+    targetId: browserTargetId(viewId),
+    type: 'browser',
+    title: '',
+    url: '',
+    attached: true,
+    canAccessOpener: false
+  }
+}
+
+export function targetInfoFromTab(
+  tab: CdpViewTab,
+  attached: boolean,
+  browserContextId: string
+): CdpTargetInfo {
   return {
     targetId: tab.targetId,
     type: 'page',
     title: tab.title,
     url: tab.url,
     attached,
-    canAccessOpener: false
+    canAccessOpener: false,
+    // Why: Playwright connectOverCDP asserts browserContextId and maps unknown
+    // ids onto the default persistent context used by connectOverCDP.
+    browserContextId
   }
 }
 
@@ -43,7 +76,8 @@ export function applyAutoAttachCommand(
     return {
       ...state,
       autoAttach: params.autoAttach === true,
-      flatten: params.flatten !== false
+      flatten: params.flatten !== false,
+      waitForDebuggerOnStart: params.waitForDebuggerOnStart === true
     }
   }
   return state
