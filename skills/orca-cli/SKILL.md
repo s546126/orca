@@ -231,6 +231,21 @@ Browser rules:
 - Less common workflows can use typed commands above or `orca exec --command "<agent-browser command>"` passthrough.
 - If `fill` or `type` fails on a custom input, try `orca focus --element @e1 --json` then `orca inserttext --text "text" --json`.
 
+### Attach Playwright / Browser Use / Chrome DevTools MCP
+
+When the user wants Playwright, Browser Use, Playwright MCP, or Chrome DevTools
+MCP to drive the **visible** Orca browser (instead of `orca snapshot` / `orca click`),
+use the `orca-browser-cdp` skill. Short path:
+
+```bash
+orca cdp views --json
+orca cdp connect --worktree active --json
+```
+
+Use the returned `cdpHttpUrl` with `chromium.connectOverCDP`, Playwright MCP
+`--cdp-endpoint`, Browser Use `BU_CDP_URL`, or Chrome DevTools MCP
+`--browser-url`. The gateway is localhost-only on the machine running Orca.
+
 Common recoveries:
 
 - `browser_no_tab`: open a tab with `orca tab create --url <url> --json`.

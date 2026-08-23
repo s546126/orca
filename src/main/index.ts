@@ -111,6 +111,7 @@ import { AgentBrowserBridge } from './browser/agent-browser-bridge'
 import { EmulatorBridge } from './emulator/emulator-bridge'
 import { serveSimStateWatcher } from './emulator/serve-sim-state-watcher'
 import { browserManager } from './browser/browser-manager'
+import { cdpViewGatewayManager } from './browser/cdp-view-gateway-manager'
 import { OffscreenBrowserBackend } from './browser/offscreen-browser-backend'
 import { initializeBrowserSessionsForApp } from './browser/browser-session-startup'
 import { setUnreadDockBadgeCount } from './dock/unread-badge'
@@ -1760,6 +1761,9 @@ app.on('will-quit', (e) => {
   // Why: agent-browser daemon processes would otherwise linger after Orca quits,
   // holding ports and leaving stale session state on disk.
   runtime?.getAgentBrowserBridge()?.destroyAllSessions()
+  // Why: view-scoped CDP gateways hold localhost HTTP/WS servers. Close them
+  // on quit so Playwright/Browser Use cannot keep a stale attach surface.
+  void cdpViewGatewayManager.stopAll()
   // Why: headless offscreen browser windows are main-process owned; tear them
   // down explicitly on quit alongside the other browser/session shutdowns.
   runtime?.getOffscreenBrowserBackend()?.destroyAll?.()

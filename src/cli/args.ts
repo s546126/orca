@@ -135,6 +135,7 @@ export function supportsBrowserPageFlag(commandPath: string[]): boolean {
       'orchestration',
       'computer',
       'emulator',
+      'cdp',
       'note',
       'diagnostics',
       'linear'
@@ -174,6 +175,7 @@ export function isCommandGroup(commandPath: string[]): boolean {
         'orchestration',
         'computer',
         'emulator',
+        'cdp',
         'agent',
         'environment',
         'diagnostics',

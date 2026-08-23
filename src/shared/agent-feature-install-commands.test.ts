@@ -6,6 +6,7 @@ import {
   LINEAR_TICKETS_SKILL_UPDATE_COMMAND,
   ORCA_LINEAR_SKILL_UPDATE_COMMAND,
   ORCA_CLI_ORCHESTRATION_SKILL_INSTALL_COMMAND,
+  ORCA_BROWSER_CDP_SKILL_UPDATE_COMMAND,
   ORCA_CLI_SKILL_UPDATE_COMMAND,
   ORCHESTRATION_SKILL_UPDATE_COMMAND
 } from './agent-feature-install-commands'
@@ -26,6 +27,9 @@ describe('agent feature skill commands', () => {
 
   it('exports single-skill update constants without changing install bundles', () => {
     expect(ORCA_CLI_SKILL_UPDATE_COMMAND).toBe('npx skills update orca-cli --global')
+    expect(ORCA_BROWSER_CDP_SKILL_UPDATE_COMMAND).toBe(
+      'npx skills update orca-browser-cdp --global'
+    )
     expect(COMPUTER_USE_SKILL_UPDATE_COMMAND).toBe('npx skills update computer-use --global')
     expect(ORCHESTRATION_SKILL_UPDATE_COMMAND).toBe('npx skills update orchestration --global')
     expect(ORCA_LINEAR_SKILL_UPDATE_COMMAND).toBe('npx skills update orca-linear --global')

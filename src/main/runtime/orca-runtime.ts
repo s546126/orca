@@ -277,6 +277,7 @@ import type {
 } from '../../shared/runtime-types'
 import type { AutomationService } from '../automations/service'
 import { RuntimeBrowserCommands } from './orca-runtime-browser'
+import { RuntimeBrowserCdpCommands } from './orca-runtime-browser-cdp'
 import { buildHeadlessTerminalSplitLayout } from './headless-terminal-split-layout'
 import {
   buildHeadlessTabGroupMove,
@@ -20906,6 +20907,18 @@ export class OrcaRuntimeService {
     markHeadlessBrowserSessionTabActive: this.markHeadlessBrowserSessionTabActive.bind(this)
   })
 
+  private readonly browserCdpCommands = new RuntimeBrowserCdpCommands(
+    {
+      getAgentBrowserBridge: () => this.agentBrowserBridge,
+      resolveWorktreeSelector: (selector) => this.resolveWorktreeSelector(selector),
+      getAuthoritativeWindow: () => this.getAuthoritativeWindow(),
+      getAvailableAuthoritativeWindow: () => this.getAvailableAuthoritativeWindow(),
+      getOffscreenBrowserBackend: () => this.offscreenBrowserBackend,
+      markHeadlessBrowserSessionTabActive: this.markHeadlessBrowserSessionTabActive.bind(this)
+    },
+    this.browserCommands
+  )
+
   private readonly emulatorCommands = new RuntimeEmulatorCommands({
     getEmulatorBridge: () => this.emulatorBridge,
     resolveWorktreeSelector: (selector) => this.resolveWorktreeSelector(selector),
@@ -21316,6 +21329,15 @@ export class OrcaRuntimeService {
 
   browserTabClose: RuntimeBrowserCommands['browserTabClose'] =
     this.browserCommands.browserTabClose.bind(this.browserCommands)
+
+  browserCdpViews: RuntimeBrowserCdpCommands['browserCdpViews'] =
+    this.browserCdpCommands.browserCdpViews.bind(this.browserCdpCommands)
+
+  browserCdpConnect: RuntimeBrowserCdpCommands['browserCdpConnect'] =
+    this.browserCdpCommands.browserCdpConnect.bind(this.browserCdpCommands)
+
+  browserCdpStop: RuntimeBrowserCdpCommands['browserCdpStop'] =
+    this.browserCdpCommands.browserCdpStop.bind(this.browserCdpCommands)
 
   // Emulator bindings (delegated to dedicated commands for surface separation).
   emulatorTap: RuntimeEmulatorCommands['emulatorTap'] = this.emulatorCommands.emulatorTap.bind(

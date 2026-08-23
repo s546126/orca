@@ -15,6 +15,7 @@ import { BROWSER_COOKIE_HANDLERS } from './handlers/browser-cookie'
 import { BROWSER_CAPTURE_HANDLERS } from './handlers/browser-capture'
 import { BROWSER_ENV_HANDLERS } from './handlers/browser-env'
 import { BROWSER_STORAGE_HANDLERS } from './handlers/browser-storage'
+import { BROWSER_CDP_HANDLERS } from './handlers/browser-cdp'
 import { ORCHESTRATION_HANDLERS } from './handlers/orchestration'
 import { COMPUTER_HANDLERS } from './handlers/computer'
 import { ENVIRONMENT_HANDLERS } from './handlers/environment'
@@ -51,6 +52,7 @@ function buildHandlers(): Map<string, CommandHandler> {
     BROWSER_CAPTURE_HANDLERS,
     BROWSER_ENV_HANDLERS,
     BROWSER_STORAGE_HANDLERS,
+    BROWSER_CDP_HANDLERS,
     ORCHESTRATION_HANDLERS,
     EMULATOR_HANDLERS,
     COMPUTER_HANDLERS,
