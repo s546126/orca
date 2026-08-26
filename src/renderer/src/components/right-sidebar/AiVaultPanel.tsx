@@ -94,7 +94,8 @@ export default function AiVaultPanel(): React.JSX.Element {
       }),
     [activeProjectKey, activeWorktree, allWorktrees, projectHostSetupProjection]
   )
-  const { error, loading, refresh, scanResult, sessions } = useAiVaultSessionRefresh(scopePaths)
+  const { error, loading, importing, refresh, importExternalTranscripts, scanResult, sessions } =
+    useAiVaultSessionRefresh(scopePaths)
   const sessionProjectById = useMemo(
     () =>
       buildAiVaultProjectContext({
@@ -186,6 +187,22 @@ export default function AiVaultPanel(): React.JSX.Element {
     [filteredSessions, group, projectLabelByKey, sessionProjectById]
   )
 
+  const handleImportExternalTranscripts = useCallback(async () => {
+    const result = await importExternalTranscripts()
+    if (!result) {
+      return
+    }
+    const sessionCount = result.listResult.sessions.length
+    const linkedCodexSessions = result.codexLinkedFiles
+    toast.success(
+      translate(
+        'auto.components.right.sidebar.AiVaultPanel.externalTranscriptsImported',
+        'Imported {{linked}} Codex sessions · {{total}} sessions in history',
+        { linked: linkedCodexSessions, total: sessionCount }
+      )
+    )
+  }, [importExternalTranscripts])
+
   const copyText = useCallback(async (text: string, label: string): Promise<void> => {
     await window.api.ui.writeClipboardText(text)
     toast.success(
@@ -257,6 +274,7 @@ export default function AiVaultPanel(): React.JSX.Element {
       <AiVaultPanelHeader
         query={query}
         loading={loading}
+        importing={importing}
         shownCount={filteredSessions.length}
         sessionCount={sessions.length}
         hasScanResult={Boolean(scanResult)}
@@ -276,6 +294,7 @@ export default function AiVaultPanel(): React.JSX.Element {
         onHideEmptySessionsChange={setHideEmptySessions}
         onReset={resetViewOptions}
         onRefresh={() => void refresh({ force: true })}
+        onImportExternal={() => void handleImportExternalTranscripts()}
       />
 
       {isNonLocalWorktree ? (

@@ -151,7 +151,10 @@ import type {
   AutomationUpdateInput
 } from '../shared/automations-types'
 import type { KeybindingActionId, KeybindingFileSnapshot } from '../shared/keybindings'
-import type { AiVaultListArgs } from '../shared/ai-vault-types'
+import type {
+  AiVaultImportExternalTranscriptsArgs,
+  AiVaultListArgs
+} from '../shared/ai-vault-types'
 import {
   ORCA_EDITOR_PREPARE_HOT_EXIT_EVENT,
   type EditorPrepareHotExitDetail
@@ -3459,7 +3462,9 @@ const api = {
 
   aiVault: {
     listSessions: (args?: AiVaultListArgs): Promise<unknown> =>
-      ipcRenderer.invoke('aiVault:listSessions', args)
+      ipcRenderer.invoke('aiVault:listSessions', args),
+    importExternalTranscripts: (args?: AiVaultImportExternalTranscriptsArgs): Promise<unknown> =>
+      ipcRenderer.invoke('aiVault:importExternalTranscripts', args)
   },
 
   runtime: {

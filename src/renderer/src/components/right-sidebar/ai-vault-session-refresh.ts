@@ -1,18 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AiVaultListResult, AiVaultSession } from '../../../../shared/ai-vault-types'
+import type {
+  AiVaultImportExternalTranscriptsResult,
+  AiVaultListResult,
+  AiVaultSession
+} from '../../../../shared/ai-vault-types'
 
 const SESSION_LIMIT = 500
 
 export function useAiVaultSessionRefresh(scopePaths: readonly string[]): {
   error: string | null
   loading: boolean
+  importing: boolean
   refresh: (args?: { force?: boolean }) => Promise<void>
+  importExternalTranscripts: () => Promise<AiVaultImportExternalTranscriptsResult | null>
   scanResult: AiVaultListResult | null
   sessions: AiVaultSession[]
 } {
   const [sessions, setSessions] = useState<AiVaultSession[]>([])
   const [scanResult, setScanResult] = useState<AiVaultListResult | null>(null)
   const [loading, setLoading] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const refreshIdRef = useRef(0)
   const refreshInFlightRef = useRef(false)
@@ -68,6 +75,36 @@ export function useAiVaultSessionRefresh(scopePaths: readonly string[]): {
     // and recurses on itself, so its identity must stay stable.
   }, [])
 
+  const importExternalTranscripts =
+    useCallback(async (): Promise<AiVaultImportExternalTranscriptsResult | null> => {
+      if (refreshInFlightRef.current || importing) {
+        return null
+      }
+      setImporting(true)
+      setError(null)
+      try {
+        const result = await window.api.aiVault.importExternalTranscripts({
+          limit: SESSION_LIMIT,
+          scopePaths: scopePathsRef.current
+        })
+        if (!mountedRef.current) {
+          return null
+        }
+        setScanResult(result.listResult)
+        setSessions(result.listResult.sessions)
+        return result
+      } catch (err) {
+        if (mountedRef.current) {
+          setError(err instanceof Error ? err.message : String(err))
+        }
+        return null
+      } finally {
+        if (mountedRef.current) {
+          setImporting(false)
+        }
+      }
+    }, [importing])
+
   useEffect(() => {
     mountedRef.current = true
     return () => {
@@ -83,5 +120,13 @@ export function useAiVaultSessionRefresh(scopePaths: readonly string[]): {
     void refresh()
   }, [refresh, scopePathsKey])
 
-  return { error, loading, refresh, scanResult, sessions }
+  return {
+    error,
+    loading,
+    importing,
+    refresh,
+    importExternalTranscripts,
+    scanResult,
+    sessions
+  }
 }

@@ -1,4 +1,4 @@
-import { LoaderCircle, RefreshCw, Search, X } from 'lucide-react'
+import { LoaderCircle, RefreshCw, Search, FolderInput, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 import {
@@ -12,6 +12,7 @@ import { VaultScopeSwitch, VaultViewMenu } from './AiVaultPanelControls'
 type AiVaultPanelHeaderProps = {
   query: string
   loading: boolean
+  importing: boolean
   shownCount: number
   sessionCount: number
   hasScanResult: boolean
@@ -31,11 +32,13 @@ type AiVaultPanelHeaderProps = {
   onHideEmptySessionsChange: (hideEmptySessions: boolean) => void
   onReset: () => void
   onRefresh: () => void
+  onImportExternal: () => void
 }
 
 export function AiVaultPanelHeader({
   query,
   loading,
+  importing,
   shownCount,
   sessionCount,
   hasScanResult,
@@ -54,7 +57,8 @@ export function AiVaultPanelHeader({
   onGroupChange,
   onHideEmptySessionsChange,
   onReset,
-  onRefresh
+  onRefresh,
+  onImportExternal
 }: AiVaultPanelHeaderProps): React.JSX.Element {
   return (
     <div className="shrink-0 border-b border-sidebar-border px-2.5 py-2">
@@ -116,11 +120,30 @@ export function AiVaultPanelHeader({
             variant="ghost"
             size="icon-xs"
             aria-label={translate(
+              'auto.components.right.sidebar.AiVaultPanel.importExternalTranscripts',
+              'Import external agent transcripts'
+            )}
+            onClick={onImportExternal}
+            disabled={loading || importing}
+            aria-busy={importing}
+            className="size-6"
+          >
+            {importing ? (
+              <LoaderCircle className="size-3 animate-spin" />
+            ) : (
+              <FolderInput className="size-3" />
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={translate(
               'auto.components.right.sidebar.AiVaultPanel.refreshSessionHistory',
               'Refresh Session History'
             )}
             onClick={onRefresh}
-            disabled={loading}
+            disabled={loading || importing}
             aria-busy={loading}
             className="size-6"
           >

@@ -7,6 +7,7 @@ import type {
 
 export type AiVaultScanOptions = {
   claudeProjectsDir?: string
+  claudeTranscriptsDir?: string
   codexSessionsDir?: string
   additionalCodexSessionsDirs?: readonly string[]
   wslHomeDirs?: readonly string[]

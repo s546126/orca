@@ -9,6 +9,9 @@ import type { AiVaultScanOptions, SessionFileDiscovery } from './session-scanner
 import { normalizePiSessionsDir } from './session-scanner-values'
 
 const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects')
+// Why: Claude also stores JSONL transcripts outside project folders; usage
+// scanning already reads this tree and AI Vault must match for import scans.
+const CLAUDE_TRANSCRIPTS_DIR = join(homedir(), '.claude', 'transcripts')
 export const DEFAULT_CODEX_HOME_DIR = join(homedir(), '.codex')
 const CODEX_HOME_DIR = process.env.CODEX_HOME?.trim() || DEFAULT_CODEX_HOME_DIR
 const CODEX_SESSIONS_DIR = join(CODEX_HOME_DIR, 'sessions')
@@ -72,12 +75,21 @@ function claudeDiscoveries(
   limit: number,
   issues: AiVaultScanIssue[]
 ): Promise<SessionFileDiscovery>[] {
-  return [
-    options.claudeProjectsDir ?? CLAUDE_PROJECTS_DIR,
-    ...wslHomeDirs.map((homeDir) => join(homeDir, '.claude', 'projects'))
-  ].map((rootDir) =>
+  return claudeDiscoveryRootDirs(options, wslHomeDirs).map((rootDir) =>
     discoverFiles({ rootDir, limit, agent: 'claude', issues, extensions: ['.jsonl'] })
   )
+}
+
+function claudeDiscoveryRootDirs(
+  options: AiVaultScanOptions,
+  wslHomeDirs: readonly string[]
+): string[] {
+  return [
+    options.claudeProjectsDir ?? CLAUDE_PROJECTS_DIR,
+    options.claudeTranscriptsDir ?? CLAUDE_TRANSCRIPTS_DIR,
+    ...wslHomeDirs.map((homeDir) => join(homeDir, '.claude', 'projects')),
+    ...wslHomeDirs.map((homeDir) => join(homeDir, '.claude', 'transcripts'))
+  ]
 }
 
 function codexDiscoveries(
