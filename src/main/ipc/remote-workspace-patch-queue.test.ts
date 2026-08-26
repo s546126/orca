@@ -1,4 +1,3 @@
-/* oxlint-disable max-lines -- Why: queue/cache regression cases share one mocked IPC harness so stale revision sequencing stays visible. */
 import { ipcMain } from 'electron'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Store } from '../persistence'
@@ -7,7 +6,7 @@ import type {
   RemoteWorkspaceSnapshot
 } from '../../shared/remote-workspace-types'
 import type { SshTarget } from '../../shared/ssh-types'
-import type { WorkspaceSessionState } from '../../shared/types'
+import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 
 const {
   getActiveMultiplexerMock,

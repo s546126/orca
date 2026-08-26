@@ -1,10 +1,22 @@
-import { basename, join } from 'path'
-import { existsSync, accessSync, statSync, chmodSync, constants as fsConstants } from 'fs'
+import { basename, isAbsolute, join } from 'node:path'
+import { existsSync, accessSync, statSync, chmodSync, constants as fsConstants } from 'node:fs'
 import type * as pty from 'node-pty'
-import { isWslUncPath } from '../../shared/wsl-paths'
-import { wslUncDirectoryExists } from '../wsl'
+import {
+  hostReportsChildExitStatus,
+  wrapShellSpawnForMacosTccAttribution
+} from './macos-tcc-login-shell'
+import { formatLocalPtyEnvironmentDiag } from './working-directory-validation'
+
+export {
+  formatLocalPtyEnvironmentDiag,
+  validateWorkingDirectory,
+  validateWorkingDirectoryAsync,
+  WorkingDirectoryValidationAbortedError
+} from './working-directory-validation'
 
 let didEnsureSpawnHelperExecutable = false
+
+const UNIX_SHELL_FALLBACKS = ['/bin/zsh', '/bin/bash', '/bin/sh'] as const
 
 function toUnpackedAsarPath(candidate: string): string {
   return candidate
@@ -46,6 +58,25 @@ export function getShellValidationError(shellPath: string): string | null {
 }
 
 /**
+ * Resolves an absolute Unix shell before node-pty forks. Bare commands and
+ * relative paths stay untouched so execvp can resolve them against PATH or cwd.
+ */
+export function resolveUnixShellPath(shellPath: string): string {
+  if (!isAbsolute(shellPath)) {
+    return shellPath
+  }
+  const candidates = [
+    shellPath,
+    ...UNIX_SHELL_FALLBACKS.filter((candidate) => candidate !== shellPath)
+  ]
+  const resolved = candidates.find((candidate) => getShellValidationError(candidate) === null)
+  if (resolved) {
+    return resolved
+  }
+  throw new Error(`No executable Unix shell found (tried: ${candidates.join(', ')})`)
+}
+
+/**
  * Ensure the node-pty spawn-helper binary has the executable bit set.
  *
  * Why: when Electron packages the app via asar, the native spawn-helper
@@ -77,39 +108,6 @@ export function ensureNodePtySpawnHelperExecutable(): void {
   }
 }
 
-function throwMissingWorkingDirectory(cwd: string): never {
-  throw new Error(
-    `Working directory "${cwd}" does not exist. ` +
-      `It may have been deleted or is on an unmounted volume.`
-  )
-}
-
-/**
- * Validate that a working directory exists and is a directory.
- * Throws a descriptive Error if not.
- */
-export function validateWorkingDirectory(cwd: string): void {
-  // Why: Win32 fs.statSync against the WSL 9P share (\\wsl.localhost\...) can
-  // falsely report ENOENT for directories that exist on the Linux side. Ask the
-  // distro itself; only fall back to the fs check when wsl.exe is inconclusive.
-  if (isWslUncPath(cwd)) {
-    const existsInDistro = wslUncDirectoryExists(cwd)
-    if (existsInDistro === false) {
-      throwMissingWorkingDirectory(cwd)
-    }
-    if (existsInDistro === true) {
-      return
-    }
-  }
-
-  if (!existsSync(cwd)) {
-    throwMissingWorkingDirectory(cwd)
-  }
-  if (!statSync(cwd).isDirectory()) {
-    throw new Error(`Working directory "${cwd}" is not a directory.`)
-  }
-}
-
 /** A pre-resolved Windows shell attempt: an absolute executable plus the launch
  *  args + cwd computed for it. Used to walk the PowerShell -> Windows PowerShell
  *  -> cmd.exe fallback chain when ConPTY rejects the primary shell. */
@@ -133,6 +131,10 @@ export type ShellSpawnParams = {
   getShellReadyConfig?: (
     shell: string
   ) => { args: string[] | null; env: Record<string, string> } | null
+  /** Env keys the primary shell's launch config wrote into `env`. Passed in
+   *  rather than re-derived: asking for the config again re-runs wrapper
+   *  generation just to read back its key names. */
+  launchEnvKeys?: readonly string[]
   /** Called before each fallback shell spawn so callers can update env vars
    *  (e.g. HISTFILE) that depend on which shell is about to run. */
   onBeforeFallbackSpawn?: (env: Record<string, string>, fallbackShell: string) => void
@@ -146,6 +148,9 @@ export type ShellSpawnParams = {
 export type ShellSpawnResult = {
   process: pty.IPty
   shellPath: string
+  /** False when a wrapper owns the reported status, so no exit code or signal
+   *  from this process describes the shell (STA-4536). */
+  reportsChildExitStatus?: boolean
   /** True when the winning shell's startup command was already embedded in its
    *  argv, so callers must not re-deliver it through stdin. Only set when a
    *  Windows fallback attempt other than the primary was used. */
@@ -160,6 +165,14 @@ export type ShellSpawnResult = {
  * executables with per-shell args, so when the primary fails we retry with the
  * next safe shell instead of leaving the user with no terminal.
  */
+// Why: match the daemon spawn path (pty-subprocess.ts) — the bundled ConPTY
+// has the modern wrap-marker behavior xterm expects; legacy system ConPTY can
+// corrupt full-width TUI rows in scrollback. Without this, degraded-mode and
+// fresh-local spawns silently behave differently from daemon terminals.
+function windowsConptyDllOptions(): { useConptyDll: true } | Record<string, never> {
+  return process.platform === 'win32' ? { useConptyDll: true } : {}
+}
+
 function spawnWindowsFallbackChain(
   params: ShellSpawnParams,
   primaryError: string
@@ -174,7 +187,8 @@ function spawnWindowsFallbackChain(
         cols,
         rows,
         cwd: attempt.effectiveCwd,
-        env
+        env,
+        ...windowsConptyDllOptions()
       })
       console.warn(
         `[pty] Primary shell "${params.shellPath}" failed (${primaryError}), fell back to "${attempt.shellPath}"`
@@ -216,9 +230,18 @@ export function spawnShellWithFallback(params: ShellSpawnParams): ShellSpawnResu
 
   if (!primaryError) {
     try {
+      const wrapped = wrapShellSpawnForMacosTccAttribution(shellPath, shellArgs, env)
       return {
-        process: ptySpawn(shellPath, shellArgs, { name: termName, cols, rows, cwd, env }),
-        shellPath
+        process: ptySpawn(wrapped.file, wrapped.args, {
+          name: termName,
+          cols,
+          rows,
+          cwd,
+          env,
+          ...windowsConptyDllOptions()
+        }),
+        shellPath,
+        reportsChildExitStatus: hostReportsChildExitStatus(wrapped.file)
       }
     } catch (err) {
       primaryError = err instanceof Error ? err.message : String(err)
@@ -234,7 +257,13 @@ export function spawnShellWithFallback(params: ShellSpawnParams): ShellSpawnResu
 
   // Try fallback shells on Unix
   if (process.platform !== 'win32') {
-    const fallbackShells = ['/bin/zsh', '/bin/bash', '/bin/sh'].filter((s) => s !== shellPath)
+    const fallbackShells = UNIX_SHELL_FALLBACKS.filter((candidate) => candidate !== shellPath)
+    // Why: the previous shell's launch keys (its wrapper ZDOTDIR and the feature
+    // channel) mean nothing to a different shell. An unwrapped fallback writes
+    // none of them back, so they would stay exported to the pane and to every
+    // child — including a nested zsh that would then load Orca's wrapper. Tracked
+    // per attempt, not once: the second fallback must not inherit the first's.
+    let staleLaunchEnvKeys: readonly string[] = params.launchEnvKeys ?? []
     for (const fallback of fallbackShells) {
       if (getShellValidationError(fallback)) {
         continue
@@ -243,8 +272,17 @@ export function spawnShellWithFallback(params: ShellSpawnParams): ShellSpawnResu
         const fallbackReady = getShellReadyConfig?.(fallback)
         env.SHELL = fallback
         onBeforeFallbackSpawn?.(env, fallback)
+        for (const key of staleLaunchEnvKeys) {
+          delete env[key]
+        }
         Object.assign(env, fallbackReady?.env ?? {})
-        const proc = ptySpawn(fallback, fallbackReady?.args ?? ['-l'], {
+        staleLaunchEnvKeys = Object.keys(fallbackReady?.env ?? {})
+        const wrapped = wrapShellSpawnForMacosTccAttribution(
+          fallback,
+          fallbackReady?.args ?? ['-l'],
+          env
+        )
+        const proc = ptySpawn(wrapped.file, wrapped.args, {
           name: termName,
           cols,
           rows,
@@ -254,19 +292,18 @@ export function spawnShellWithFallback(params: ShellSpawnParams): ShellSpawnResu
         console.warn(
           `[pty] Primary shell "${shellPath}" failed (${primaryError ?? 'unknown error'}), fell back to "${fallback}"`
         )
-        return { process: proc, shellPath: fallback }
+        return {
+          process: proc,
+          shellPath: fallback,
+          reportsChildExitStatus: hostReportsChildExitStatus(wrapped.file)
+        }
       } catch {
         // Fallback also failed -- try next.
       }
     }
   }
 
-  const diag = [
-    `shell: ${shellPath}`,
-    `cwd: ${cwd}`,
-    `arch: ${process.arch}`,
-    `platform: ${process.platform} ${process.getSystemVersion?.() ?? ''}`
-  ].join(', ')
+  const diag = formatLocalPtyEnvironmentDiag({ shell: shellPath, cwd })
   throw new Error(
     `Failed to spawn shell "${shellPath}": ${primaryError ?? 'unknown error'} (${diag}). ` +
       `If this persists, please file an issue.`

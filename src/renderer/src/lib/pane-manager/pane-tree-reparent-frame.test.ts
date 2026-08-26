@@ -38,7 +38,7 @@ function createMockElement(className = ''): TestElement {
     },
     replaceChild: (nextChild: TestElement, oldChild: TestElement): TestElement => {
       const index = element.children.indexOf(oldChild)
-      if (index >= 0) {
+      if (index !== -1) {
         element.children[index] = nextChild
       } else {
         element.children.push(nextChild)
@@ -154,5 +154,33 @@ describe('insertPaneNextTo reparent frame', () => {
 
     expect(webglRendererMock.attachWebgl).not.toHaveBeenCalled()
     expect(safeFit).not.toHaveBeenCalled()
+  })
+
+  it('passes pane drag active callbacks into dividers created during reorder', async () => {
+    setupDocument()
+    const [{ insertPaneNextTo }, { createDivider }] = await Promise.all([
+      import('./pane-tree-ops'),
+      import('./pane-divider')
+    ])
+    const parent = createMockElement('pane-split')
+    const source = createPane(1)
+    const target = createPane(2)
+    const onDragActiveChange = vi.fn()
+    parent.appendChild(target.container as TestElement)
+
+    insertPaneNextTo(source, target, 'right', {
+      getRoot: () => parent,
+      getStyleOptions: () => ({}),
+      safeFit: vi.fn(),
+      refitPanesUnder: vi.fn(),
+      onDragActiveChange,
+      requestPaneReparentFrame: vi.fn()
+    })
+
+    expect(createDivider).toHaveBeenCalledWith(
+      true,
+      {},
+      expect.objectContaining({ onDragActiveChange })
+    )
   })
 })

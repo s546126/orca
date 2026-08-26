@@ -35,6 +35,7 @@ export const glApi = {
       state?: 'opened' | 'merged' | 'closed' | 'all'
       page?: number
       perPage?: number
+      query?: string
     }
   ): Promise<unknown> => ipcRenderer.invoke('gitlab:listMRs', args),
 
@@ -43,6 +44,7 @@ export const glApi = {
       state?: 'opened' | 'merged' | 'closed' | 'all'
       page?: number
       perPage?: number
+      query?: string
     }
   ): Promise<unknown> => ipcRenderer.invoke('gitlab:listWorkItems', args),
 
@@ -152,7 +154,7 @@ export const glApi = {
   ): Promise<unknown> => ipcRenderer.invoke('gitlab:resolveMRDiscussion', args),
 
   jobTrace: (
-    args: GitLabRepoSelectorArgs & { jobId: number; projectRef?: unknown }
+    args: GitLabRepoSelectorArgs & { jobId: number; projectRef?: unknown; logExcerpt?: boolean }
   ): Promise<unknown> => ipcRenderer.invoke('gitlab:jobTrace', args),
 
   retryJob: (

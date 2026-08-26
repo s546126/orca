@@ -1,4 +1,5 @@
 import type { RuntimeTerminalSend, RuntimeTerminalWait } from '../../../shared/runtime-types'
+import { sanitizeTerminalPasteText } from '@/components/terminal-pane/terminal-bracketed-paste'
 import { useAppStore } from '@/store'
 import { callRuntimeRpc, getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
 import { getSettingsForWorktreeRuntimeOwner } from '@/lib/worktree-runtime-owner'
@@ -10,8 +11,7 @@ import {
 import {
   BRACKETED_PASTE_BEGIN,
   BRACKETED_PASTE_END,
-  POST_PASTE_SUBMIT_DELAY_MS,
-  sanitizeBracketedPasteContent
+  POST_PASTE_SUBMIT_DELAY_MS
 } from './agent-paste-draft'
 import type { ActiveAgentNotesSendResult } from './active-agent-note-send-result'
 import {
@@ -27,7 +27,6 @@ export {
   getActiveAgentRuntimeProbeDescriptor,
   getActiveTerminalNoteTarget,
   probeActiveAgentNoteTarget,
-  useCanSendNotesToActiveTerminal,
   type ActiveTerminalNoteTarget
 } from './active-agent-note-target'
 export {
@@ -174,11 +173,16 @@ async function sendPromptWithGuardedPasteAndEnter(
   const initialAgentStatus = await getTerminalAgentSendReadiness(runtimeTarget, terminalHandle, {
     allowLegacyFallback: options.allowLegacyFallback
   })
-  if (initialAgentStatus.status !== 'sendable') {
+  // Why: the readiness probe and write guard can observe different transient
+  // title/process snapshots; the guard owns the bounded no-agent recheck.
+  if (
+    initialAgentStatus.status !== 'sendable' &&
+    !(initialAgentStatus.status === 'no-agent' && initialAgentStatus.supportsGuardedSend)
+  ) {
     return { status: initialAgentStatus.status }
   }
 
-  const pastePayload = `${BRACKETED_PASTE_BEGIN}${sanitizeBracketedPasteContent(prompt)}${BRACKETED_PASTE_END}`
+  const pastePayload = `${BRACKETED_PASTE_BEGIN}${sanitizeTerminalPasteText(prompt)}${BRACKETED_PASTE_END}`
   try {
     const { send } = await callRuntimeRpc<{ send: RuntimeTerminalSend }>(
       runtimeTarget,
@@ -216,7 +220,10 @@ async function sendPromptWithGuardedPasteAndEnter(
     const submitAgentStatus = await getTerminalAgentSendReadiness(runtimeTarget, terminalHandle, {
       allowLegacyFallback: options.allowLegacyFallback
     })
-    if (submitAgentStatus.status !== 'sendable') {
+    if (
+      submitAgentStatus.status !== 'sendable' &&
+      !(submitAgentStatus.status === 'no-agent' && submitAgentStatus.supportsGuardedSend)
+    ) {
       return { status: 'partial-submit-failed' }
     }
   } catch (error) {

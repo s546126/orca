@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { Automation } from '../../../../shared/automations-types'
 import type { RuntimeStatus } from '../../../../shared/runtime-types'
-import type { ProjectHostSetup, Repo, Worktree } from '../../../../shared/types'
+import type { ProjectHostSetup } from '../../../../shared/project-types'
+import type { Repo } from '../../../../shared/repo-types'
+import type { Worktree } from '../../../../shared/worktree/types'
 import { getAutomationTargetAvailability } from './automation-target-availability'
+import { getAutomationCreateAvailability } from './automation-create-admission'
 
 function makeAutomation(overrides: Partial<Automation> = {}): Automation {
   return {
@@ -85,6 +88,21 @@ function makeRuntimeStatus(overrides: Partial<RuntimeStatus> = {}): RuntimeStatu
 }
 
 describe('automation target availability', () => {
+  it('blocks create admission for a missing or degraded runtime', () => {
+    const target = { kind: 'environment' as const, environmentId: 'env-1' }
+    expect(getAutomationCreateAvailability({ automationHostTarget: target }).reason).toBe(
+      'runtime-checking'
+    )
+    expect(
+      getAutomationCreateAvailability({
+        automationHostTarget: target,
+        runtimeStatusByEnvironmentId: new Map([
+          ['env-1', { status: makeRuntimeStatus({ graphStatus: 'unavailable' }), checkedAt: 1 }]
+        ])
+      }).reason
+    ).toBe('runtime-unavailable')
+  })
+
   it('allows local automations with an available existing workspace', () => {
     expect(
       getAutomationTargetAvailability({
@@ -138,6 +156,132 @@ describe('automation target availability', () => {
         sshConnectionStates: new Map()
       }).reason
     ).toBe('host-mismatch')
+  })
+
+  it('allows a run context whose derived projectId tier drifted but repo/host/path still match', () => {
+    expect(
+      getAutomationTargetAvailability({
+        automation: makeAutomation({
+          runContext: {
+            kind: 'workspace-run',
+            // Snapshotted at the repo: tier before the setup climbed to github:.
+            projectId: 'repo:repo-1',
+            hostId: 'local',
+            projectHostSetupId: 'setup-1',
+            repoId: 'repo-1',
+            path: '/repo'
+          }
+        }),
+        repo: makeRepo(),
+        workspace: makeWorkspace(),
+        projectHostSetups: [makeProjectHostSetup({ projectId: 'github:o/r' })],
+        sshConnectionStates: new Map()
+      })
+    ).toEqual({ canRunNow: true, reason: 'available', message: null })
+  })
+
+  it('still blocks a run context whose repoId no longer matches despite projectId drift', () => {
+    expect(
+      getAutomationTargetAvailability({
+        automation: makeAutomation({
+          runContext: {
+            kind: 'workspace-run',
+            projectId: 'repo:repo-2',
+            hostId: 'local',
+            projectHostSetupId: 'setup-1',
+            repoId: 'repo-2',
+            path: '/repo'
+          }
+        }),
+        repo: makeRepo(),
+        workspace: makeWorkspace(),
+        projectHostSetups: [makeProjectHostSetup({ projectId: 'github:o/r', repoId: 'repo-2' })],
+        sshConnectionStates: new Map()
+      }).reason
+    ).toBe('host-mismatch')
+  })
+
+  it('still blocks when the setup repoId drifts even though the live repo still matches', () => {
+    // Live repo matches runContext.repoId (repoMatchesContext passes), so this
+    // isolates the setup-side repoId clause that survives the projectId removal.
+    expect(
+      getAutomationTargetAvailability({
+        automation: makeAutomation({
+          runContext: {
+            kind: 'workspace-run',
+            projectId: 'repo:repo-1',
+            hostId: 'local',
+            projectHostSetupId: 'setup-1',
+            repoId: 'repo-1',
+            path: '/repo'
+          }
+        }),
+        repo: makeRepo(),
+        workspace: makeWorkspace(),
+        projectHostSetups: [makeProjectHostSetup({ projectId: 'github:o/r', repoId: 'repo-2' })],
+        sshConnectionStates: new Map()
+      }).reason
+    ).toBe('host-mismatch')
+  })
+
+  it('allows remote-listed SSH automations whose repo is projected through a runtime server', () => {
+    expect(
+      getAutomationTargetAvailability({
+        automation: makeAutomation({
+          executionTargetType: 'ssh',
+          executionTargetId: 'devbox',
+          runContext: {
+            kind: 'workspace-run',
+            projectId: 'project-1',
+            hostId: 'ssh:devbox',
+            projectHostSetupId: 'setup-1',
+            repoId: 'repo-1',
+            path: '/repo'
+          }
+        }),
+        repo: makeRepo({
+          connectionId: 'devbox',
+          executionHostId: 'runtime:gpu'
+        }),
+        workspace: makeWorkspace(),
+        projectHostSetups: [
+          makeProjectHostSetup({
+            hostId: 'ssh:devbox',
+            connectionId: 'devbox',
+            executionHostId: 'ssh:devbox'
+          })
+        ],
+        sshConnectionStates: new Map([['devbox', { status: 'connected' }]]),
+        automationHostTarget: { kind: 'environment', environmentId: 'gpu' }
+      })
+    ).toEqual({ canRunNow: true, reason: 'available', message: null })
+  })
+
+  it('allows remote-listed server-local automations whose setup is projected through a runtime server', () => {
+    expect(
+      getAutomationTargetAvailability({
+        automation: makeAutomation({
+          runContext: {
+            kind: 'workspace-run',
+            projectId: 'project-1',
+            hostId: 'local',
+            projectHostSetupId: 'setup-1',
+            repoId: 'repo-1',
+            path: '/repo'
+          }
+        }),
+        repo: makeRepo({ executionHostId: 'runtime:gpu' }),
+        workspace: makeWorkspace(),
+        projectHostSetups: [
+          makeProjectHostSetup({
+            hostId: 'runtime:gpu',
+            executionHostId: 'runtime:gpu'
+          })
+        ],
+        sshConnectionStates: new Map(),
+        automationHostTarget: { kind: 'environment', environmentId: 'gpu' }
+      })
+    ).toEqual({ canRunNow: true, reason: 'available', message: null })
   })
 
   it('blocks saved run contexts whose project host setup is missing or not ready', () => {

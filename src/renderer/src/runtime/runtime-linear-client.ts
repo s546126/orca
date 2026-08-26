@@ -1,36 +1,63 @@
 /* eslint-disable max-lines -- Why: the renderer Linear client mirrors the
    preload/RPC Linear namespace so local and remote runtime routing stays in
    one auditable boundary. */
+import type { GlobalSettings } from '../../../shared/global-settings-types'
+import type { LinearIssueUpdate } from '../../../shared/issue-mutation-types'
+import type { LinearComment, LinearIssue } from '../../../shared/linear/issue-types'
 import type {
-  GlobalSettings,
-  LinearComment,
-  LinearCollectionResult,
-  LinearConnectionStatus,
   LinearCustomViewModel,
   LinearCustomViewSummary,
-  LinearIssue,
-  LinearIssueUpdate,
+  LinearProjectDetail,
+  LinearProjectSummary
+} from '../../../shared/linear/project-types'
+import type {
+  LinearCollectionResult,
+  LinearConnectionStatus,
   LinearLabel,
   LinearMember,
-  LinearProjectDetail,
-  LinearProjectSummary,
   LinearTeam,
   LinearViewer,
-  LinearWorkspaceSelection,
-  LinearWorkflowState
-} from '../../../shared/types'
-import { callRuntimeRpc, getActiveRuntimeTarget } from './runtime-rpc-client'
+  LinearWorkflowState,
+  LinearWorkspaceSelection
+} from '../../../shared/linear/workspace-types'
+import {
+  callRuntimeRpc,
+  getActiveRuntimeTarget,
+  runtimeEnvironmentSupportsCapability
+} from './runtime-rpc-client'
 import {
   getTaskSourceRuntimeSettings,
   type TaskSourceContext
 } from '../../../shared/task-source-context'
 import { isRuntimeProviderSearchQueryWithinLimit } from './runtime-provider-search-bounds'
+import type { LinearIssueAttributeFilter } from '../../../shared/linear/issue-attribute-filter'
+import {
+  canonicalizeLinearIssueAttributeFilter,
+  isEmptyLinearIssueAttributeFilter
+} from '../../../shared/linear/issue-attribute-filter'
+import { LINEAR_ISSUE_ATTRIBUTE_FILTER_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
 
 export type RuntimeLinearSettings =
   | Pick<GlobalSettings, 'activeRuntimeEnvironmentId'>
   | TaskSourceContext
   | null
   | undefined
+
+// Why: mixed-version remotes must not look like an empty filtered result. The
+// Linear store swallows most read failures; this typed error is rethrown so UI
+// can show an upgrade message instead of "no matching issues".
+export class LinearIssueAttributeFilterUnsupportedError extends Error {
+  constructor(message = 'This remote runtime must be updated to filter Linear issues.') {
+    super(message)
+    this.name = 'LinearIssueAttributeFilterUnsupportedError'
+  }
+}
+
+export function isLinearIssueAttributeFilterUnsupportedError(
+  error: unknown
+): error is LinearIssueAttributeFilterUnsupportedError {
+  return error instanceof LinearIssueAttributeFilterUnsupportedError
+}
 
 export type LinearIssueFilter = 'assigned' | 'created' | 'all' | 'completed'
 export type LinearConnectResult = { ok: true; viewer: LinearViewer } | { ok: false; error: string }
@@ -189,22 +216,39 @@ export async function linearListIssues(
   settings: RuntimeLinearSettings,
   filter?: LinearIssueFilter,
   limit?: number,
-  workspaceId?: LinearWorkspaceSelection | null
+  workspaceId?: LinearWorkspaceSelection | null,
+  attributeFilter?: LinearIssueAttributeFilter | null
 ): Promise<LinearCollectionResult<LinearIssue>> {
   const target = getLinearRuntimeTarget(settings)
+  const canonicalAttributeFilter =
+    attributeFilter && !isEmptyLinearIssueAttributeFilter(attributeFilter)
+      ? canonicalizeLinearIssueAttributeFilter(attributeFilter)
+      : undefined
+  const payload = {
+    filter,
+    limit,
+    workspaceId: workspaceId ?? undefined,
+    ...(canonicalAttributeFilter ? { attributeFilter: canonicalAttributeFilter } : {})
+  }
+  if (
+    target.kind === 'environment' &&
+    canonicalAttributeFilter &&
+    !(await runtimeEnvironmentSupportsCapability(
+      target.environmentId,
+      LINEAR_ISSUE_ATTRIBUTE_FILTER_RUNTIME_CAPABILITY,
+      30_000
+    ))
+  ) {
+    // Why: older runtimes silently strip unknown RPC params; rejecting here
+    // prevents their unfiltered rows from being presented or cached as filtered.
+    throw new LinearIssueAttributeFilterUnsupportedError()
+  }
   const result =
     target.kind === 'environment'
-      ? await callRuntimeRpc<unknown>(
-          target,
-          'linear.listIssues',
-          { filter, limit, workspaceId: workspaceId ?? undefined },
-          { timeoutMs: 30_000 }
-        )
-      : await window.api.linear.listIssues({
-          filter,
-          limit,
-          workspaceId: workspaceId ?? undefined
+      ? await callRuntimeRpc<unknown>(target, 'linear.listIssues', payload, {
+          timeoutMs: 30_000
         })
+      : await window.api.linear.listIssues(payload)
   return normalizeLinearIssueCollectionResult(result)
 }
 

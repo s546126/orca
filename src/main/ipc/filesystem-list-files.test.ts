@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- Why: one Quick Open file-list suite covers both rg and git fallback process lifecycles. */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 const {
@@ -34,9 +33,16 @@ vi.mock('./local-worktree-runtime-options', () => ({
 }))
 
 import { listQuickOpenFiles } from './filesystem-list-files'
-import { EventEmitter } from 'events'
+import { EventEmitter } from 'node:events'
 import type { Store } from '../persistence'
-import type { ChildProcess } from 'child_process'
+import type { ChildProcess } from 'node:child_process'
+import { FileListingCancelledError } from '../../shared/file-listing-cancellation'
+
+const SHA1 = '0123456789abcdef0123456789abcdef01234567'
+
+function staged(mode: string, path: string): string {
+  return `${mode} ${SHA1} 0\t${path}`
+}
 
 function createMockProcess(): ChildProcess {
   const p = new EventEmitter() as unknown as ChildProcess
@@ -50,8 +56,22 @@ function createMockProcess(): ChildProcess {
   ;(p as unknown as Record<string, unknown>).kill = vi.fn()
   ;(p as unknown as Record<string, unknown>).exitCode = null
   ;(p as unknown as Record<string, unknown>).signalCode = null
+  Object.defineProperty(p, 'pid', { configurable: true, value: 1 })
 
   return p
+}
+
+function createMissingRipgrepProcess(): ChildProcess {
+  const child = createMockProcess()
+  Object.defineProperty(child, 'pid', { value: undefined })
+  void Promise.resolve().then(() => child.emit('close', -2, null))
+  return child
+}
+
+async function flushMicrotasks(): Promise<void> {
+  for (let index = 0; index < 12; index++) {
+    await Promise.resolve()
+  }
 }
 
 function isIgnoredRgPass(args: string[]): boolean {
@@ -64,6 +84,32 @@ describe('filesystem-list-files', () => {
     resolveAuthorizedPathMock.mockImplementation(async (path) => path)
     checkRgAvailableMock.mockResolvedValue(true)
     getLocalGitOptionsForRegisteredWorktreeMock.mockReturnValue({})
+  })
+
+  it('stops after the primary rg pass fills the result budget', async () => {
+    const p1 = createMockProcess()
+    const p2 = createMockProcess()
+    spawnMock.mockImplementation((_cmd, args: string[]) => (isIgnoredRgPass(args) ? p2 : p1))
+    const promise = listQuickOpenFiles(
+      '/mock/root',
+      {} as unknown as Store,
+      undefined,
+      undefined,
+      2
+    )
+
+    setTimeout(() => {
+      ;(p1.stdout as unknown as EventEmitter).emit('data', 'one.ts\ntwo.ts')
+      p1.emit('close', 0, null)
+    }, 0)
+    const result = await promise
+
+    expect(result).toEqual(['one.ts', 'two.ts'])
+    expect(p1.kill).toHaveBeenCalled()
+    expect(p2.kill).not.toHaveBeenCalled()
+    expect(spawnMock).toHaveBeenCalledTimes(1)
+    expect(checkRgAvailableMock).not.toHaveBeenCalled()
+    expect(spawnMock.mock.calls[0]?.[1]).not.toContain('--version')
   })
 
   it('merges normal files and ignored files and filters correctly', async () => {
@@ -79,6 +125,8 @@ describe('filesystem-list-files', () => {
 
     const storeMock = {} as unknown as Store
     const promise = listQuickOpenFiles('/mock/root', storeMock)
+    await flushMicrotasks()
+    expect(spawnMock).toHaveBeenCalledTimes(2)
 
     // Simulate stdout output for normal files
     setTimeout(() => {
@@ -161,6 +209,24 @@ describe('filesystem-list-files', () => {
     }, 10)
 
     await expect(promise).resolves.toEqual(['src/index.ts'])
+  })
+
+  it('does not mistake a WSL-routed executable exit 127 for missing rg', async () => {
+    const p1 = createMockProcess()
+    const p2 = createMockProcess()
+    Object.defineProperty(p1, 'pid', { value: 1 })
+    Object.defineProperty(p2, 'pid', { value: 2 })
+    getLocalGitOptionsForRegisteredWorktreeMock.mockReturnValue({ wslDistro: 'Ubuntu' })
+    spawnMock.mockImplementation((_cmd, args: string[]) => (isIgnoredRgPass(args) ? p2 : p1))
+
+    const promise = listQuickOpenFiles('C:\\repo', {} as unknown as Store)
+    setTimeout(() => {
+      p1.emit('close', 127, null)
+      p2.emit('close', 0, null)
+    }, 0)
+
+    await expect(promise).rejects.toThrow('rg exited with code 127')
+    expect(spawnMock.mock.calls.some((call) => call[0] === 'git')).toBe(false)
   })
 
   it('rejects rg failures instead of resolving a false-empty list', async () => {
@@ -269,6 +335,27 @@ describe('filesystem-list-files', () => {
     }
   })
 
+  it('kills local rg scans when a paired listing is cancelled', async () => {
+    const p1 = createMockProcess()
+    const p2 = createMockProcess()
+    spawnMock.mockImplementation((_cmd, args: string[]) => (isIgnoredRgPass(args) ? p2 : p1))
+    const controller = new AbortController()
+    const cancellation = new FileListingCancelledError('superseded')
+    const promise = listQuickOpenFiles(
+      '/mock/root',
+      {} as unknown as Store,
+      undefined,
+      controller.signal
+    )
+    await flushMicrotasks()
+
+    controller.abort(cancellation)
+
+    await expect(promise).rejects.toBe(cancellation)
+    expect(p1.kill).toHaveBeenCalledOnce()
+    expect(p2.kill).toHaveBeenCalledOnce()
+  })
+
   it('filters out .next, .cache, .stably, .vscode, .idea', async () => {
     const p1 = createMockProcess()
     const p2 = createMockProcess()
@@ -301,16 +388,94 @@ describe('filesystem-list-files', () => {
     expect(result).toEqual(['valid.ts'])
   })
 
-  describe('git ls-files fallback', () => {
-    it('falls back to git ls-files when rg is not available', async () => {
-      checkRgAvailableMock.mockResolvedValue(false)
+  it('lets cancellation win a native-unavailable race before Git starts', async () => {
+    const first = createMockProcess()
+    Object.defineProperty(first, 'pid', { value: undefined })
+    spawnMock.mockReturnValue(first)
+    const controller = new AbortController()
+    const cancellation = new FileListingCancelledError('superseded')
 
+    const promise = listQuickOpenFiles(
+      '/mock/root',
+      {} as unknown as Store,
+      undefined,
+      controller.signal
+    )
+    await flushMicrotasks()
+    controller.abort(cancellation)
+    first.emit('close', -2, null)
+
+    await expect(promise).rejects.toBe(cancellation)
+    expect(spawnMock).toHaveBeenCalledTimes(1)
+    expect(spawnMock.mock.calls.some((call) => call[0] === 'git')).toBe(false)
+    const error = Object.assign(new Error('spawn rg ENOENT'), { code: 'ENOENT' })
+    expect(() => first.emit('error', error)).not.toThrow()
+    expect(first.listenerCount('error')).toBe(0)
+  })
+
+  describe('git ls-files fallback', () => {
+    it('kills only the admitted pass when ignored rg fails before spawn', async () => {
+      const primary = createMockProcess()
+      const missingIgnored = createMockProcess()
+      const revParse = createMockProcess()
+      const gitPrimary = createMockProcess()
+      const gitIgnored = createMockProcess()
+      Object.defineProperty(missingIgnored, 'pid', { value: undefined })
+      let gitPassIndex = 0
+      spawnMock.mockImplementation((cmd: string, args: string[]) => {
+        if (cmd === 'rg') {
+          return isIgnoredRgPass(args) ? missingIgnored : primary
+        }
+        if (args.includes('rev-parse')) {
+          return revParse
+        }
+        if (args.includes('ls-files')) {
+          return gitPassIndex++ === 0 ? gitPrimary : gitIgnored
+        }
+        return createMockProcess()
+      })
+
+      const promise = listQuickOpenFiles('/mock/root', {} as unknown as Store)
+      await flushMicrotasks()
+      expect(spawnMock.mock.calls.filter((call) => call[0] === 'rg')).toHaveLength(2)
+      missingIgnored.emit('close', -2, null)
+
+      await vi.waitFor(() => expect(primary.kill).toHaveBeenCalled())
+      expect(missingIgnored.kill).not.toHaveBeenCalled()
+      const error = Object.assign(new Error('spawn rg ENOENT'), { code: 'ENOENT' })
+      expect(() => missingIgnored.emit('error', error)).not.toThrow()
+      await vi.waitFor(() =>
+        expect(
+          spawnMock.mock.calls.some((call) => (call[1] as string[]).includes('rev-parse'))
+        ).toBe(true)
+      )
+      revParse.emit('close', 0, null)
+      await vi.waitFor(() =>
+        expect(
+          spawnMock.mock.calls.filter((call) => (call[1] as string[]).includes('ls-files'))
+        ).toHaveLength(2)
+      )
+      gitPrimary.emit('close', 0, null)
+      gitIgnored.emit('close', 0, null)
+
+      await expect(promise).resolves.toEqual([])
+      expect(missingIgnored.listenerCount('error')).toBe(0)
+    })
+
+    it('falls back to git ls-files when rg is not available', async () => {
       let callIndex = 0
+      const revParseProc = createMockProcess()
       const gitP1 = createMockProcess()
       const gitP2 = createMockProcess()
 
-      spawnMock.mockImplementation((cmd: string) => {
-        if (cmd === 'git') {
+      spawnMock.mockImplementation((cmd: string, args: string[]) => {
+        if (cmd === 'rg') {
+          return createMissingRipgrepProcess()
+        }
+        if (cmd === 'git' && args.includes('rev-parse')) {
+          return revParseProc
+        }
+        if (cmd === 'git' && args.includes('ls-files')) {
           callIndex++
           return callIndex === 1 ? gitP1 : gitP2
         }
@@ -321,9 +486,21 @@ describe('filesystem-list-files', () => {
       const promise = listQuickOpenFiles('/mock/root', storeMock)
 
       setTimeout(() => {
-        ;(gitP1.stdout as unknown as EventEmitter).emit('data', 'src/index.ts\0')
-        ;(gitP1.stdout as unknown as EventEmitter).emit('data', 'package.json\0')
-        ;(gitP1.stdout as unknown as EventEmitter).emit('data', 'node_modules/dep/index.js\0')
+        revParseProc.emit('close', 0, null)
+      }, 0)
+      setTimeout(() => {
+        ;(gitP1.stdout as unknown as EventEmitter).emit(
+          'data',
+          `${staged('100644', 'src/index.ts')}\0`
+        )
+        ;(gitP1.stdout as unknown as EventEmitter).emit(
+          'data',
+          `${staged('100644', 'package.json')}\0`
+        )
+        ;(gitP1.stdout as unknown as EventEmitter).emit(
+          'data',
+          `${staged('100644', 'node_modules/dep/index.js')}\0`
+        )
         gitP1.emit('close', 0, null)
 
         ;(gitP2.stdout as unknown as EventEmitter).emit('data', '.env.local\0')
@@ -333,14 +510,21 @@ describe('filesystem-list-files', () => {
 
       const result = await promise
 
-      // Verify rg was never called
+      // The primary real command doubles as the availability check.
       const rgCalls = spawnMock.mock.calls.filter((call) => call[0] === 'rg')
-      expect(rgCalls.length).toBe(0)
+      expect(rgCalls.length).toBe(1)
+      expect(rgCalls.every((call) => !(call[1] as string[]).includes('--version'))).toBe(true)
 
       // Verify git ls-files was called
-      const gitCalls = spawnMock.mock.calls.filter((call) => call[0] === 'git')
+      const gitCalls = spawnMock.mock.calls.filter(
+        (call) => call[0] === 'git' && (call[1] as string[]).includes('ls-files')
+      )
       expect(gitCalls.length).toBe(2)
       expect(gitCalls[0][1]).toContain('ls-files')
+      expect(gitCalls[0][1]).toContain('-s')
+      expect(gitCalls[0][1]).toContain('--directory')
+      expect(gitCalls[1][1]).toContain('--directory')
+      expect(gitCalls[1][1]).toContain('--no-empty-directory')
 
       // Should include valid files and filter node_modules
       expect(result).toContain('src/index.ts')
@@ -350,15 +534,91 @@ describe('filesystem-list-files', () => {
       expect(result).not.toContain('node_modules/dep/index.js')
     })
 
-    it('git fallback applies hidden dir blocklist', async () => {
-      checkRgAvailableMock.mockResolvedValue(false)
-
+    it('stops after primary Git files fill the result budget', async () => {
+      const revParseProc = createMockProcess()
       const gitP1 = createMockProcess()
       const gitP2 = createMockProcess()
       let callIndex = 0
 
-      spawnMock.mockImplementation((cmd: string) => {
-        if (cmd === 'git') {
+      spawnMock.mockImplementation((cmd: string, args: string[]) => {
+        if (cmd === 'rg') {
+          return createMissingRipgrepProcess()
+        }
+        if (cmd === 'git' && args.includes('rev-parse')) {
+          return revParseProc
+        }
+        if (cmd === 'git' && args.includes('ls-files')) {
+          callIndex += 1
+          return callIndex === 1 ? gitP1 : gitP2
+        }
+        return createMockProcess()
+      })
+
+      const promise = listQuickOpenFiles(
+        '/mock/root',
+        {} as unknown as Store,
+        undefined,
+        undefined,
+        2
+      )
+      setTimeout(() => revParseProc.emit('close', 0, null), 0)
+      setTimeout(() => {
+        ;(gitP1.stdout as unknown as EventEmitter).emit('data', 'one.ts\0two.ts')
+        gitP1.emit('close', 0, null)
+      }, 10)
+
+      await expect(promise).resolves.toEqual(['one.ts', 'two.ts'])
+      expect(gitP1.kill).toHaveBeenCalled()
+      expect(gitP2.kill).not.toHaveBeenCalled()
+      expect(callIndex).toBe(1)
+    })
+
+    it('does not let a discarded Git directory placeholder consume the result budget', async () => {
+      const revParseProc = createMockProcess()
+      const primary = createMockProcess()
+      spawnMock.mockImplementation((cmd: string, args: string[]) => {
+        if (cmd === 'rg') {
+          return createMissingRipgrepProcess()
+        }
+        if (cmd === 'git' && args.includes('rev-parse')) {
+          return revParseProc
+        }
+        return primary
+      })
+
+      const promise = listQuickOpenFiles(
+        '/mock/root',
+        {} as unknown as Store,
+        undefined,
+        undefined,
+        1
+      )
+      setTimeout(() => revParseProc.emit('close', 0, null), 0)
+      setTimeout(() => {
+        ;(primary.stdout as unknown as EventEmitter).emit(
+          'data',
+          `discarded/\0${staged('100644', 'src/kept.ts')}\0`
+        )
+      }, 10)
+
+      await expect(promise).resolves.toEqual(['src/kept.ts'])
+      expect(primary.kill).toHaveBeenCalled()
+    })
+
+    it('git fallback applies hidden dir blocklist', async () => {
+      const revParseProc = createMockProcess()
+      const gitP1 = createMockProcess()
+      const gitP2 = createMockProcess()
+      let callIndex = 0
+
+      spawnMock.mockImplementation((cmd: string, args: string[]) => {
+        if (cmd === 'rg') {
+          return createMissingRipgrepProcess()
+        }
+        if (cmd === 'git' && args.includes('rev-parse')) {
+          return revParseProc
+        }
+        if (cmd === 'git' && args.includes('ls-files')) {
           callIndex++
           return callIndex === 1 ? gitP1 : gitP2
         }
@@ -369,10 +629,22 @@ describe('filesystem-list-files', () => {
       const promise = listQuickOpenFiles('/mock/root', storeMock)
 
       setTimeout(() => {
-        ;(gitP1.stdout as unknown as EventEmitter).emit('data', '.next/cache/1.js\0')
-        ;(gitP1.stdout as unknown as EventEmitter).emit('data', '.vscode/settings.json\0')
-        ;(gitP1.stdout as unknown as EventEmitter).emit('data', '.github/workflows/ci.yml\0')
-        ;(gitP1.stdout as unknown as EventEmitter).emit('data', 'valid.ts\0')
+        revParseProc.emit('close', 0, null)
+      }, 0)
+      setTimeout(() => {
+        ;(gitP1.stdout as unknown as EventEmitter).emit(
+          'data',
+          `${staged('100644', '.next/cache/1.js')}\0`
+        )
+        ;(gitP1.stdout as unknown as EventEmitter).emit(
+          'data',
+          `${staged('100644', '.vscode/settings.json')}\0`
+        )
+        ;(gitP1.stdout as unknown as EventEmitter).emit(
+          'data',
+          `${staged('100644', '.github/workflows/ci.yml')}\0`
+        )
+        ;(gitP1.stdout as unknown as EventEmitter).emit('data', `${staged('100644', 'valid.ts')}\0`)
         gitP1.emit('close', 0, null)
 
         gitP2.emit('close', 0, null)
@@ -384,16 +656,22 @@ describe('filesystem-list-files', () => {
     })
 
     it('settles and detaches git fallback scans that ignore timeout kills', async () => {
-      checkRgAvailableMock.mockResolvedValue(false)
       vi.useFakeTimers()
 
       try {
+        const revParseProc = createMockProcess()
         const gitP1 = createMockProcess()
         const gitP2 = createMockProcess()
         let callIndex = 0
 
-        spawnMock.mockImplementation((cmd: string) => {
-          if (cmd === 'git') {
+        spawnMock.mockImplementation((cmd: string, args: string[]) => {
+          if (cmd === 'rg') {
+            return createMissingRipgrepProcess()
+          }
+          if (cmd === 'git' && args.includes('rev-parse')) {
+            return revParseProc
+          }
+          if (cmd === 'git' && args.includes('ls-files')) {
             callIndex++
             return callIndex === 1 ? gitP1 : gitP2
           }
@@ -403,15 +681,16 @@ describe('filesystem-list-files', () => {
         const storeMock = {} as unknown as Store
         const promise = listQuickOpenFiles('/mock/root', storeMock)
 
-        await Promise.resolve()
-        await Promise.resolve()
-        await Promise.resolve()
+        await flushMicrotasks()
+        revParseProc.emit('close', 0, null)
+        await flushMicrotasks()
 
         ;(gitP1.stdout as unknown as EventEmitter).emit('data', 'src/index.ts\0partial')
 
+        const rejection = expect(promise).rejects.toThrow('git ls-files timed out')
         await vi.advanceTimersByTimeAsync(10000)
 
-        await expect(promise).resolves.toEqual(['src/index.ts'])
+        await rejection
         expect(gitP1.kill).toHaveBeenCalled()
         expect(gitP2.kill).toHaveBeenCalled()
         expect((gitP1.stdout as unknown as EventEmitter).listenerCount('data')).toBe(0)
@@ -420,6 +699,58 @@ describe('filesystem-list-files', () => {
         expect(gitP1.listenerCount('close')).toBe(0)
       } finally {
         vi.useRealTimers()
+      }
+    })
+
+    it('keeps primary results when only the ignored pass times out', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      vi.useFakeTimers()
+
+      try {
+        const revParseProc = createMockProcess()
+        const gitP1 = createMockProcess()
+        const gitP2 = createMockProcess()
+        let callIndex = 0
+
+        spawnMock.mockImplementation((cmd: string, args: string[]) => {
+          if (cmd === 'rg') {
+            return createMissingRipgrepProcess()
+          }
+          if (cmd === 'git' && args.includes('rev-parse')) {
+            return revParseProc
+          }
+          if (cmd === 'git' && args.includes('ls-files')) {
+            callIndex++
+            return callIndex === 1 ? gitP1 : gitP2
+          }
+          return createMockProcess()
+        })
+
+        const storeMock = {} as unknown as Store
+        const promise = listQuickOpenFiles('/mock/root', storeMock)
+
+        await flushMicrotasks()
+        revParseProc.emit('close', 0, null)
+        await flushMicrotasks()
+
+        ;(gitP1.stdout as unknown as EventEmitter).emit(
+          'data',
+          `${staged('100644', 'src/index.ts')}\0`
+        )
+        gitP1.emit('close', 0, null)
+        // Ignored entries streamed before the timeout are kept.
+        ;(gitP2.stdout as unknown as EventEmitter).emit('data', 'dist/generated.js\0')
+
+        await vi.advanceTimersByTimeAsync(10000)
+
+        await expect(promise).resolves.toEqual(
+          expect.arrayContaining(['src/index.ts', 'dist/generated.js'])
+        )
+        expect(gitP2.kill).toHaveBeenCalled()
+        expect(warnSpy).toHaveBeenCalled()
+      } finally {
+        vi.useRealTimers()
+        warnSpy.mockRestore()
       }
     })
 

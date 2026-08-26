@@ -3,7 +3,7 @@ import { ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import CommentMarkdown from '@/components/sidebar/CommentMarkdown'
-import type { PRCheckDetail, PRCheckRunDetails } from '../../../../shared/types'
+import type { PRCheckDetail, PRCheckRunDetails } from '../../../../shared/github/check-types'
 import { SourceControlFixSplitButton } from '@/components/right-sidebar/source-control-fix-split-button'
 import { translate } from '@/i18n/i18n'
 import { useCheckRunDetailsFixWithAI } from './check-run-details-fix-with-ai'
@@ -26,7 +26,12 @@ function formatCheckTimestamp(value: string | null | undefined): string | null {
   })
 }
 
-function getCheckStatusLabel(check: PRCheckDetail): string {
+type CheckStatusLike = {
+  status: PRCheckDetail['status'] | (string & {}) | null | undefined
+  conclusion: PRCheckDetail['conclusion'] | (string & {}) | null | undefined
+}
+
+function getCheckStatusLabel(check: CheckStatusLike): string {
   const conclusion = check.conclusion ?? 'pending'
   switch (conclusion) {
     case 'success':
@@ -37,17 +42,34 @@ function getCheckStatusLabel(check: PRCheckDetail): string {
       return translate('auto.components.editor.CheckRunDetailsPanel.91a4c7e2b0', 'Cancelled')
     case 'timed_out':
       return translate('auto.components.editor.CheckRunDetailsPanel.2f6d8a1c45', 'Timed out')
+    case 'action_required':
+      return translate(
+        'auto.components.editor.CheckRunDetailsPanel.actionRequired',
+        'Action required'
+      )
     case 'skipped':
       return translate('auto.components.editor.CheckRunDetailsPanel.7b3e9d4f12', 'Skipped')
     case 'neutral':
       return translate('auto.components.editor.CheckRunDetailsPanel.5a1c8e3d67', 'Neutral')
     case 'pending':
       return translate('auto.components.editor.CheckRunDetailsPanel.3d9f2b8e14', 'Pending')
+    default:
+      return isFailureState(conclusion)
+        ? translate('auto.components.editor.CheckRunDetailsPanel.4c8e1b2d73', 'Failed')
+        : translate('auto.components.editor.CheckRunDetailsPanel.3d9f2b8e14', 'Pending')
   }
 }
 
 function isFailureState(state: string | null | undefined): boolean {
-  return state === 'failure' || state === 'cancelled' || state === 'timed_out'
+  return (
+    state === 'failure' ||
+    state === 'failed' ||
+    state === 'action_required' ||
+    state === 'cancelled' ||
+    state === 'stale' ||
+    state === 'startup_failure' ||
+    state === 'timed_out'
+  )
 }
 
 export function CheckRunDetailsPanel({
@@ -88,10 +110,10 @@ export function CheckRunDetailsPanel({
   })
   const startedAt = formatCheckTimestamp(details?.startedAt)
   const completedAt = formatCheckTimestamp(details?.completedAt)
-  const detailsStatusCheck: PRCheckDetail = {
+  const detailsStatusCheck: CheckStatusLike = {
     ...check,
-    status: (details?.status as PRCheckDetail['status'] | undefined) ?? check.status,
-    conclusion: (details?.conclusion as PRCheckDetail['conclusion'] | undefined) ?? check.conclusion
+    status: details?.status ?? check.status,
+    conclusion: details?.conclusion ?? check.conclusion
   }
   const failedJobs =
     details?.jobs.filter((job) => {
@@ -225,7 +247,11 @@ export function CheckRunDetailsPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 scrollbar-sleek">
         {loading ? (
-          <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 py-4 text-sm text-muted-foreground"
+          >
             <LoaderCircle className="size-4 animate-spin" />
             {translate(
               'auto.components.editor.CheckRunDetailsPanel.1f2b980522',
@@ -234,7 +260,11 @@ export function CheckRunDetailsPanel({
           </div>
         ) : (
           <div className="grid gap-4">
-            {error && <div className="text-sm text-muted-foreground">{error}</div>}
+            {error && (
+              <div role="alert" className="min-w-0 break-words text-sm text-destructive">
+                {error}
+              </div>
+            )}
 
             {hasOutput && (
               <section className="rounded-md border border-border bg-background">

@@ -1,11 +1,13 @@
-import { stat as statLocalPath } from 'fs/promises'
+import { stat as statLocalPath } from 'node:fs/promises'
 import { isPathInsideOrEqual } from '../../shared/cross-platform-path'
 import type {
   FolderWorkspacePathStatus,
   FolderWorkspacePathStatusRequest
 } from '../../shared/folder-workspace-path-status'
 import { getProjectGroupSubtreeIds } from '../../shared/project-groups'
-import type { FolderWorkspace, ProjectGroup, Repo } from '../../shared/types'
+import type { FolderWorkspace } from '../../shared/folder-workspace-types'
+import type { ProjectGroup } from '../../shared/project-group-types'
+import type { Repo } from '../../shared/repo-types'
 import type { IFilesystemProvider } from '../providers/types'
 
 type FolderWorkspacePathStatusStore = {

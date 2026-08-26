@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- Why: GitLab issue mutation/list coverage shares glab mocks across related endpoint cases. */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as GlUtils from './gl-utils'
 
@@ -31,15 +30,9 @@ vi.mock('./gl-utils', async () => {
   }
 })
 
-import {
-  addIssueComment,
-  createIssue,
-  getIssue,
-  listAssignableUsers,
-  listIssues,
-  listLabels,
-  updateIssue
-} from './issues'
+import { addIssueComment, createIssue, getIssue, listIssues } from './issues'
+import { updateIssue } from './issue-update'
+import { listAssignableUsers, listLabels } from './project-label-and-member-lookup'
 
 describe('gitlab issue operations', () => {
   beforeEach(() => {
@@ -187,31 +180,61 @@ describe('gitlab issue operations', () => {
     expect(result.error?.type).toBe('permission_denied')
   })
 
-  it('falls back to glab issue list with updated ordering for unresolved self-hosted repos', async () => {
-    getIssueProjectRefMock.mockResolvedValueOnce(null)
-    glabExecFileAsyncMock.mockResolvedValueOnce({ stdout: '[]' })
-
-    await expect(listIssues('/repo-root', 5, undefined, 'opened', '@me')).resolves.toEqual({
-      items: []
+  it('reports the body instead of ".map is not a function" when the API returns a non-array', async () => {
+    getIssueProjectRefMock.mockResolvedValueOnce({ host: 'gitlab.com', path: 'stablyai/orca' })
+    glabExecFileAsyncMock.mockResolvedValueOnce({
+      stdout: JSON.stringify({ data: [], total: 0 })
     })
 
-    expect(glabExecFileAsyncMock).toHaveBeenCalledWith(
-      [
-        'issue',
-        'list',
-        '--output',
-        'json',
-        '--per-page',
-        '5',
-        '--order',
-        'updated_at',
-        '--sort',
-        'desc',
-        '--assignee',
-        '@me'
-      ],
-      { cwd: '/repo-root' }
-    )
+    const result = await listIssues('/repo-root', 5)
+
+    expect(result.items).toEqual([])
+    expect(result.error?.type).toBe('unknown')
+    expect(result.error?.message).toContain('{"data":[],"total":0}')
+    expect(result.error?.message).not.toContain('is not a function')
+  })
+
+  it('reports a GitLab error envelope by its own message', async () => {
+    getIssueProjectRefMock.mockResolvedValueOnce({ host: 'gitlab.com', path: 'stablyai/orca' })
+    glabExecFileAsyncMock.mockResolvedValueOnce({
+      stdout: JSON.stringify({ message: '403 Forbidden' })
+    })
+
+    const result = await listIssues('/repo-root', 5)
+
+    expect(result.items).toEqual([])
+    expect(result.error?.type).toBe('permission_denied')
+  })
+
+  it('returns an isolated not_found error (never a cwd-inferred glab call) when the project is unresolved', async () => {
+    // Why: a cwd-inferred `glab issue list` would hit `git: exit status 128`
+    // on an SSH connection and, in an "All projects" aggregate, sink the
+    // whole panel. The unresolvable project must isolate to a structured
+    // error instead, and must not spawn any glab subprocess.
+    getIssueProjectRefMock.mockResolvedValueOnce(null)
+
+    const result = await listIssues('/repo-root', 5, undefined, 'opened', '@me')
+
+    expect(result.items).toEqual([])
+    expect(result.error?.type).toBe('not_found')
+    expect(glabExecFileAsyncMock).not.toHaveBeenCalled()
+    expect(acquireMock).not.toHaveBeenCalled()
+  })
+
+  it('returns null for getIssue (and spawns no glab call) when the project is unresolved', async () => {
+    getIssueProjectRefMock.mockResolvedValueOnce(null)
+
+    await expect(getIssue('/repo-root', 7)).resolves.toBeNull()
+    expect(glabExecFileAsyncMock).not.toHaveBeenCalled()
+  })
+
+  it('threads connectionId into getGlabKnownHosts for listIssues', async () => {
+    getIssueProjectRefMock.mockResolvedValueOnce({ host: 'gitlab.com', path: 'stablyai/orca' })
+    glabExecFileAsyncMock.mockResolvedValueOnce({ stdout: '[]' })
+
+    await listIssues('/repo-root', 5, undefined, 'opened', undefined, 'conn-7')
+
+    expect(getGlabKnownHostsMock).toHaveBeenCalledWith('conn-7', {})
   })
 
   it('creates an issue and returns its iid + web_url', async () => {

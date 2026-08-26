@@ -29,7 +29,9 @@ describe('packaged CLI entry redirect', () => {
   })
 
   it('does not match the entrypoint on non-Windows platforms', () => {
-    expect(getPackagedCliEntryArgs([execPath, cliEntryPath, 'status'], cliEntryPath, 'linux')).toBeNull()
+    expect(
+      getPackagedCliEntryArgs([execPath, cliEntryPath, 'status'], cliEntryPath, 'linux')
+    ).toBeNull()
   })
 
   it('spawns the in-package CLI in Electron node mode before the single-instance lock can win', () => {
@@ -50,19 +52,15 @@ describe('packaged CLI entry redirect', () => {
     })
 
     expect(result).toEqual({ redirected: true, status: 0 })
-    expect(spawn).toHaveBeenCalledWith(
-      execPath,
-      [cliEntryPath, 'status', '--json'],
-      {
-        env: expect.objectContaining({
-          ELECTRON_RUN_AS_NODE: '1',
-          ORCA_PACKAGED_CLI_ENTRY_REDIRECTED: '1',
-          ORCA_NODE_OPTIONS: '--inspect',
-          ORCA_NODE_REPL_EXTERNAL_MODULE: 'external-loader'
-        }),
-        stdio: 'inherit'
-      }
-    )
+    expect(spawn).toHaveBeenCalledWith(execPath, [cliEntryPath, 'status', '--json'], {
+      env: expect.objectContaining({
+        ELECTRON_RUN_AS_NODE: '1',
+        ORCA_PACKAGED_CLI_ENTRY_REDIRECTED: '1',
+        ORCA_NODE_OPTIONS: '--inspect',
+        ORCA_NODE_REPL_EXTERNAL_MODULE: 'external-loader'
+      }),
+      stdio: 'inherit'
+    })
     const spawnOptions = spawn.mock.calls[0]?.[2] as { env: NodeJS.ProcessEnv } | undefined
     expect(spawnOptions?.env).not.toHaveProperty('NODE_OPTIONS')
     expect(spawnOptions?.env).not.toHaveProperty('NODE_REPL_EXTERNAL_MODULE')

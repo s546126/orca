@@ -4,15 +4,21 @@ import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { existsSync, readFileSync } from 'node:fs'
 import { release } from 'node:os'
-import { basename, dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { basename, resolve } from 'node:path'
 
 const require = createRequire(import.meta.url)
-const scriptPath = fileURLToPath(import.meta.url)
-const projectDir = resolve(dirname(scriptPath), '../..')
+const { assertNodePtyJobOwnership } = require('./node-pty-job-ownership.cjs')
+const scriptPath = import.meta.filename
+const projectDir = resolve(import.meta.dirname, '../..')
 const runtime = readRuntimeArg()
 
-const NATIVE_MODULES = ['node-pty']
+const NATIVE_MODULES = [
+  'node-pty',
+  ...(process.platform === 'win32'
+    ? ['windows-native-registry', '@vscode/windows-process-tree']
+    : [])
+]
+const NODE_PTY_CONPTY_RUNTIME_FILES = ['conpty.dll', 'OpenConsole.exe']
 const CHILD_CHECK_FLAG = '--check-only'
 
 if (process.argv.includes(CHILD_CHECK_FLAG)) {
@@ -42,7 +48,7 @@ function readRuntimeArg() {
   }
 
   const runtimeIndex = process.argv.indexOf('--runtime')
-  if (runtimeIndex >= 0) {
+  if (runtimeIndex !== -1) {
     return process.argv[runtimeIndex + 1]
   }
 
@@ -241,6 +247,20 @@ function collectNativeModuleFailures() {
 }
 
 function loadNativeModule(moduleName) {
+  if (moduleName === '@vscode/windows-process-tree') {
+    // A bare require already loads the .node addon on win32, so it catches an
+    // ABI mismatch on its own. What it cannot catch is a snapshot that comes
+    // back empty -- the shape a blocked CreateToolhelp32Snapshot produces --
+    // so check the addon actually enumerates before calling the runtime healthy.
+    require(moduleName)
+    return
+  }
+  if (moduleName === 'windows-native-registry') {
+    const registry = require(moduleName)
+    // Why: the package defers loading its .node addon until the first registry call.
+    registry.getRegistryKey(registry.HK.CU, 'Environment')
+    return
+  }
   if (moduleName === 'node-pty') {
     loadNodePtyNativeModule()
     return
@@ -257,10 +277,25 @@ function loadNodePtyNativeModule() {
   // Why: node-pty's Windows JS wrapper defers conpty.node/pty.node until a
   // terminal is created, so require('node-pty') alone can miss ABI mismatches.
   const native = loadNativeModule(nativeName)
-  if (requiresPatchedNodePtySourceBuild() && !isNodePtyReleaseBuildDir(native.dir)) {
+  assertNodePtyWindowsConptyRuntime(native?.dir)
+  assertNodePtyJobOwnership({ nativeName, native })
+  if (requiresPatchedNodePtySourceBuild() && !isNodePtyReleaseBuildDir(native?.dir)) {
     throw new Error(
       `node-pty resolved to ${native.dir}; expected build/Release so Orca's node-pty patch is active`
     )
+  }
+}
+
+function assertNodePtyWindowsConptyRuntime(nativeDir) {
+  if (process.platform !== 'win32' || !isNodePtyReleaseBuildDir(nativeDir)) {
+    return
+  }
+  const runtimeDir = resolve(projectDir, 'node_modules', 'node-pty', 'build', 'Release', 'conpty')
+  const missingFile = NODE_PTY_CONPTY_RUNTIME_FILES.find(
+    (filename) => !existsSync(resolve(runtimeDir, filename))
+  )
+  if (missingFile) {
+    throw new Error(`node-pty ConPTY runtime file is missing: ${resolve(runtimeDir, missingFile)}`)
   }
 }
 
@@ -280,10 +315,12 @@ function getPatchedNodePtyRebuildReason() {
   // Why: a loadable upstream node-pty prebuild is not enough; Orca's Unix
   // patch only lands in the source-built build/Release artifacts.
   const nodePtyDir = resolve(projectDir, 'node_modules', 'node-pty')
-  const missingArtifact = [
-    resolve(nodePtyDir, 'build', 'Release', 'pty.node'),
-    resolve(nodePtyDir, 'build', 'Release', 'spawn-helper')
-  ].find((artifactPath) => !existsSync(artifactPath))
+  const artifactPaths = [resolve(nodePtyDir, 'build', 'Release', 'pty.node')]
+  // Why: node-pty only builds spawn-helper on macOS; Linux builds only pty.node.
+  if (process.platform === 'darwin') {
+    artifactPaths.push(resolve(nodePtyDir, 'build', 'Release', 'spawn-helper'))
+  }
+  const missingArtifact = artifactPaths.find((artifactPath) => !existsSync(artifactPath))
 
   if (!missingArtifact) {
     return null

@@ -1,6 +1,4 @@
-/* oxlint-disable max-lines */
-import React, { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, Copy } from 'lucide-react'
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '@/store'
 import { useActiveWorktree } from '@/store/selectors'
 import { detectLanguage } from '@/lib/language-detect'
@@ -13,42 +11,17 @@ import {
   CommandEmpty,
   CommandItem
 } from '@/components/ui/command'
+import { FilePathCursorTooltip, splitTrailingSegment } from '@/components/file-path-cursor-tooltip'
 import { prepareQuickOpenFiles, rankQuickOpenFiles } from '@/components/quick-open-search'
 import { useRuntimeFileListForWorktree } from '@/components/quick-open-file-list'
 import { useModalReturnFocus } from '@/hooks/useModalReturnFocus'
 import { translate } from '@/i18n/i18n'
+import {
+  parseQuickOpenInstallRgGuidance,
+  QuickOpenInstallRgGuidance
+} from '@/components/quick-open-install-rg-guidance'
 
-/**
- * Parses the install-ripgrep guidance message produced by the relay's
- * buildInstallRgMessage(). Returns the parts needed to render as formatted
- * guidance (reason + install command) when matched, or null otherwise so
- * callers can fall back to plain-text display.
- *
- * Why: the message is plain text on the wire (thrown as an Error), but the
- * renderer is the only place with enough UI vocabulary to present ripgrep
- * as an inline code span and the install command as a copyable code block.
- */
-function parseInstallRgGuidance(
-  message: string
-): { reason: string; command: string | null; guidance: string | null } | null {
-  const match = message.match(
-    /^Quick Open scan too large \(([^)]+)\)\. Install ripgrep on the remote to enable fast, gitignore-aware listing: (.+)$/
-  )
-  if (!match) {
-    return null
-  }
-  const reason = match[1]
-  const tail = match[2].trim()
-  // Why: on unknown distros the relay emits prose like "install ripgrep via
-  // your package manager (e.g. apt/dnf/pacman)" — there's no single command
-  // to copy, so surface it as plain guidance without the code block.
-  const looksLikeCommand = /^(sudo\s+)?(brew|apt|dnf|pacman|apk)\s/.test(tail)
-  return {
-    reason,
-    command: looksLikeCommand ? tail : null,
-    guidance: looksLikeCommand ? null : tail
-  }
-}
+const QUICK_OPEN_CLOSE_LINGER_MS = 300
 
 function FooterKey({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
@@ -58,111 +31,26 @@ function FooterKey({ children }: { children: React.ReactNode }): React.JSX.Eleme
   )
 }
 
-function InstallRgGuidance({
-  reason,
-  command,
-  guidance
-}: {
-  reason: string
-  command: string | null
-  guidance?: string | null
-}): React.JSX.Element {
-  const [copied, setCopied] = useState(false)
-  const copiedResetTimerRef = useRef<number | null>(null)
-  // Why: clipboard IPC can resolve after this guidance unmounts; avoid
-  // starting a reset timer that will outlive the component.
-  const isMountedRef = useRef(false)
-
-  const clearCopiedResetTimer = useCallback((): void => {
-    if (copiedResetTimerRef.current !== null) {
-      window.clearTimeout(copiedResetTimerRef.current)
-      copiedResetTimerRef.current = null
-    }
-  }, [])
-
-  const setCopyButtonRef = useCallback(
-    (node: HTMLButtonElement | null) => {
-      isMountedRef.current = node !== null
-      if (node === null) {
-        clearCopiedResetTimer()
-      }
-    },
-    [clearCopiedResetTimer]
-  )
-
-  const handleCopy = useCallback(() => {
-    if (!command) {
-      return
-    }
-    // Why: use Electron's clipboard IPC instead of navigator.clipboard — the
-    // latter often fails silently in the renderer due to focus/permission
-    // quirks inside Radix dialogs. All other copy buttons in the app go
-    // through window.api.ui.writeClipboardText for consistency.
-    void window.api.ui
-      .writeClipboardText(command)
-      .then(() => {
-        if (!isMountedRef.current) {
-          return
-        }
-        clearCopiedResetTimer()
-        setCopied(true)
-        copiedResetTimerRef.current = window.setTimeout(() => {
-          copiedResetTimerRef.current = null
-          setCopied(false)
-        }, 1500)
-      })
-      .catch(() => {
-        /* best-effort */
-      })
-  }, [clearCopiedResetTimer, command])
-
-  return (
-    <div className="px-4 py-5 text-sm text-muted-foreground space-y-3">
-      <div
-        role="alert"
-        className="flex items-start gap-2.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-amber-700 dark:text-amber-300"
-      >
-        <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-        <p className="text-[13px] leading-5">
-          {translate('auto.components.QuickOpen.4725b0e931', 'Quick Open scan too large (')}
-          {reason}).
-        </p>
-      </div>
-      <p>
-        {translate('auto.components.QuickOpen.2ca749c15d', 'Install')}{' '}
-        <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
-          {translate('auto.components.QuickOpen.5d80dc39bb', 'ripgrep')}
-        </code>{' '}
-        {translate(
-          'auto.components.QuickOpen.1cf8561ab4',
-          'on the remote to enable fast, gitignore-aware listing:'
-        )}
-      </p>
-      {command ? (
-        <div className="flex items-center gap-2 rounded border border-border bg-muted/50 px-3 py-2 font-mono text-xs text-foreground">
-          <span className="flex-1 truncate">{command}</span>
-          <button
-            ref={setCopyButtonRef}
-            type="button"
-            onClick={handleCopy}
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            aria-label={translate('auto.components.QuickOpen.73b44e7bde', 'Copy install command')}
-          >
-            {copied ? <Check size={12} /> : <Copy size={12} />}
-            {copied
-              ? translate('auto.components.QuickOpen.cf144856dc', 'Copied')
-              : translate('auto.components.QuickOpen.995be8ea22', 'Copy')}
-          </button>
-        </div>
-      ) : guidance ? (
-        <p className="text-[13px] leading-5 text-foreground">{guidance}</p>
-      ) : null}
-    </div>
-  )
-}
-
 export default function QuickOpen(): React.JSX.Element | null {
   const visible = useAppStore((s) => s.activeModal === 'quick-open')
+  const [lingering, setLingering] = useState(visible)
+  useEffect(() => {
+    if (visible) {
+      setLingering(true)
+      return
+    }
+    // Why: keep scan cancellation and the dialog exit animation mounted before releasing remote file state.
+    const timer = window.setTimeout(() => setLingering(false), QUICK_OPEN_CLOSE_LINGER_MS)
+    return () => window.clearTimeout(timer)
+  }, [visible])
+
+  if (!visible && !lingering) {
+    return null
+  }
+  return <QuickOpenContent visible={visible} />
+}
+
+function QuickOpenContent({ visible }: { visible: boolean }): React.JSX.Element {
   const closeModal = useAppStore((s) => s.closeModal)
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
   const openFile = useAppStore((s) => s.openFile)
@@ -170,9 +58,10 @@ export default function QuickOpen(): React.JSX.Element | null {
 
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query)
-  const { files, loading, loadError } = useRuntimeFileListForWorktree({
+  const { files, loading, loadError, truncated } = useRuntimeFileListForWorktree({
     enabled: visible,
-    worktreeId: activeWorktreeId
+    worktreeId: activeWorktreeId,
+    query: deferredQuery
   })
 
   const worktreePath = activeWorktree?.path ?? null
@@ -251,6 +140,7 @@ export default function QuickOpen(): React.JSX.Element | null {
         placeholder={translate('auto.components.QuickOpen.1cb6ef47b7', 'Go to file...')}
         value={query}
         onValueChange={setQuery}
+        className="!h-9 !py-2"
       />
       <CommandList className="p-2">
         {loading ? (
@@ -259,10 +149,11 @@ export default function QuickOpen(): React.JSX.Element | null {
           </div>
         ) : loadError ? (
           (() => {
-            const guidance = parseInstallRgGuidance(loadError)
+            const guidance = parseQuickOpenInstallRgGuidance(loadError)
             return guidance ? (
-              <InstallRgGuidance
+              <QuickOpenInstallRgGuidance
                 reason={guidance.reason}
+                location={guidance.location}
                 command={guidance.command}
                 guidance={guidance.guidance}
               />
@@ -278,9 +169,7 @@ export default function QuickOpen(): React.JSX.Element | null {
           </CommandEmpty>
         ) : (
           filtered.map((item) => {
-            const lastSlash = item.path.lastIndexOf('/')
-            const dir = lastSlash >= 0 ? item.path.slice(0, lastSlash) : ''
-            const filename = item.path.slice(lastSlash + 1)
+            const { directory, filename } = splitTrailingSegment(item.path)
             const FileIcon = getFileTypeIcon(item.path)
 
             return (
@@ -288,15 +177,37 @@ export default function QuickOpen(): React.JSX.Element | null {
                 key={item.path}
                 value={item.path}
                 onSelect={() => handleSelect(item.path)}
-                className="flex items-center gap-2 px-3 py-1.5"
+                // Why: CommandDialog's descendant rule otherwise adds 24px of vertical padding.
+                className="min-w-0 !p-0"
               >
-                <FileIcon className="size-3.5 text-muted-foreground flex-shrink-0" />
-                <span className="truncate text-foreground">{filename}</span>
-                {dir && <span className="truncate text-muted-foreground ml-1">{dir}</span>}
+                {/* Why: the trigger is this inner element, not the CommandItem.
+                    cmdk sets its own onPointerMove after spreading props, which
+                    drops the one Radix needs to open the tooltip. */}
+                <FilePathCursorTooltip path={item.path}>
+                  <div className="flex w-full min-w-0 items-center gap-2 px-3 py-1">
+                    <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    {/* shrink-0 + max-w-full: the directory gives up all of its
+                        width before the filename loses a character. */}
+                    <span className="min-w-0 max-w-full shrink-0 truncate text-foreground">
+                      {filename}
+                    </span>
+                    {directory ? (
+                      <span className="min-w-0 truncate text-muted-foreground">{directory}</span>
+                    ) : null}
+                  </div>
+                </FilePathCursorTooltip>
               </CommandItem>
             )
           })
         )}
+        {truncated && !loading && !loadError ? (
+          <div className="px-3 py-2 text-center text-xs text-muted-foreground">
+            {translate(
+              'quickOpen.moreMatchesAvailable',
+              'More matches may be available. Refine your search to narrow the results.'
+            )}
+          </div>
+        ) : null}
       </CommandList>
       <div className="flex items-center justify-end border-t border-border/60 px-3.5 py-2.5 text-[11px] text-muted-foreground/82">
         <div className="flex items-center gap-2">

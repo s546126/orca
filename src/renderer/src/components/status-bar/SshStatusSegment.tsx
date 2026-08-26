@@ -12,135 +12,45 @@ import { useAppStore } from '../../store'
 import type { SshConnectionStatus } from '../../../../shared/ssh-types'
 import { translate } from '@/i18n/i18n'
 import { getHostDisplayLabelOverrides } from '../../../../shared/host-setting-overrides'
-import { toRuntimeExecutionHostId } from '../../../../shared/execution-host'
-import { RuntimeHostStatusRow, type RuntimeHostConnectionState } from './RuntimeHostStatusRow'
+import {
+  isRuntimeOwnedSshTargetId,
+  toRuntimeExecutionHostId
+} from '../../../../shared/execution-host'
+import { isUserManagedRuntimeEnvironment } from '../../../../shared/runtime-environments'
+import { RuntimeHostStatusRow } from './RuntimeHostStatusRow'
+import {
+  connectedHostCountLabel,
+  connectingHostsLabel,
+  workspaceSyncProblemLabel
+} from './ssh-status-segment-copy'
 import { SshTargetStatusRow } from './SshTargetStatusRow'
-import type { RemoteRuntimeSharedConnectionDiagnostics } from '../../../../shared/remote-runtime-shared-control-types'
+import { connectRuntimeEnvironmentAndRecordStatus } from './runtime-environment-explicit-connect'
+import {
+  overallDotColor,
+  overallStatus,
+  runtimeHostConnectionDetail,
+  sshStatusForOverall
+} from './remote-host-connection-status'
+import {
+  isConnectedRuntimeHostState,
+  runtimeHostConnectionState,
+  runtimeStatusForOverall
+} from '@/runtime/runtime-host-connection-state'
 
-function isConnecting(status: SshConnectionStatus): boolean {
-  return ['connecting', 'deploying-relay', 'reconnecting'].includes(status)
-}
-
-type HostStatus = 'connected' | 'disconnected' | 'connecting'
-
-function overallStatus(
-  statuses: HostStatus[]
-): 'connected' | 'partial' | 'disconnected' | 'connecting' {
-  if (statuses.length === 0) {
-    return 'disconnected'
+export async function connectRuntimeHostForNavigation(args: {
+  environmentId: string
+  refreshStatus: (environmentId: string, timeoutMs: number) => Promise<boolean>
+  fetchRepos: (environmentId: string) => Promise<{ id: string }[]>
+  fetchWorktrees: (repoId: string) => Promise<unknown>
+  fetchLineage: () => Promise<unknown>
+}): Promise<boolean> {
+  if (!(await args.refreshStatus(args.environmentId, 5_000))) {
+    return false
   }
-  if (statuses.every((s) => s === 'connected')) {
-    return 'connected'
-  }
-  if (statuses.some((s) => s === 'connecting')) {
-    return 'connecting'
-  }
-  if (statuses.some((s) => s === 'connected')) {
-    return 'partial'
-  }
-  return 'disconnected'
-}
-
-function overallDotColor(
-  status: 'connected' | 'partial' | 'disconnected' | 'connecting',
-  connectedCount: number
-): string {
-  switch (status) {
-    case 'connected':
-      return 'bg-emerald-500'
-    case 'partial':
-      return connectedCount > 0 ? 'bg-emerald-500' : 'bg-muted-foreground/40'
-    case 'connecting':
-      return 'bg-yellow-500'
-    case 'disconnected':
-      return 'bg-muted-foreground/40'
-  }
-}
-
-function connectedHostCountLabel(count: number): string {
-  return `${count} ${count === 1 ? 'host' : 'hosts'}`
-}
-
-function sshStatusForOverall(status: SshConnectionStatus): HostStatus {
-  if (status === 'connected') {
-    return 'connected'
-  }
-  return isConnecting(status) ? 'connecting' : 'disconnected'
-}
-
-function runtimeHostConnectionState({
-  hasStatus,
-  online,
-  remoteControl
-}: {
-  hasStatus: boolean
-  online: boolean
-  remoteControl?: RemoteRuntimeSharedConnectionDiagnostics | null
-}): RuntimeHostConnectionState {
-  if (!hasStatus) {
-    return 'checking'
-  }
-  if (remoteControl?.state === 'reconnecting') {
-    return 'reconnecting'
-  }
-  if (!online) {
-    return 'disconnected'
-  }
-  if (remoteControl?.state === 'closed' && remoteControl.lastError) {
-    return 'disconnected'
-  }
-  // Why: "connected" means attached/reachable, NOT "is the active default host".
-  // Both surfaces (this status bar and Settings > Remote Orca Servers) must agree
-  // on that single definition, or a reachable-but-not-active host reads
-  // "Connected" in one place and "Available" in the other. Active/default is a
-  // separate concept (surfaced elsewhere), so it must not change this state.
-  return 'connected'
-}
-
-function runtimeHostConnectionDetail(
-  remoteControl?: RemoteRuntimeSharedConnectionDiagnostics | null
-): string | undefined {
-  if (!remoteControl) {
-    return undefined
-  }
-  if (remoteControl.lastError) {
-    return remoteControl.lastError
-  }
-  if (remoteControl.lastClose?.reason) {
-    return translate(
-      'auto.components.status.bar.SshStatusSegment.runtime_last_close_reason',
-      'Closed: {{value0}}',
-      { value0: remoteControl.lastClose.reason }
-    )
-  }
-  if (remoteControl.state === 'reconnecting') {
-    return translate(
-      'auto.components.status.bar.SshStatusSegment.runtime_reconnect_attempt',
-      'Attempt {{value0}}',
-      { value0: String(remoteControl.reconnectAttempt + 1) }
-    )
-  }
-  // Why: pending-request / subscription counts are internal RPC plumbing (e.g. a
-  // live browser screencast shows as "N streams"). They're noise in a user-facing
-  // status row and make the line truncate — only surface actionable detail
-  // (errors, close reasons, reconnect attempts) above.
-  return undefined
-}
-
-export function runtimeStatusForOverall(state: RuntimeHostConnectionState): HostStatus {
-  switch (state) {
-    case 'connected':
-      return 'connected'
-    case 'checking':
-    case 'reconnecting':
-      return 'connecting'
-    case 'disconnected':
-      return 'disconnected'
-  }
-}
-
-export function isConnectedRuntimeHostState(state: RuntimeHostConnectionState): boolean {
-  return state === 'connected'
+  const repos = await args.fetchRepos(args.environmentId)
+  await Promise.all(repos.map((repo) => args.fetchWorktrees(repo.id)))
+  await args.fetchLineage()
+  return true
 }
 
 export function SshStatusSegment({
@@ -155,10 +65,8 @@ export function SshStatusSegment({
   const settings = useAppStore((s) => s.settings)
   const runtimeEnvironments = useAppStore((s) => s.runtimeEnvironments)
   const runtimeStatusByEnvironmentId = useAppStore((s) => s.runtimeStatusByEnvironmentId)
-  const switchRuntimeEnvironment = useAppStore((s) => s.switchRuntimeEnvironment)
   const setRuntimeEnvironmentStatus = useAppStore((s) => s.setRuntimeEnvironmentStatus)
   const hydrateRuntimeEnvironmentStatuses = useAppStore((s) => s.hydrateRuntimeEnvironmentStatuses)
-  const refreshRuntimeEnvironmentStatus = useAppStore((s) => s.refreshRuntimeEnvironmentStatus)
   const remoteWorkspaceSyncStatusByTargetId = useAppStore(
     (s) => s.remoteWorkspaceSyncStatusByTargetId
   )
@@ -167,27 +75,33 @@ export function SshStatusSegment({
   const recordFeatureInteraction = useAppStore((s) => s.recordFeatureInteraction)
 
   const hostLabelOverrides = useMemo(() => getHostDisplayLabelOverrides(settings), [settings])
-  const targets = Array.from(sshTargetLabels.entries()).map(([id, label]) => {
-    const state = sshConnectionStates.get(id)
-    return {
-      id,
-      label,
-      status: (state?.status ?? 'disconnected') as SshConnectionStatus,
-      syncStatus: remoteWorkspaceSyncStatusByTargetId[id]
-    }
-  })
-  const runtimeHosts = runtimeEnvironments.map((environment) => {
-    const statusEntry = runtimeStatusByEnvironmentId.get(environment.id)
-    const override = hostLabelOverrides.get(toRuntimeExecutionHostId(environment.id))
-    return {
-      id: environment.id,
-      label: override || environment.name || environment.id,
-      hasStatus: Boolean(statusEntry),
-      online: Boolean(statusEntry?.status),
-      active: settings?.activeRuntimeEnvironmentId === environment.id,
-      remoteControl: statusEntry?.status?.remoteControl ?? null
-    }
-  })
+  const targets = Array.from(sshTargetLabels.entries())
+    // Why: runtime-owned (per-workspace-env) SSH targets are hidden — never list them
+    // as a user-facing SSH host in the status bar.
+    .filter(([id]) => !isRuntimeOwnedSshTargetId(id))
+    .map(([id, label]) => {
+      const state = sshConnectionStates.get(id)
+      return {
+        id,
+        label,
+        status: (state?.status ?? 'disconnected') as SshConnectionStatus,
+        syncStatus: remoteWorkspaceSyncStatusByTargetId[id]
+      }
+    })
+  const runtimeHosts = runtimeEnvironments
+    .filter(isUserManagedRuntimeEnvironment)
+    .map((environment) => {
+      const statusEntry = runtimeStatusByEnvironmentId.get(environment.id)
+      const override = hostLabelOverrides.get(toRuntimeExecutionHostId(environment.id))
+      return {
+        id: environment.id,
+        label: override || environment.name || environment.id,
+        hasStatusEntry: Boolean(statusEntry),
+        status: statusEntry?.status ?? null,
+        active: settings?.activeRuntimeEnvironmentId === environment.id,
+        remoteControl: statusEntry?.status?.remoteControl ?? null
+      }
+    })
   const runtimeHostRows = runtimeHosts.map((host) => ({
     ...host,
     state: runtimeHostConnectionState(host)
@@ -204,7 +118,14 @@ export function SshStatusSegment({
   const disconnectedTargets = targets.filter((target) => target.status !== 'connected')
   const connectRuntimeHost = useCallback(
     async (environmentId: string): Promise<void> => {
-      const reachable = await refreshRuntimeEnvironmentStatus(environmentId, 5_000)
+      const store = useAppStore.getState()
+      const reachable = await connectRuntimeHostForNavigation({
+        environmentId,
+        refreshStatus: connectRuntimeEnvironmentAndRecordStatus,
+        fetchRepos: store.fetchRuntimeEnvironmentRepos,
+        fetchWorktrees: store.fetchWorktrees,
+        fetchLineage: store.fetchWorktreeLineage
+      })
       if (!reachable) {
         toast.error(
           translate(
@@ -214,24 +135,19 @@ export function SshStatusSegment({
         )
         return
       }
-      const switched = await switchRuntimeEnvironment(environmentId)
-      if (switched) {
-        recordFeatureInteraction('ssh')
-      }
+      recordFeatureInteraction('ssh')
     },
-    [recordFeatureInteraction, refreshRuntimeEnvironmentStatus, switchRuntimeEnvironment]
+    [recordFeatureInteraction]
   )
   const disconnectRuntimeHost = useCallback(
-    async (environmentId: string, isActive: boolean): Promise<void> => {
+    async (environmentId: string): Promise<void> => {
       try {
-        if (isActive) {
-          const switched = await switchRuntimeEnvironment(null)
-          if (!switched) {
-            return
-          }
-        }
         await window.api.runtimeEnvironments.disconnect({ selector: environmentId })
-        setRuntimeEnvironmentStatus(environmentId, { status: null, checkedAt: Date.now() })
+        setRuntimeEnvironmentStatus(
+          environmentId,
+          { status: null, checkedAt: Date.now() },
+          { suppressDisconnectToast: true }
+        )
         recordFeatureInteraction('ssh')
       } catch (err) {
         toast.error(
@@ -244,7 +160,7 @@ export function SshStatusSegment({
         )
       }
     },
-    [recordFeatureInteraction, setRuntimeEnvironmentStatus, switchRuntimeEnvironment]
+    [recordFeatureInteraction, setRuntimeEnvironmentStatus]
   )
 
   if (targets.length === 0 && runtimeHosts.length === 0) {
@@ -262,9 +178,7 @@ export function SshStatusSegment({
     (t) => t.syncStatus?.phase === 'conflict' || t.syncStatus?.phase === 'error'
   )
   const syncProblemLabel = syncProblem
-    ? syncProblem.syncStatus?.phase === 'conflict'
-      ? 'Workspace conflict'
-      : 'Workspace sync error'
+    ? workspaceSyncProblemLabel(syncProblem.syncStatus?.phase)
     : null
   return (
     <DropdownMenu
@@ -316,7 +230,9 @@ export function SshStatusSegment({
                 <span className="text-[11px]">
                   <span className={syncProblem ? 'text-destructive' : 'text-muted-foreground'}>
                     {syncProblemLabel ??
-                      (anyConnecting ? 'Connecting…' : connectedHostCountLabel(connectedHostCount))}
+                      (anyConnecting
+                        ? connectingHostsLabel()
+                        : connectedHostCountLabel(connectedHostCount))}
                   </span>
                 </span>
               )}
@@ -345,7 +261,7 @@ export function SshStatusSegment({
             state={host.state}
             detail={runtimeHostConnectionDetail(host.remoteControl)}
             onConnect={() => connectRuntimeHost(host.id)}
-            onDisconnect={() => disconnectRuntimeHost(host.id, host.active)}
+            onDisconnect={() => disconnectRuntimeHost(host.id)}
           />
         ))}
         {connectedTargets.map((t) => (
@@ -364,7 +280,7 @@ export function SshStatusSegment({
             state={host.state}
             detail={runtimeHostConnectionDetail(host.remoteControl)}
             onConnect={() => connectRuntimeHost(host.id)}
-            onDisconnect={() => disconnectRuntimeHost(host.id, host.active)}
+            onDisconnect={() => disconnectRuntimeHost(host.id)}
           />
         ))}
         {disconnectedTargets.map((t) => (

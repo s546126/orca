@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FLOATING_TERMINAL_WORKTREE_ID } from './constants'
-import type { WorkspaceSessionState } from './types'
+import type { WorkspaceSessionState } from './workspace-session-state-types'
 import { TERMINAL_SCROLLBACK_SESSION_BUFFER_BYTE_LIMIT } from './terminal-scrollback-limits'
 import { getUtf8ByteLength } from './utf8-byte-limits'
 import {
@@ -91,6 +91,17 @@ function makeRuntimeSession(): WorkspaceSessionState {
 }
 
 describe('pruneLocalTerminalScrollbackBuffers', () => {
+  it('tolerates legacy sessions without terminal maps', () => {
+    const legacySession = {
+      activeRepoId: null,
+      activeWorktreeId: null,
+      activeTabId: null
+    } as WorkspaceSessionState
+
+    expect(() => pruneLocalTerminalScrollbackBuffers(legacySession, [])).not.toThrow()
+    expect(pruneLocalTerminalScrollbackBuffers(legacySession, [])).toEqual(legacySession)
+  })
+
   it('classifies which worktrees need renderer-captured scrollback', () => {
     const repos = [
       { id: 'local-repo', connectionId: null },

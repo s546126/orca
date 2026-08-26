@@ -1,8 +1,10 @@
-/* eslint-disable max-lines -- Why: dispatch guards are interdependent, so these notification liveness and unread regressions stay together with one store mock. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { dispatchTerminalNotification } from './use-notification-dispatch'
-import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
-import type { TerminalLayoutSnapshot } from '../../../../shared/types'
+import {
+  AGENT_STATUS_STALE_AFTER_MS,
+  type AgentStatusEntry
+} from '../../../../shared/agent-status-types'
+import type { TerminalLayoutSnapshot } from '../../../../shared/terminal-tab-types'
 import { buildAgentNotificationId } from '../../../../shared/agent-notification-id'
 
 type MockState = {
@@ -82,6 +84,11 @@ function stubDocumentFocus({
     visibilityState,
     hasFocus: vi.fn(() => focused)
   })
+}
+
+function getLastNotificationDispatchArg(): Record<string, unknown> | undefined {
+  const dispatch = window.api.notifications.dispatch as unknown as ReturnType<typeof vi.fn>
+  return dispatch.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined
 }
 
 describe('dispatchTerminalNotification', () => {
@@ -181,6 +188,99 @@ describe('dispatchTerminalNotification', () => {
     expect(mockState.markWorktreeUnread).toHaveBeenCalledWith('wt-primary')
     expect(mockState.markTerminalTabUnread).toHaveBeenCalledWith('tab-1')
     expect(mockState.markTerminalPaneUnread).toHaveBeenCalledWith(paneKey)
+  })
+
+  it('builds the notification id from a completion snapshot, not the pinned working row', () => {
+    const pinnedWorkingStartedAt = Date.now() - 60_000
+    // Why: the stored row must name the event's agent, or it is dropped for identity mismatch
+    // and the assertion would hold whichever side of the `??` wins.
+    mockState.agentStatusByPaneKey[paneKey] = makeAgentStatus(paneKey, {
+      state: 'working',
+      stateStartedAt: pinnedWorkingStartedAt,
+      agentType: 'claude',
+      terminalTitle: 'claude'
+    })
+    const turnCompletedAt = Date.now()
+
+    dispatchTerminalNotification('wt-primary', {
+      source: 'agent-task-complete',
+      terminalTitle: 'claude',
+      paneKey,
+      agentStatusSnapshot: {
+        state: 'done',
+        prompt: 'review the PR',
+        agentType: 'claude',
+        stateStartedAt: turnCompletedAt
+      }
+    })
+
+    expect(window.api.notifications.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notificationId: buildAgentNotificationId({
+          worktreeId: 'wt-primary',
+          paneKey,
+          stateStartedAt: turnCompletedAt
+        })
+      })
+    )
+  })
+
+  it.each([
+    { clientStateStartedAt: 5_000, hostTurnCompletedAt: 2_000 },
+    { clientStateStartedAt: 2_000, hostTurnCompletedAt: 5_000 }
+  ])(
+    'accepts a host-stamped completion across client/host clock skew %#',
+    ({ clientStateStartedAt, hostTurnCompletedAt }) => {
+      mockState.agentStatusByPaneKey[paneKey] = makeAgentStatus(paneKey, {
+        state: 'working',
+        stateStartedAt: clientStateStartedAt,
+        agentType: 'claude',
+        terminalTitle: 'claude'
+      })
+
+      dispatchTerminalNotification('wt-primary', {
+        source: 'agent-task-complete',
+        terminalTitle: 'claude',
+        paneKey,
+        agentStatusSnapshot: {
+          state: 'done',
+          prompt: 'review the PR',
+          agentType: 'claude',
+          stateStartedAt: hostTurnCompletedAt,
+          localStateStartedAt: clientStateStartedAt,
+          turnCompletedAt: hostTurnCompletedAt
+        }
+      })
+
+      expect(window.api.notifications.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'agent-task-complete' })
+      )
+    }
+  )
+
+  it('drops a host-stamped completion after a newer client turn starts', () => {
+    mockState.agentStatusByPaneKey[paneKey] = makeAgentStatus(paneKey, {
+      state: 'working',
+      stateStartedAt: 6_000,
+      agentType: 'claude',
+      terminalTitle: 'claude'
+    })
+
+    dispatchTerminalNotification('wt-primary', {
+      source: 'agent-task-complete',
+      terminalTitle: 'claude',
+      paneKey,
+      agentStatusSnapshot: {
+        state: 'done',
+        prompt: 'previous turn',
+        agentType: 'claude',
+        stateStartedAt: 2_000,
+        localStateStartedAt: 5_000,
+        turnCompletedAt: 2_000
+      }
+    })
+
+    expect(window.api.notifications.dispatch).not.toHaveBeenCalled()
   })
 
   it('uses a live pane key when inactive worktree tab membership is not hydrated', () => {
@@ -443,6 +543,231 @@ describe('dispatchTerminalNotification', () => {
     expect(mockState.markWorktreeUnread).toHaveBeenCalledWith('wt-primary')
     expect(mockState.markTerminalTabUnread).toHaveBeenCalledWith('tab-1')
     expect(mockState.markTerminalPaneUnread).toHaveBeenCalledWith(paneKey)
+  })
+
+  it('does not let fresh active status suppress a completion from another named agent', () => {
+    mockState.agentStatusByPaneKey[paneKey] = makeAgentStatus(paneKey, {
+      state: 'working',
+      agentType: 'codex',
+      terminalTitle: 'Codex',
+      lastAssistantMessage: undefined
+    })
+
+    dispatchTerminalNotification('wt-primary', {
+      source: 'agent-task-complete',
+      terminalTitle: '✳ Claude Code',
+      paneKey
+    })
+
+    const dispatchArgs = getLastNotificationDispatchArg()
+    expect(dispatchArgs).toEqual(
+      expect.objectContaining({
+        source: 'agent-task-complete',
+        worktreeId: 'wt-primary',
+        paneKey,
+        terminalTitle: '✳ Claude Code'
+      })
+    )
+    expect(dispatchArgs?.agentType).toBeUndefined()
+    expect(dispatchArgs?.agentLastAssistantMessage).toBeUndefined()
+  })
+
+  it('does not reuse an event snapshot when the terminal title names another agent', () => {
+    mockState.agentStatusByPaneKey = {}
+
+    dispatchTerminalNotification('wt-primary', {
+      source: 'agent-task-complete',
+      terminalTitle: '✳ Claude Code',
+      paneKey,
+      agentStatusSnapshot: {
+        state: 'done',
+        prompt: 'codex prompt',
+        agentType: 'codex',
+        lastAssistantMessage: 'Codex done.',
+        stateStartedAt: Date.now()
+      }
+    })
+
+    const dispatchArgs = getLastNotificationDispatchArg()
+    expect(dispatchArgs).toEqual(
+      expect.objectContaining({
+        source: 'agent-task-complete',
+        worktreeId: 'wt-primary',
+        paneKey,
+        terminalTitle: '✳ Claude Code'
+      })
+    )
+    expect(dispatchArgs?.notificationId).toBeUndefined()
+    expect(dispatchArgs?.agentType).toBeUndefined()
+    expect(dispatchArgs?.agentPrompt).toBeUndefined()
+    expect(dispatchArgs?.agentLastAssistantMessage).toBeUndefined()
+  })
+
+  it('does not reuse an untyped fresh agent snapshot when the terminal title names an agent', () => {
+    mockState.agentStatusByPaneKey[paneKey] = makeAgentStatus(paneKey, {
+      agentType: undefined,
+      terminalTitle: 'unknown',
+      lastAssistantMessage: 'Previous agent done.'
+    })
+
+    dispatchTerminalNotification('wt-primary', {
+      source: 'agent-task-complete',
+      terminalTitle: 'Claude Code',
+      paneKey
+    })
+
+    const dispatchArgs = getLastNotificationDispatchArg()
+    expect(dispatchArgs).toEqual(
+      expect.objectContaining({
+        source: 'agent-task-complete',
+        worktreeId: 'wt-primary',
+        paneKey,
+        terminalTitle: 'Claude Code'
+      })
+    )
+    expect(dispatchArgs?.agentType).toBeUndefined()
+    expect(dispatchArgs?.agentLastAssistantMessage).toBeUndefined()
+  })
+
+  it('keeps a fresh agent snapshot when the terminal title matches the stored agent', () => {
+    mockState.agentStatusByPaneKey[paneKey] = makeAgentStatus(paneKey, {
+      agentType: 'codex',
+      terminalTitle: 'Codex',
+      lastAssistantMessage: 'Codex done.'
+    })
+
+    dispatchTerminalNotification('wt-primary', {
+      source: 'agent-task-complete',
+      terminalTitle: '⠋ Codex',
+      paneKey
+    })
+
+    const dispatchArgs = getLastNotificationDispatchArg()
+    expect(dispatchArgs).toEqual(
+      expect.objectContaining({
+        agentType: 'codex',
+        agentLastAssistantMessage: 'Codex done.'
+      })
+    )
+  })
+
+  it('drops a title-only completion when fresh hook state is still active', () => {
+    mockState.agentStatusByPaneKey[paneKey] = makeAgentStatus(paneKey, {
+      state: 'working',
+      prompt: 'still running',
+      updatedAt: Date.now() - 60_000,
+      stateStartedAt: Date.now() - 60_000,
+      lastAssistantMessage: undefined
+    })
+
+    dispatchTerminalNotification('wt-primary', {
+      source: 'agent-task-complete',
+      terminalTitle: '✳ Launch UI and thumbnail generator',
+      paneKey
+    })
+
+    expect(window.api.notifications.dispatch).not.toHaveBeenCalled()
+    expect(mockState.markWorktreeUnread).not.toHaveBeenCalled()
+    expect(mockState.markAgentCompletionPaneUnread).not.toHaveBeenCalled()
+    expect(mockState.markTerminalTabUnread).not.toHaveBeenCalled()
+    expect(mockState.markTerminalPaneUnread).not.toHaveBeenCalled()
+  })
+
+  it('allows confirmed process-exit completion while fresh hook state is still active', () => {
+    mockState.agentStatusByPaneKey[paneKey] = makeAgentStatus(paneKey, {
+      state: 'working',
+      prompt: 'agent crashed before its done hook',
+      updatedAt: Date.now() - 60_000,
+      stateStartedAt: Date.now() - 60_000,
+      lastAssistantMessage: undefined
+    })
+
+    dispatchTerminalNotification('wt-primary', {
+      source: 'agent-task-complete',
+      terminalTitle: 'codex',
+      paneKey,
+      agentCompletionSource: 'process-exit'
+    })
+
+    expect(window.api.notifications.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'agent-task-complete',
+        worktreeId: 'wt-primary',
+        paneKey,
+        terminalTitle: 'codex'
+      })
+    )
+    expect(mockState.markWorktreeUnread).toHaveBeenCalledWith('wt-primary')
+    expect(mockState.markTerminalTabUnread).toHaveBeenCalledWith('tab-1')
+    expect(mockState.markTerminalPaneUnread).toHaveBeenCalledWith(paneKey)
+    const dispatchArgs = getLastNotificationDispatchArg()
+    expect(dispatchArgs?.agentState).toBeUndefined()
+    expect(dispatchArgs?.agentPrompt).toBeUndefined()
+  })
+
+  it.each([undefined, 'unknown'] as const)(
+    'drops an explicitly named title completion when fresh hook identity is %s',
+    (agentType) => {
+      mockState.agentStatusByPaneKey[paneKey] = makeAgentStatus(paneKey, {
+        state: 'working',
+        agentType,
+        updatedAt: Date.now() - 60_000,
+        stateStartedAt: Date.now() - 60_000,
+        lastAssistantMessage: undefined
+      })
+
+      dispatchTerminalNotification('wt-primary', {
+        source: 'agent-task-complete',
+        terminalTitle: 'Claude Code done',
+        paneKey
+      })
+
+      expect(window.api.notifications.dispatch).not.toHaveBeenCalled()
+      expect(mockState.markWorktreeUnread).not.toHaveBeenCalled()
+      expect(mockState.markAgentCompletionPaneUnread).not.toHaveBeenCalled()
+      expect(mockState.markTerminalTabUnread).not.toHaveBeenCalled()
+      expect(mockState.markTerminalPaneUnread).not.toHaveBeenCalled()
+    }
+  )
+
+  it('drops a Pi title completion while compatible OMP hook status is active', () => {
+    mockState.agentStatusByPaneKey[paneKey] = makeAgentStatus(paneKey, {
+      state: 'working',
+      agentType: 'omp',
+      updatedAt: Date.now() - 60_000,
+      stateStartedAt: Date.now() - 60_000,
+      lastAssistantMessage: undefined
+    })
+
+    dispatchTerminalNotification('wt-primary', {
+      source: 'agent-task-complete',
+      terminalTitle: 'Pi ready',
+      paneKey
+    })
+
+    expect(window.api.notifications.dispatch).not.toHaveBeenCalled()
+    expect(mockState.markWorktreeUnread).not.toHaveBeenCalled()
+    expect(mockState.markAgentCompletionPaneUnread).not.toHaveBeenCalled()
+    expect(mockState.markTerminalTabUnread).not.toHaveBeenCalled()
+    expect(mockState.markTerminalPaneUnread).not.toHaveBeenCalled()
+  })
+
+  it('allows title-only completion after active hook status becomes stale', () => {
+    mockState.agentStatusByPaneKey[paneKey] = makeAgentStatus(paneKey, {
+      state: 'working',
+      updatedAt: Date.now() - AGENT_STATUS_STALE_AFTER_MS - 1,
+      stateStartedAt: Date.now() - AGENT_STATUS_STALE_AFTER_MS - 1,
+      lastAssistantMessage: undefined
+    })
+
+    dispatchTerminalNotification('wt-primary', {
+      source: 'agent-task-complete',
+      terminalTitle: '/workspace/orca',
+      paneKey
+    })
+
+    expect(window.api.notifications.dispatch).toHaveBeenCalled()
+    expect(mockState.markWorktreeUnread).toHaveBeenCalledWith('wt-primary')
   })
 
   it('drops a delayed completion snapshot when the pane has already started a newer turn', () => {

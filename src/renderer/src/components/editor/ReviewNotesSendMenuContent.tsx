@@ -20,11 +20,15 @@ import {
   deriveNotesSendAgentTargets,
   type NotesSendAgentTarget
 } from '@/lib/notes-send-agent-targets'
-import { agentKindForAgentType, formatAgentTypeLabel } from '@/lib/agent-status'
-import { agentTypeToIconAgent } from '@/lib/agent-status'
+import {
+  agentKindForAgentType,
+  formatAgentTypeLabel,
+  agentTypeToIconAgent
+} from '@/lib/agent-status'
 import { track } from '@/lib/telemetry'
 import { useNow } from '@/components/dashboard/useNow'
 import type { DashboardAgentRow as DashboardAgentRowData } from '@/components/dashboard/useDashboardData'
+import { lastEnteredDoneAt } from '@/components/dashboard/agent-finished-timestamp'
 import { selectLivePtyIdsForWorktree } from '@/components/sidebar/worktree-card-status-inputs'
 import { useWorktreeAgentRows } from '@/components/sidebar/useWorktreeAgentRows'
 import type { LaunchSource } from '../../../../shared/telemetry-events'
@@ -241,7 +245,7 @@ function AgentTargetMenuItem({
   onSend: (target: NotesSendAgentTarget) => void
 }): React.JSX.Element {
   const tabTitle = target.tabTitle.trim()
-  const state = asDotState(agent?.state ?? 'idle')
+  const state = asDotState(agent?.state ?? 'idle', agent?.entry.workingMode)
   const timeAgo = agent ? formatAgentRelativeTime(agent, now) : null
   const secondaryParts = [
     agentStateLabel(state),
@@ -298,9 +302,13 @@ function orderSendTargetsByWorktreeAgentRows(
   return ordered
 }
 
-function asDotState(state: AgentStatusState | 'idle'): AgentDotState {
+function asDotState(
+  state: AgentStatusState | 'idle',
+  workingMode?: DashboardAgentRowData['entry']['workingMode']
+): AgentDotState {
   switch (state) {
     case 'working':
+      return workingMode === 'monitoring' ? 'monitoring' : 'working'
     case 'blocked':
     case 'waiting':
     case 'done':
@@ -317,19 +325,6 @@ function formatAgentRelativeTime(agent: DashboardAgentRowData, now: number): str
   }
   const startedAt = agent.startedAt > 0 ? agent.startedAt : agent.entry.stateStartedAt
   return startedAt > 0 ? `${formatTimeAgo(startedAt, now)}` : null
-}
-
-function lastEnteredDoneAt(agent: DashboardAgentRowData): number | null {
-  const entry = agent.entry
-  if (entry.state === 'done') {
-    return entry.stateStartedAt
-  }
-  for (let i = entry.stateHistory.length - 1; i >= 0; i--) {
-    if (entry.stateHistory[i].state === 'done') {
-      return entry.stateHistory[i].startedAt
-    }
-  }
-  return null
 }
 
 function formatTimeAgo(ts: number, now: number): string {

@@ -1,16 +1,17 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
-import { tmpdir } from 'os'
-import { join } from 'path'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultPersistedState } from '../../shared/constants'
-import type { PersistedState } from '../../shared/types'
+import type { PersistedState } from '../../shared/persisted-state-types'
 
 const {
   applyAgentStatusHooksEnabledMock,
   callMock,
   getCliStatusMock,
   getDefaultUserDataPathMock,
-  getManagedAgentHookStatusesMock
+  getManagedAgentHookStatusesMock,
+  prepareManagedCodexHomeBeforeShellLaunchMock
 } = vi.hoisted(() => ({
   applyAgentStatusHooksEnabledMock: vi.fn(),
   callMock: vi.fn(),
@@ -27,7 +28,8 @@ const {
     })
   ),
   getDefaultUserDataPathMock: vi.fn(),
-  getManagedAgentHookStatusesMock: vi.fn()
+  getManagedAgentHookStatusesMock: vi.fn(),
+  prepareManagedCodexHomeBeforeShellLaunchMock: vi.fn()
 }))
 
 vi.mock('../runtime-client', () => {
@@ -54,7 +56,8 @@ vi.mock('../runtime-client', () => {
 
 vi.mock('../../main/agent-hooks/managed-agent-hook-controls', () => ({
   applyAgentStatusHooksEnabled: applyAgentStatusHooksEnabledMock,
-  getManagedAgentHookStatuses: getManagedAgentHookStatusesMock
+  getManagedAgentHookStatuses: getManagedAgentHookStatusesMock,
+  prepareManagedCodexHomeBeforeShellLaunch: prepareManagedCodexHomeBeforeShellLaunchMock
 }))
 
 import { main } from '../index'
@@ -82,6 +85,7 @@ describe('agent hooks CLI handler', () => {
     callMock.mockReset()
     getCliStatusMock.mockClear()
     getManagedAgentHookStatusesMock.mockReturnValue([])
+    prepareManagedCodexHomeBeforeShellLaunchMock.mockReset()
     process.exitCode = undefined
     vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -92,18 +96,28 @@ describe('agent hooks CLI handler', () => {
     rmSync(userDataPath, { recursive: true, force: true })
   })
 
-  it('keeps the fresh-profile new card style default when creating offline settings', async () => {
+  it('keeps new card style off when creating offline settings for a fresh profile', async () => {
     await runAgentHooksOff(userDataPath)
 
     const persisted = readDataFile(userDataPath)
 
-    expect(persisted.settings.experimentalNewWorktreeCardStyle).toBe(true)
+    expect(persisted.settings.experimentalNewWorktreeCardStyle).toBe(false)
     expect(persisted.settings.agentStatusHooksEnabled).toBe(false)
   })
 
-  it('defaults missing new card style on while offline-updated onboarding is open', async () => {
+  it('keeps missing new card style off when updating offline settings', async () => {
     const existing = getDefaultPersistedState(userDataPath)
     delete existing.settings.experimentalNewWorktreeCardStyle
+    writeDataFile(userDataPath, existing)
+
+    await runAgentHooksOff(userDataPath)
+
+    expect(readDataFile(userDataPath).settings.experimentalNewWorktreeCardStyle).toBe(false)
+  })
+
+  it('preserves an existing explicit new card style opt-in when updating offline settings', async () => {
+    const existing = getDefaultPersistedState(userDataPath)
+    existing.settings.experimentalNewWorktreeCardStyle = true
     writeDataFile(userDataPath, existing)
 
     await runAgentHooksOff(userDataPath)
@@ -111,13 +125,79 @@ describe('agent hooks CLI handler', () => {
     expect(readDataFile(userDataPath).settings.experimentalNewWorktreeCardStyle).toBe(true)
   })
 
-  it('preserves an existing explicit new card style opt-out when updating offline settings', async () => {
-    const existing = getDefaultPersistedState(userDataPath)
-    existing.settings.experimentalNewWorktreeCardStyle = false
-    writeDataFile(userDataPath, existing)
+  it('prepares managed Codex trust with the current hooks setting', async () => {
+    const state = getDefaultPersistedState(userDataPath)
+    state.settings.agentStatusHooksEnabled = false
+    writeDataFile(userDataPath, state)
+    getDefaultUserDataPathMock.mockReturnValue(userDataPath)
 
-    await runAgentHooksOff(userDataPath)
+    await main(['agent', 'hooks', 'prepare-codex'], userDataPath)
 
-    expect(readDataFile(userDataPath).settings.experimentalNewWorktreeCardStyle).toBe(false)
+    expect(prepareManagedCodexHomeBeforeShellLaunchMock).toHaveBeenCalledWith({
+      userDataPath,
+      hooksEnabled: false
+    })
+  })
+
+  it('honors Codex-specific disablement when the runtime is unavailable', async () => {
+    const state = getDefaultPersistedState(userDataPath)
+    state.settings.disabledTuiAgents = ['codex']
+    writeDataFile(userDataPath, state)
+    getDefaultUserDataPathMock.mockReturnValue(userDataPath)
+
+    await main(['agent', 'hooks', 'prepare-codex'], userDataPath)
+
+    expect(prepareManagedCodexHomeBeforeShellLaunchMock).toHaveBeenCalledWith({
+      userDataPath,
+      hooksEnabled: false
+    })
+  })
+
+  it('uses the active profile settings instead of stale legacy settings', async () => {
+    const profileId = 'work-profile'
+    const legacy = getDefaultPersistedState(userDataPath)
+    legacy.settings.agentStatusHooksEnabled = true
+    writeDataFile(userDataPath, legacy)
+    const profile = getDefaultPersistedState(userDataPath)
+    profile.settings.agentStatusHooksEnabled = false
+    writeDataFile(join(userDataPath, 'profiles', profileId), profile)
+    writeFileSync(
+      join(userDataPath, 'orca-profile-index.json'),
+      JSON.stringify({
+        activeProfileId: profileId,
+        profiles: [{ id: profileId }]
+      }),
+      'utf-8'
+    )
+    getDefaultUserDataPathMock.mockReturnValue(userDataPath)
+
+    await main(['agent', 'hooks', 'prepare-codex'], userDataPath)
+
+    expect(prepareManagedCodexHomeBeforeShellLaunchMock).toHaveBeenCalledWith({
+      userDataPath,
+      hooksEnabled: false
+    })
+  })
+
+  it('honors live hook and Codex-specific disablement before persistence settles', async () => {
+    const state = getDefaultPersistedState(userDataPath)
+    state.settings.agentStatusHooksEnabled = true
+    writeDataFile(userDataPath, state)
+    getDefaultUserDataPathMock.mockReturnValue(userDataPath)
+    callMock.mockResolvedValue({
+      result: {
+        settings: { agentStatusHooksEnabled: true, disabledTuiAgents: ['codex'] }
+      }
+    })
+
+    await main(['agent', 'hooks', 'prepare-codex'], userDataPath)
+
+    expect(prepareManagedCodexHomeBeforeShellLaunchMock).toHaveBeenCalledWith({
+      userDataPath,
+      hooksEnabled: false
+    })
+    expect(callMock).toHaveBeenCalledExactlyOnceWith('settings.get', undefined, {
+      timeoutMs: 1_000
+    })
   })
 })

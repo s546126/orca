@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from './orca-runtime'
 import type { Automation } from '../../shared/automations-types'
-import type { Repo } from '../../shared/types'
+import type { Repo } from '../../shared/repo-types'
 
 const repo: Repo = {
   id: 'repo-1',
@@ -82,6 +82,7 @@ describe('OrcaRuntimeService automation methods', () => {
       agentId: 'codex',
       repo: 'repo-1',
       workspaceMode: 'new_per_run',
+      setupDecision: 'skip',
       rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
       dtstart: 1
     })
@@ -94,10 +95,89 @@ describe('OrcaRuntimeService automation methods', () => {
         agentId: 'codex',
         projectId: 'repo-1',
         workspaceMode: 'new_per_run',
-        workspaceId: null
+        workspaceId: null,
+        setupDecision: 'skip'
       })
     )
     expect(automation.id).toBe('auto-1')
+  })
+
+  it('rejects a run context that names a different repo path', async () => {
+    const store = makeStore()
+    const runtime = new OrcaRuntimeService(store as never)
+
+    await expect(
+      runtime.createAutomation({
+        name: 'Mismatched review',
+        prompt: 'Review changes',
+        agentId: 'codex',
+        repo: 'id:repo-1',
+        runContext: {
+          kind: 'workspace-run',
+          projectId: 'project-1',
+          hostId: 'local',
+          projectHostSetupId: 'setup-1',
+          repoId: 'repo-1',
+          path: '/other/repo'
+        },
+        workspaceMode: 'new_per_run',
+        setupDecision: 'skip',
+        rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
+        dtstart: 1
+      })
+    ).rejects.toThrow('Automation project does not match its run context.')
+    expect(store.createAutomation).not.toHaveBeenCalled()
+  })
+
+  it('rejects a mismatched run context when the workspace is the machine selector', async () => {
+    const store = makeStore()
+    const runtime = new OrcaRuntimeService(store as never)
+    vi.spyOn(runtime, 'showManagedWorktree').mockResolvedValue({
+      id: 'repo-1::/tmp/orca',
+      repoId: 'repo-1',
+      path: '/tmp/orca'
+    } as never)
+
+    await expect(
+      runtime.createAutomation({
+        name: 'Workspace review',
+        prompt: 'Review changes',
+        agentId: 'codex',
+        workspace: 'id:repo-1::/tmp/orca',
+        runContext: {
+          kind: 'workspace-run',
+          projectId: 'project-1',
+          hostId: 'local',
+          projectHostSetupId: 'setup-1',
+          repoId: 'repo-1',
+          path: '/other/repo'
+        },
+        workspaceMode: 'existing',
+        setupDecision: 'skip',
+        rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
+        dtstart: 1
+      })
+    ).rejects.toThrow('Automation project does not match its run context.')
+    expect(store.createAutomation).not.toHaveBeenCalled()
+  })
+
+  it('rejects a run-context-only update that names a different repo path', async () => {
+    const store = makeStore([existingAutomation])
+    const runtime = new OrcaRuntimeService(store as never)
+
+    await expect(
+      runtime.updateAutomation('auto-1', {
+        runContext: {
+          kind: 'workspace-run',
+          projectId: 'project-1',
+          hostId: 'local',
+          projectHostSetupId: 'setup-1',
+          repoId: 'repo-1',
+          path: '/other/repo'
+        }
+      })
+    ).rejects.toThrow('Automation project does not match its run context.')
+    expect(store.updateAutomation).not.toHaveBeenCalled()
   })
 
   it('updates and deletes existing automations through the shared store', async () => {
@@ -125,6 +205,15 @@ describe('OrcaRuntimeService automation methods', () => {
     await runtime.updateAutomation('auto-1', { baseBranch: null })
 
     expect(store.updateAutomation).toHaveBeenCalledWith('auto-1', { baseBranch: null })
+  })
+
+  it('passes setup decision updates through the shared store', async () => {
+    const store = makeStore([existingAutomation])
+    const runtime = new OrcaRuntimeService(store as never)
+
+    await runtime.updateAutomation('auto-1', { setupDecision: 'run' })
+
+    expect(store.updateAutomation).toHaveBeenCalledWith('auto-1', { setupDecision: 'run' })
   })
 
   it('passes session reuse updates for existing-workspace automations', async () => {

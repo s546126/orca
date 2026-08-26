@@ -1,28 +1,18 @@
 import { defineConfig } from 'vitest/config'
-import { fileURLToPath } from 'node:url'
 
-const tsconfigRaw = JSON.stringify({
-  compilerOptions: {
-    jsx: 'react-jsx',
-    module: 'esnext',
-    moduleResolution: 'bundler',
-    strict: true,
-    target: 'es2022'
-  }
-})
+const vitestOxcConfig = { tsconfig: false } as never
 
 export default defineConfig({
-  root: fileURLToPath(new URL('.', import.meta.url)),
-  esbuild: {
-    tsconfigRaw
-  },
-  optimizeDeps: {
-    esbuildOptions: {
-      tsconfigRaw
-    }
-  },
+  root: import.meta.dirname,
+  // Why: the app tsconfig intentionally excludes tests; Vite 8's OXC transform
+  // otherwise fails before Vitest can run the test modules.
+  oxc: vitestOxcConfig,
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts']
+    setupFiles: ['./vitest.setup.ts'],
+    onConsoleLog: (log) => !log.includes('react-test-renderer is deprecated'),
+    // .tsx too: component tests exist (react-test-renderer + mocked react-native) and were
+    // silently never collected, so render-level regressions shipped untested.
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx']
   }
 })

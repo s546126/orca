@@ -16,10 +16,14 @@ Thanks for contributing to Orca.
 
 ## Local Setup
 
+The desktop app is a Tauri v2 / Pake-style host (system webview) plus an Electron-free Node sidecar. You need Node, pnpm, and a Rust toolchain.
+
 ```bash
 pnpm install
 pnpm dev
 ```
+
+`pnpm dev` launches the Tauri window, the Vite desktop renderer, and the desktop host on `127.0.0.1:6769`. It does not start Electron. The old Electron runner remains only as `pnpm dev:electron` while host capabilities finish moving off `src/main`.
 
 ## Branch Naming
 
@@ -52,21 +56,19 @@ If your change affects UI or interaction behavior, verify it on the platforms it
 
 Project-owned type declarations belong in `.ts` files. `.d.ts` is reserved for ambient shims (e.g., `env.d.ts`, `vite/client.d.ts`). TypeScript's `skipLibCheck: true` setting applies globally, including to our own `.d.ts` files, which means any unresolved type reference in a `.d.ts` silently becomes `any` at its call sites. Write your types in `.ts` files so the compiler actually checks them.
 
-CI enforces this for `src/preload/` and `src/shared/` — see `docs/preload-typecheck-hole.md`.
+CI enforces this for `src/preload/` and `src/shared/`.
 
 ## Pull Requests
 
-Each pull request should:
+Each pull request should follow [`.github/pull_request_template.md`](./pull_request_template.md). In particular:
 
-- explain the user-visible change
-- stay focused on a single topic when possible
-- include screenshots or screen recordings for new UI or behavior changes
+- open with an ELI5 of the change (plain language paragraph; the PR title is the one-liner)
+- explain what changed and why, and stay focused on a single topic when possible
+- for any UI or interaction change, attach **before and after** screenshots (or short videos); if there is no visual change, say `No visual change` and why
 - include high-quality tests when behavior changes or bug fixes warrant them
 - include a brief code review summary from your AI coding agent that explicitly checks cross-platform compatibility, SSH/remote/local compatibility, supported agent and integration compatibility, performance risk, UI quality when applicable, and basic security risk
 - mention any platform-specific, remote/SSH-specific, agent-specific, integration-specific, or git-provider-specific behavior and testing notes
-- **Include your X (Twitter) handle!** We love giving shoutouts to our contributors when we merge features on [@orca_build](https://x.com/orca_build).
-
-If there is no visual change, say that explicitly in the PR description.
+- **Include your X (Twitter) handle** in the PR template Author section — we shout out contributors when we merge features on [@orca_build](https://x.com/orca_build).
 
 ## Release Process
 
@@ -113,7 +115,6 @@ All stable kinds (`patch`, `minor`, `major`) are computed off the latest _stable
 - **Minor or major bump:** `kind=minor` or `kind=major`.
 
 The scheduled 2x/day RC cron in [`release-rc.yml`](../../actions/workflows/release-rc.yml) is independent and continues to run automatically from `main`.
-
 
 ## Release Channels
 

@@ -4,7 +4,7 @@ import { act } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { GlobalSettings } from '../../../../shared/types'
+import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { getDefaultSettings } from '../../../../shared/constants'
 import { ExperimentalPane } from './ExperimentalPane'
 import { getExperimentalPaneSearchEntries } from './experimental-search'
@@ -13,6 +13,61 @@ vi.mock('../../store', () => ({
   useAppStore: (selector: (state: { settingsSearchQuery: string }) => unknown) =>
     selector({ settingsSearchQuery: '' })
 }))
+
+vi.mock('./EphemeralVmsPane', () => ({
+  EphemeralVmsPane: () => <div data-testid="ephemeral-vms-pane">Cloud VM pane</div>
+}))
+
+vi.mock('../ui/select', async () => {
+  const React = await import('react')
+
+  const SelectContext = React.createContext<{
+    onValueChange?: (value: string) => void
+  }>({})
+
+  return {
+    Select: ({
+      value,
+      onValueChange,
+      children
+    }: {
+      value: string
+      onValueChange: (value: string) => void
+      children: React.ReactNode
+    }) => {
+      const contextValue = React.useMemo(() => ({ onValueChange }), [onValueChange])
+      return (
+        <SelectContext.Provider value={contextValue}>
+          <div data-slot="native-chat-default-view-select" data-value={value}>
+            {children}
+          </div>
+        </SelectContext.Provider>
+      )
+    },
+    SelectTrigger: ({ children, ...props }: React.ComponentProps<'button'> & { size?: string }) => (
+      <button type="button" data-slot="select-trigger" {...props}>
+        {children}
+      </button>
+    ),
+    SelectValue: () => null,
+    SelectContent: ({ children }: { children: React.ReactNode }) => (
+      <div data-slot="select-content">{children}</div>
+    ),
+    SelectItem: ({ value, children }: { value: string; children: React.ReactNode }) => {
+      const { onValueChange } = React.useContext(SelectContext)
+      return (
+        <button
+          type="button"
+          data-slot="select-item"
+          data-value={value}
+          onClick={() => onValueChange?.(value)}
+        >
+          {children}
+        </button>
+      )
+    }
+  }
+})
 
 afterEach(() => {
   document.body.innerHTML = ''
@@ -75,6 +130,167 @@ describe('ExperimentalPane', () => {
     expect(getExperimentalPaneSearchEntries().map((entry) => entry.title)).toContain(
       'New card style'
     )
+  })
+
+  it('renders the agent dashboard as an off-by-default searchable experiment', () => {
+    const settings = getDefaultSettings('/tmp')
+    const markup = renderToStaticMarkup(
+      <ExperimentalPane settings={settings} updateSettings={vi.fn()} />
+    )
+
+    expect(settings.experimentalAgentDashboardPopout).toBeUndefined()
+    expect(markup).toContain('Agent Dashboard')
+    expect(markup).toContain('Monitor agents that need you, are working, or are done')
+    expect(getExperimentalPaneSearchEntries().map((entry) => entry.title)).toContain(
+      'Agent Dashboard'
+    )
+  })
+
+  it('enables the agent dashboard through its experimental switch', async () => {
+    const updateSettings = vi.fn()
+    const { root, container } = await renderExperimentalPane({ updateSettings })
+    const switchButton = container.querySelector<HTMLButtonElement>(
+      '#experimental-agent-dashboard button[role="switch"]'
+    )
+    if (!switchButton) {
+      throw new Error('Agent Dashboard switch was not rendered')
+    }
+
+    await act(async () => {
+      switchButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(updateSettings).toHaveBeenCalledWith({ experimentalAgentDashboardPopout: true })
+    root.unmount()
+  })
+
+  it('keeps idle-agent visibility out of global settings', () => {
+    const markup = renderToStaticMarkup(
+      <ExperimentalPane
+        settings={{ ...getDefaultSettings('/tmp'), experimentalAgentDashboardPopout: true }}
+        updateSettings={vi.fn()}
+      />
+    )
+
+    expect(markup).not.toContain('Show idle agents')
+  })
+
+  it('renders Cloud VM as an off-by-default experimental subsection', () => {
+    const settings = getDefaultSettings('/tmp')
+    const markup = renderToStaticMarkup(
+      <ExperimentalPane settings={settings} updateSettings={vi.fn()} />
+    )
+    const entry = getExperimentalPaneSearchEntries().find(
+      (searchEntry) => searchEntry.title === 'Cloud VM'
+    )
+
+    expect(settings.experimentalEphemeralVms).toBe(false)
+    expect(markup).toContain('Cloud VM')
+    expect(markup).toContain('aria-checked="false"')
+    expect(markup).not.toContain('Cloud VM pane')
+    expect(entry?.targetSectionId).toBe('ephemeral-vms')
+  })
+
+  it('enables Cloud VM through the experimental switch', async () => {
+    const updateSettings = vi.fn()
+    const { root, container } = await renderExperimentalPane({ updateSettings })
+
+    const switchButton = container.querySelector<HTMLButtonElement>(
+      '#ephemeral-vms button[role="switch"]'
+    )
+    if (!switchButton) {
+      throw new Error('Cloud VM switch was not rendered')
+    }
+
+    await act(async () => {
+      switchButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(updateSettings).toHaveBeenCalledWith({ experimentalEphemeralVms: true })
+    root.unmount()
+  })
+
+  it('shows Cloud VM setup controls when enabled', () => {
+    const markup = renderToStaticMarkup(
+      <ExperimentalPane
+        settings={{ ...getDefaultSettings('/tmp'), experimentalEphemeralVms: true }}
+        updateSettings={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('Cloud VM pane')
+    expect(markup).toContain('aria-checked="true"')
+  })
+
+  it('shows Chat UI default-mode as a child setting only when Chat UI is enabled', async () => {
+    const updateSettings = vi.fn()
+    const disabledSettings = getDefaultSettings('/tmp')
+    const disabledMarkup = renderToStaticMarkup(
+      <ExperimentalPane settings={disabledSettings} updateSettings={vi.fn()} />
+    )
+    expect(disabledMarkup).toContain('Chat UI')
+    expect(disabledMarkup).not.toContain('Default view')
+
+    const settings = {
+      ...getDefaultSettings('/tmp'),
+      experimentalNativeChat: true,
+      openAgentTabsInChatByDefault: false
+    }
+    const { root, container } = await renderExperimentalPane({ updateSettings, settings })
+
+    expect(container.textContent).toContain('Default view')
+    expect(container.textContent).toContain('Terminal chat')
+    expect(container.textContent).toContain('Chat UI')
+    expect(
+      container
+        .querySelector('[data-slot="native-chat-default-view-select"]')
+        ?.getAttribute('data-value')
+    ).toBe('terminal-chat')
+
+    const nativeChatOption = Array.from(
+      container.querySelectorAll<HTMLButtonElement>('[data-slot="select-item"]')
+    ).find((button) => button.getAttribute('data-value') === 'native-chat')
+    if (!nativeChatOption) {
+      throw new Error('Chat UI default-view option was not rendered')
+    }
+
+    await act(async () => {
+      nativeChatOption.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(updateSettings).toHaveBeenCalledWith({ openAgentTabsInChatByDefault: true })
+
+    root.unmount()
+
+    const nativeSettings = {
+      ...settings,
+      openAgentTabsInChatByDefault: true
+    }
+    const secondRender = await renderExperimentalPane({
+      updateSettings,
+      settings: nativeSettings
+    })
+
+    expect(
+      secondRender.container
+        .querySelector('[data-slot="native-chat-default-view-select"]')
+        ?.getAttribute('data-value')
+    ).toBe('native-chat')
+
+    const terminalChatOption = Array.from(
+      secondRender.container.querySelectorAll<HTMLButtonElement>('[data-slot="select-item"]')
+    ).find((button) => button.getAttribute('data-value') === 'terminal-chat')
+    if (!terminalChatOption) {
+      throw new Error('Terminal chat default-view option was not rendered')
+    }
+
+    await act(async () => {
+      terminalChatOption.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(updateSettings).toHaveBeenCalledWith({ openAgentTabsInChatByDefault: false })
+
+    secondRender.root.unmount()
   })
 
   it('renders the agent sleep idle duration as configurable minutes', async () => {

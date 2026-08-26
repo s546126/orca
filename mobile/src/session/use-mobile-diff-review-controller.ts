@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FlatList } from 'react-native'
-import type { DiffComment } from '../../../src/shared/types'
+import type { DiffComment } from '../../../src/shared/diff-comment-types'
 import type { ConnectionState } from '../transport/types'
 import type { RpcClient } from '../transport/rpc-client'
 import { getWorktreeLabel } from './worktree-label'
@@ -13,14 +13,15 @@ import {
   type MobileDiffReviewQueueItem
 } from './mobile-diff-review-queue'
 import {
-  loadMobileDiffReviewDiff,
-  loadMobileDiffReviewSnapshot
-} from './mobile-diff-review-loaders'
+  findMobileDiffReviewInitialIndex,
+  type MobileDiffReviewInitialTarget
+} from './mobile-diff-review-positioning'
+import { loadMobileDiffReviewSnapshot } from './mobile-diff-review-loaders'
+import { useMobileDiffReviewDiffLoading } from './use-mobile-diff-review-diff-loading'
 import { canOpenMobileBranchCompareDiff } from '../source-control/mobile-branch-compare'
 import type {
   ComposerState,
   ReviewDiffLine,
-  ReviewDiffState,
   ReviewScreenState,
   SendSheetState
 } from './mobile-diff-review-screen-model'
@@ -34,17 +35,28 @@ type ControllerInput = {
   worktreeId: string
   name: string
   initialFilter: MobileDiffReviewQueueFilter
+  initialTarget: MobileDiffReviewInitialTarget | null
   onOpenSession: () => void
   onReconnect: (hostId: string) => void | Promise<void>
 }
 
 export function useMobileDiffReviewController(input: ControllerInput) {
-  const { client, connState, hostId, worktreeId, name, initialFilter, onOpenSession, onReconnect } =
-    input
+  const {
+    client,
+    connState,
+    hostId,
+    worktreeId,
+    name,
+    initialFilter,
+    initialTarget,
+    onOpenSession,
+    onReconnect
+  } = input
   const listRef = useRef<FlatList<ReviewDiffLine> | null>(null)
   const loadGenerationRef = useRef(0)
+  const seededInitialTargetRef = useRef(false)
+  const initialTargetKey = initialTarget ? `${initialTarget.area}\0${initialTarget.filePath}` : ''
   const [screenState, setScreenState] = useState<ReviewScreenState>({ kind: 'loading' })
-  const [diffState, setDiffState] = useState<ReviewDiffState>({ kind: 'idle' })
   const [filter, setFilter] = useState<MobileDiffReviewQueueFilter>(initialFilter)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [activeHunkIndex, setActiveHunkIndex] = useState<number | null>(null)
@@ -66,11 +78,15 @@ export function useMobileDiffReviewController(input: ControllerInput) {
       setScreenState({ kind: 'error', message: 'Missing worktree' })
       return
     }
+    // Why (F10): a loaded review outlives a blip — the waiting state is for a screen with nothing
+    // to show, and this branch (not the one below it) is the one a drop actually reaches.
+    const keepReady = (fallback: ReviewScreenState) => (prev: ReviewScreenState) =>
+      prev.kind === 'ready' ? prev : fallback
     if (!client || connState !== 'connected') {
-      setScreenState({ kind: 'error', message: 'Waiting for desktop...' })
+      setScreenState(keepReady({ kind: 'error', message: 'Waiting for desktop...' }))
       return
     }
-    setScreenState((prev) => (prev.kind === 'ready' ? prev : { kind: 'loading' }))
+    setScreenState(keepReady({ kind: 'loading' }))
     try {
       const nextState = await loadMobileDiffReviewSnapshot(client, worktreeId)
       if (!isCurrent()) {
@@ -80,10 +96,14 @@ export function useMobileDiffReviewController(input: ControllerInput) {
       setActionError(nextState.kind === 'ready' ? (nextState.branchError ?? null) : null)
     } catch (err) {
       if (isCurrent()) {
-        setScreenState({
-          kind: 'error',
-          message: err instanceof Error ? err.message : 'Unable to load review'
-        })
+        // Why (F10): a failed refresh after reconnect must not destroy the review
+        // already on screen; the error state is for a screen with nothing to show.
+        setScreenState(
+          keepReady({
+            kind: 'error',
+            message: err instanceof Error ? err.message : 'Unable to load review'
+          })
+        )
       }
     }
   }, [client, connState, worktreeId])
@@ -121,6 +141,20 @@ export function useMobileDiffReviewController(input: ControllerInput) {
   ).length
 
   useEffect(() => {
+    seededInitialTargetRef.current = false
+  }, [initialTargetKey])
+
+  useEffect(() => {
+    if (seededInitialTargetRef.current || filteredQueue.length === 0) {
+      return
+    }
+    seededInitialTargetRef.current = true
+    // Why: review data loads asynchronously; seed the tapped file only after the
+    // first real queue exists so the clamp effect cannot reset it back to zero.
+    setCurrentIndex(findMobileDiffReviewInitialIndex(filteredQueue, initialTarget))
+  }, [filteredQueue, initialTarget])
+
+  useEffect(() => {
     if (filteredQueue.length === 0) {
       setCurrentIndex(0)
       return
@@ -130,42 +164,14 @@ export function useMobileDiffReviewController(input: ControllerInput) {
     }
   }, [currentIndex, filteredQueue.length])
 
-  useEffect(() => {
-    setActiveHunkIndex(null)
-    if (!currentItem || screenState.kind !== 'ready') {
-      setDiffState({ kind: 'idle' })
-      return
-    }
-    if (!client || connState !== 'connected') {
-      setDiffState({ kind: 'error', itemKey: currentItem.key, message: 'Waiting for desktop...' })
-      return
-    }
-    let stale = false
-    setDiffState({ kind: 'loading', itemKey: currentItem.key })
-    void loadMobileDiffReviewDiff({
-      client,
-      worktreeId,
-      item: currentItem,
-      branchCompare: screenState.branchCompare
-    })
-      .then((nextState) => {
-        if (!stale) {
-          setDiffState(nextState)
-        }
-      })
-      .catch((err: unknown) => {
-        if (!stale) {
-          setDiffState({
-            kind: 'error',
-            itemKey: currentItem.key,
-            message: err instanceof Error ? err.message : 'Unable to load diff'
-          })
-        }
-      })
-    return () => {
-      stale = true
-    }
-  }, [client, connState, currentItem, screenState, worktreeId])
+  const diffState = useMobileDiffReviewDiffLoading({
+    client,
+    connState,
+    worktreeId,
+    currentItem,
+    screenState,
+    setActiveHunkIndex
+  })
 
   const commentsForCurrentItem = useMemo(() => {
     if (!currentItem || screenState.kind !== 'ready') {

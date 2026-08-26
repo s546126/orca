@@ -1,7 +1,8 @@
 import React from 'react'
-import { Pause, Pencil, Play, RefreshCw, Trash2 } from 'lucide-react'
+import { Pencil, Play, RefreshCw, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { SettingsSwitch } from '@/components/settings/SettingsFormControls'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type {
   ExternalAutomationAction,
@@ -9,7 +10,11 @@ import type {
   ExternalAutomationManager,
   ExternalAutomationRun
 } from '../../../../shared/automations-types'
-import { formatAutomationDateTimeWithRelative } from './automation-page-parts'
+import {
+  formatExternalDate,
+  getExternalProviderLabel,
+  getExternalTargetKindLabel
+} from './external-automation-display'
 import {
   ExternalAutomationRunTable,
   type FetchExternalAutomationRuns
@@ -36,31 +41,12 @@ type ExternalAutomationManagersProps = {
   onEdit?: (manager: ExternalAutomationManager, job: ExternalAutomationJob) => void
 }
 
-function formatExternalDate(value: string | null, now: number): string {
-  if (!value) {
-    return 'Never'
-  }
-  const parsed = Date.parse(value)
-  if (!Number.isFinite(parsed)) {
-    return value
-  }
-  return formatAutomationDateTimeWithRelative(parsed, now)
-}
-
 function actionKey(
   manager: ExternalAutomationManager,
   job: ExternalAutomationJob,
   action: ExternalAutomationAction
 ): string {
   return `${manager.id}:${job.id}:${action}`
-}
-
-function getProviderLabel(manager: ExternalAutomationManager): string {
-  return manager.provider === 'hermes' ? 'Hermes' : 'OpenClaw'
-}
-
-function getTargetKindLabel(manager: ExternalAutomationManager): string {
-  return manager.target.type === 'ssh' ? 'SSH host' : 'Local'
 }
 
 function ExternalActionButton({
@@ -139,7 +125,7 @@ export function ExternalAutomationManagers({
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium">{manager.targetLabel}</div>
                 <div className="text-xs text-muted-foreground">
-                  {getProviderLabel(manager)} / {getTargetKindLabel(manager)} ·{' '}
+                  {getExternalProviderLabel(manager)} / {getExternalTargetKindLabel(manager)} ·{' '}
                   {manager.status === 'available'
                     ? manager.canManage
                       ? translate(
@@ -171,11 +157,16 @@ export function ExternalAutomationManagers({
                 return (
                   <div
                     key={job.id}
-                    className="grid grid-cols-[minmax(0,1fr)_minmax(8rem,auto)_auto] items-center gap-3 px-3 py-2 text-sm"
+                    className="relative grid grid-cols-[minmax(0,1fr)_minmax(8rem,auto)_auto] items-center gap-3 px-3 py-2 text-sm"
                   >
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate font-medium">{job.name}</span>
+                        <span
+                          id={`automation-name-${manager.id}-${job.id}`}
+                          className="truncate font-medium"
+                        >
+                          {job.name}
+                        </span>
                         <Badge variant={job.enabled ? 'secondary' : 'outline'}>
                           {job.enabled
                             ? translate(
@@ -187,6 +178,40 @@ export function ExternalAutomationManagers({
                                 'Paused'
                               )}
                         </Badge>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            {/* Absolutely pinned to the row's top-right corner (above the action
+                                icons) so it reaches the true right edge, not just the grid column. */}
+                            <span className="absolute right-3 top-2 inline-flex shrink-0 items-center gap-1.5">
+                              {/* Match either key: job.enabled flips mid-flight, so a single-action
+                                  match would drop the spinner a render early. */}
+                              {runningActionKey === actionKey(manager, job, 'pause') ||
+                              runningActionKey === actionKey(manager, job, 'resume') ? (
+                                <RefreshCw className="size-3.5 animate-spin" />
+                              ) : null}
+                              <SettingsSwitch
+                                checked={job.enabled}
+                                onChange={() =>
+                                  onAction(manager, job, job.enabled ? 'pause' : 'resume')
+                                }
+                                disabled={disabledMessage !== null}
+                                ariaLabelledBy={`automation-name-${manager.id}-${job.id}`}
+                              />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" sideOffset={6}>
+                            {disabledMessage ??
+                              (job.enabled
+                                ? translate(
+                                    'auto.components.automations.ExternalAutomationManagers.0def1693bb',
+                                    'Pause external automation'
+                                  )
+                                : translate(
+                                    'auto.components.automations.ExternalAutomationManagers.1c3bfd38fe',
+                                    'Resume external automation'
+                                  ))}
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
                       <div className="mt-1 truncate text-xs font-medium text-foreground/80">
                         {scheduleDisplay.label}
@@ -196,8 +221,8 @@ export function ExternalAutomationManagers({
                           'auto.components.automations.ExternalAutomationManagers.20fd7a3a15',
                           'next'
                         )}{' '}
-                        {formatExternalDate(job.nextRunAt, now)} · {getProviderLabel(manager)} /{' '}
-                        {manager.targetLabel}
+                        {formatExternalDate(job.nextRunAt, now)} ·{' '}
+                        {getExternalProviderLabel(manager)} / {manager.targetLabel}
                       </div>
                       {manager.provider === 'hermes' ? (
                         <div className="mt-1 truncate text-xs text-muted-foreground">
@@ -264,31 +289,6 @@ export function ExternalAutomationManagers({
                           <Pencil className="size-3.5" />
                         </ExternalActionButton>
                       ) : null}
-                      <ExternalActionButton
-                        label={
-                          disabledMessage ??
-                          (job.enabled
-                            ? translate(
-                                'auto.components.automations.ExternalAutomationManagers.0def1693bb',
-                                'Pause external automation'
-                              )
-                            : translate(
-                                'auto.components.automations.ExternalAutomationManagers.1c3bfd38fe',
-                                'Resume external automation'
-                              ))
-                        }
-                        disabled={disabledMessage !== null}
-                        onClick={() => onAction(manager, job, job.enabled ? 'pause' : 'resume')}
-                      >
-                        {runningActionKey ===
-                        actionKey(manager, job, job.enabled ? 'pause' : 'resume') ? (
-                          <RefreshCw className="size-3.5 animate-spin" />
-                        ) : job.enabled ? (
-                          <Pause className="size-3.5" />
-                        ) : (
-                          <Play className="size-3.5" />
-                        )}
-                      </ExternalActionButton>
                       <ExternalActionButton
                         label={
                           disabledMessage ??

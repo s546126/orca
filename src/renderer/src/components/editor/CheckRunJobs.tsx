@@ -3,7 +3,7 @@ import { CheckCircle2, ChevronDown, CircleDashed, MinusCircle, XCircle } from 'l
 import { CheckJobLogTail } from '@/components/right-sidebar/check-job-log-tail'
 import { translate } from '@/i18n/i18n'
 import { cn } from '@/lib/utils'
-import type { PRCheckJob, PRCheckStep } from '../../../../shared/types'
+import type { PRCheckJob, PRCheckStep } from '../../../../shared/github/check-types'
 import { resolveStepOutcome, summarizeJobSteps, type StepOutcome } from './check-job-step-status'
 
 function StepOutcomeIcon({ outcome }: { outcome: StepOutcome }): React.JSX.Element {
@@ -39,17 +39,18 @@ function StepRow({ step }: { step: PRCheckStep }): React.JSX.Element {
 
 function JobCard({ job, index }: { job: PRCheckJob; index: number }): React.JSX.Element {
   const breakdown = summarizeJobSteps(job)
-  const jobState = job.conclusion ?? job.status
-  const jobFailed =
-    jobState === 'failure' ||
-    jobState === 'failed' ||
-    jobState === 'cancelled' ||
-    jobState === 'timed_out'
+  const jobFailed = resolveStepOutcome(job) === 'failure'
   // Failures matter most, so surface them and collapse the passing/skipped noise
   // behind a one-line summary. With no failures there is nothing to prioritize,
   // so expand by default rather than hiding the job's only content.
   const collapsible = [...breakdown.succeeded, ...breakdown.skipped, ...breakdown.pending]
+  const failedStepKey = breakdown.failed
+    .map((step) => `${step.name}:${step.status ?? ''}:${step.conclusion ?? ''}`)
+    .join('\0')
   const [showRest, setShowRest] = React.useState(breakdown.failed.length === 0)
+  React.useEffect(() => {
+    setShowRest(breakdown.failed.length === 0)
+  }, [breakdown.failed.length, failedStepKey])
 
   const summaryParts: string[] = []
   if (breakdown.succeeded.length > 0) {
@@ -136,7 +137,7 @@ function JobCard({ job, index }: { job: PRCheckJob; index: number }): React.JSX.
         </div>
       )}
 
-      {job.logTail && <CheckJobLogTail logTail={job.logTail} />}
+      {job.logTail && <CheckJobLogTail logTail={job.logTail} expanded={jobFailed} />}
     </div>
   )
 }

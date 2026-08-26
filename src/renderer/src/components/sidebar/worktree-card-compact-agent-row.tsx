@@ -8,6 +8,9 @@ import { cn } from '@/lib/utils'
 import { getAgentDotState } from './worktree-card-agent-summary'
 import { translate } from '@/i18n/i18n'
 import { getAgentRowPrimaryText } from '@/lib/agent-row-primary-text'
+import { formatAgentToolPreview } from '@/lib/agent-row-tool-preview'
+import { useAgentRowConversationName } from '@/components/dashboard/use-agent-row-conversation-name'
+import { lastEnteredDoneAt } from '@/components/dashboard/agent-finished-timestamp'
 import CacheTimer, { usePromptCacheCountdownForPane } from './CacheTimer'
 
 function formatShortTimeAgo(ts: number, now: number): string {
@@ -26,39 +29,35 @@ function formatShortTimeAgo(ts: number, now: number): string {
   return `${Math.floor(hours / 24)}d`
 }
 
-function lastEnteredDoneAt(agent: DashboardAgentRowData): number | null {
-  const entry = agent.entry
-  if (entry.state === 'done') {
-    return entry.stateStartedAt
-  }
-  for (let i = (entry.stateHistory?.length ?? 0) - 1; i >= 0; i--) {
-    if (entry.stateHistory[i].state === 'done') {
-      return entry.stateHistory[i].startedAt
-    }
-  }
-  return null
-}
-
-function getCompactAgentPrimary(agent: DashboardAgentRowData): string {
-  const prompt = getAgentRowPrimaryText(agent.entry)
+function getCompactAgentPrimary(
+  agent: DashboardAgentRowData,
+  conversationName: string | null
+): string {
+  const prompt = conversationName ?? getAgentRowPrimaryText(agent.entry)
   return prompt || agentStateLabel(getAgentDotState(agent))
 }
 
-function getCompactAgentSecondary(agent: DashboardAgentRowData): string {
+export function getCompactAgentSecondary(agent: DashboardAgentRowData): string {
   if (agent.entry.interrupted === true) {
     return 'Interrupted by user'
   }
-  if (agent.state === 'working') {
-    const toolName = agent.entry.toolName?.trim() ?? ''
-    const toolInput = agent.entry.toolInput?.trim() ?? ''
-    if (toolName && toolInput) {
-      return `${toolName}: ${toolInput}`
-    }
-    if (toolName) {
-      return toolName
-    }
+  // Why: the lead turn is over in monitoring, so its last tool line is stale; name the state instead.
+  if (agent.state === 'working' && agent.entry.workingMode === 'monitoring') {
+    return agentStateLabel('monitoring')
   }
-  return agent.entry.lastAssistantMessage?.trim() || formatAgentTypeLabel(agent.agentType)
+  const toolPreview = formatAgentToolPreview(agent.entry, agent.state)
+  if (toolPreview) {
+    return toolPreview
+  }
+  const lastAssistantMessage = agent.entry.lastAssistantMessage?.trim()
+  if (lastAssistantMessage) {
+    return lastAssistantMessage
+  }
+  // Why: child rows without descriptions use their role as primary text; repeating its formatted label adds no information.
+  if (agent.rowSource === 'subagent' && agent.entry.prompt?.trim() === agent.agentType.trim()) {
+    return ''
+  }
+  return formatAgentTypeLabel(agent.agentType)
 }
 
 function getCompactAgentTime(agent: DashboardAgentRowData, now: number): string | null {
@@ -115,19 +114,32 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
     typeof childAgentCount === 'number' &&
     childAgentCount > 0 &&
     typeof onToggleChildAgents === 'function'
+  // Why: subagent child rows carry the child's NAME (e.g. "pr-reviewer") in
+  // agentType, which is not an iconable agent and would render the unknown
+  // "?" glyph. Nesting under the parent already conveys identity.
+  const hideIcon = hideIdentityIcon || agent.rowSource === 'subagent'
   const dotState = getAgentDotState(agent)
-  const primary = getCompactAgentPrimary(agent)
+  const conversationName = useAgentRowConversationName(agent)
+  const primary = getCompactAgentPrimary(agent, conversationName)
   const isLineageChild = agent.lineage?.depth === 1
   const secondary = getCompactAgentSecondary(agent)
+  // Why: sidebar truncation must preserve the passive-vs-active distinction.
+  const leadingText = dotState === 'monitoring' ? secondary : primary
+  const trailingText =
+    dotState === 'monitoring' ? (primary === secondary ? '' : primary) : secondary
+  const rowTitle = `${leadingText}${trailingText ? ` - ${trailingText}` : ''}`
+  const model = agent.entry.model?.trim() ?? ''
   const shortTime = getCompactAgentTime(agent, now)
   const cacheTimer = usePromptCacheCountdownForPane(agent.paneKey, cacheTimerActive)
 
   const handleActivate = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
-      onActivate(agent.tab.id, agent.paneKey)
+      // Why: subagent child rows have no pane of their own; they focus the
+      // parent pane whose session spawned them.
+      onActivate(agent.tab.id, agent.activationPaneKey ?? agent.paneKey)
     },
-    [agent.paneKey, agent.tab.id, onActivate]
+    [agent.activationPaneKey, agent.paneKey, agent.tab.id, onActivate]
   )
   const handleSendTargetClickCapture = useCallback(
     (e: React.MouseEvent) => {
@@ -189,7 +201,7 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
         <span className="size-4 shrink-0" aria-hidden />
       ) : null}
       <AgentStateDot state={dotState} size="sm" />
-      {!hideIdentityIcon && (
+      {!hideIcon && (
         <span className="inline-flex shrink-0" title={formatAgentTypeLabel(agent.agentType)}>
           <AgentIcon agent={agentTypeToIconAgent(agent.agentType)} size={13} />
         </span>
@@ -198,15 +210,26 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
         {/* Why: the selected-row fill is strong enough to wash out the dimmed
             prompt/secondary text, so lift both toward full foreground when focused. */}
         <span className={isFocusedPane ? 'text-foreground' : 'text-muted-foreground/90'}>
-          {primary}
+          {leadingText}
         </span>
-        {secondary && (
+        {trailingText && (
           <span className={isFocusedPane ? 'text-foreground/70' : 'text-muted-foreground/65'}>
             {' '}
-            - {secondary}
+            - {trailingText}
           </span>
         )}
       </span>
+      {model && (
+        <span
+          className={cn(
+            'min-w-0 max-w-24 truncate font-mono text-[10px]',
+            isFocusedPane ? 'text-foreground/70' : 'text-muted-foreground/70'
+          )}
+          title={model}
+        >
+          {model}
+        </span>
+      )}
       {hasChildDisclosure && !childAgentsExpanded && (
         <span
           className={cn(
@@ -236,7 +259,7 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
     <div
       draggable={false}
       className={cn(
-        'compact-agent-row group/compact-agent-row min-w-0 cursor-pointer rounded-sm px-1 text-[11px] leading-none',
+        'compact-agent-row group/compact-agent-row min-w-0 overflow-hidden cursor-pointer rounded-sm px-1 text-[11px] leading-none',
         'text-muted-foreground worktree-agent-row-hover',
         hasChildDisclosure && 'worktree-agent-lineage-parent-row',
         isLineageChild && 'worktree-agent-lineage-child-row',
@@ -255,7 +278,7 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
       role={agent.lineage ? 'treeitem' : undefined}
       aria-level={agent.lineage ? agent.lineage.depth + 1 : undefined}
       aria-expanded={hasChildDisclosure ? childAgentsExpanded : undefined}
-      title={sendTargetDisabledReason ?? `${primary}${secondary ? ` - ${secondary}` : ''}`}
+      title={sendTargetDisabledReason ?? rowTitle}
     >
       {rowBody}
     </div>

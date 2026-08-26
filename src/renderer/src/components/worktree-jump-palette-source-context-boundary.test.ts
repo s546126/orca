@@ -13,14 +13,21 @@ function sourceBetween(startPattern: string, endPattern: string): string {
 }
 
 describe('WorktreeJumpPalette source-context boundaries', () => {
-  it('resolves typed GitHub issue/PR entries through the lookup repo source host', () => {
-    expect(source).toContain('buildTaskSourceContextFromRepo')
-
+  it('attaches a resolved GitHub URL entity and leaves GitLab/Jira as raw URLs', () => {
+    // Why: GitHub create reuses the Cmd+J preview (lookup lives in the effect,
+    // not Case 1). GitLab/Jira still hand the raw URL to the composer.
     const githubLinkSection = sourceBetween(
-      'void lookupGitHubWorkItemByOwnerRepoForSource({',
+      '// Case 1: user pasted a GH/GitLab/Jira URL.',
       '// Case 2: user typed a raw issue number.'
     )
-    expect(githubLinkSection).toContain('sourceContext')
+    expect(githubLinkSection).toContain('linkedWorkItem')
+    expect(githubLinkSection).toContain('initialGitHubWorkItem: item')
+    expect(githubLinkSection).toContain('prefilledName: trimmed')
+    expect(githubLinkSection).not.toContain('lookupGitHubWorkItemByOwnerRepoForSource')
+  })
+
+  it('resolves typed raw issue/PR numbers through the lookup repo source host', () => {
+    expect(source).toContain('buildTaskSourceContextFromRepo')
 
     const rawNumberSection = sourceBetween(
       'void lookupGitHubWorkItemForSource({',

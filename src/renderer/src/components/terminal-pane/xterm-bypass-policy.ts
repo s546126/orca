@@ -1,4 +1,9 @@
 import { keybindingMatchesInput } from '../../../../shared/keybindings'
+import { getLayoutBaseCharacterForCode } from '../../lib/keyboard-layout/layout-base-character'
+import {
+  isTerminalImeCandidateDigitKeyEvent,
+  isTerminalImeCandidateSelectionKeyEvent
+} from './terminal-ime-candidate-key-release-guard'
 
 // Why: when a CLI activates kitty progressive enhancement (CSI > N u), xterm's
 // KittyKeyboard encoder turns every modifier chord — including plain Cmd+C —
@@ -18,6 +23,7 @@ export type XtermBypassEvent = {
   code?: string
   keyCode?: number
   isComposing?: boolean
+  repeat?: boolean
   defaultPrevented?: boolean
   metaKey: boolean
   ctrlKey: boolean
@@ -27,6 +33,7 @@ export type XtermBypassEvent = {
 
 export type XtermBypassOptions = {
   isMac: boolean
+  kittyKeyboardFlags?: number
   /** True when the terminal has a current text selection — Ctrl+C on
    *  Windows/Linux should only bubble to clipboard when something is selected,
    *  otherwise it must reach the shell as SIGINT. */
@@ -35,6 +42,26 @@ export type XtermBypassOptions = {
 
 export type XtermImeKeyboardOptions = {
   compositionActive: boolean
+  /** True while Linux/Sogou candidate-selection keys (Space/digits) are
+   *  IME-owned: live composition plus a short post-compositionend window. */
+  candidateKeyGuardActive: boolean
+  /** True when the pending-release guard already matched this specific event. */
+  pendingCandidateKeyReleaseActive: boolean
+  /** True for the narrow Linux path where the IME emits an orphaned letter
+   *  keyup but no composition/input events before its candidate digit. */
+  linuxOrphanCandidateDigitGuardActive?: boolean
+  /** True when the most recent preedit was Hangul, where a digit ends the
+   *  syllable and is literal text. Only the orphan-keyup guard is barred from
+   *  claiming it (#15299): ibus-hangul's Hanja lookup table does index by digit,
+   *  but only over a live preedit the composition guards already own. */
+  hangulPreedit?: boolean
+  // Required so no caller silently falls back to non-mac 229 suppression,
+  // which re-swallows the first key after a macOS IME input-source switch.
+  isMac: boolean
+  // Required Linux/Windows split: Linux passes standalone 229 keydowns like
+  // macOS; the Windows-only suppression guards its preedit-diff race (preedit
+  // can hit the textarea before compositionstart and be flushed by the diff).
+  isLinux: boolean
 }
 
 export const TERMINAL_INTERRUPT_INPUT = '\x03'
@@ -67,27 +94,106 @@ function isXtermHandledKeyEvent(type: string): boolean {
   return type === 'keydown' || type === 'keyup'
 }
 
+/** Returns whether the Linux orphan-keyup window may claim this digit. */
+function claimsOrphanCandidateDigit(
+  event: XtermBypassEvent,
+  options: XtermImeKeyboardOptions
+): boolean {
+  return (
+    options.linuxOrphanCandidateDigitGuardActive === true &&
+    isTerminalImeCandidateDigitKeyEvent(event) &&
+    // Why: the orphan window arms off a bare keyup and cannot see which engine
+    // produced it, so a Hangul syllable's terminating digit must opt out.
+    options.hangulPreedit !== true
+  )
+}
+
+/** Returns whether xterm must not process an IME-owned keyboard event. */
 export function shouldSuppressTerminalImeKeyboardEvent(
   event: XtermBypassEvent,
-  options: XtermImeKeyboardOptions = { compositionActive: false }
+  options: XtermImeKeyboardOptions
 ): boolean {
+  const {
+    compositionActive,
+    candidateKeyGuardActive,
+    pendingCandidateKeyReleaseActive,
+    isMac,
+    isLinux
+  } = options
+  const suppressCandidateKey =
+    isLinux &&
+    (pendingCandidateKeyReleaseActive ||
+      (candidateKeyGuardActive && isTerminalImeCandidateSelectionKeyEvent(event)) ||
+      claimsOrphanCandidateDigit(event, options))
+  if (event.type === 'keypress') {
+    // Why: a suppressed candidate keydown is not preventDefault-ed by xterm,
+    // so its native keypress still fires and _keyPress would forward the
+    // literal Space/digit to the PTY.
+    return suppressCandidateKey
+  }
   if (!isXtermHandledKeyEvent(event.type)) {
     return false
   }
-  // Why: IMEs own Process-key / composing keystrokes. Letting xterm translate
-  // Backspace/Enter/etc. into PTY bytes makes TUIs delete committed CJK text
-  // while the user is only editing the preedit candidate.
+  // Why: IMEs own Process-key / composing keystrokes — letting xterm translate
+  // them corrupts committed CJK text. Bare macOS/Linux keydown 229 is exempt:
+  // it must reach xterm's CompositionHelper so it can schedule its textarea
+  // diff (macOS: first key after an input-source switch; Linux: Sogou/fcitx
+  // candidate commits outside a composition session). Windows keeps full
+  // suppression until verified against its preedit-diff race.
+  const passesStandalone229Keydown = isMac || isLinux
   return (
     event.isComposing === true ||
-    event.keyCode === 229 ||
-    (options.compositionActive && TERMINAL_IME_OWNED_KEYS.has(event.key))
+    (event.keyCode === 229 &&
+      (event.type !== 'keydown' || compositionActive || !passesStandalone229Keydown)) ||
+    (compositionActive && TERMINAL_IME_OWNED_KEYS.has(event.key)) ||
+    suppressCandidateKey
   )
+}
+
+/** Returns whether a candidate keydown needs native default prevention. */
+export function shouldPreventDefaultTerminalImeCandidateKey(
+  event: XtermBypassEvent,
+  options: XtermImeKeyboardOptions
+): boolean {
+  // Why: returning false from attachCustomKeyEventHandler does not
+  // preventDefault — the candidate keydown would still fire a keypress and
+  // write into the helper textarea, where a later 229 diff could flush the
+  // leaked selector to the PTY.
+  return (
+    event.type === 'keydown' &&
+    options.isLinux &&
+    ((options.candidateKeyGuardActive && isTerminalImeCandidateSelectionKeyEvent(event)) ||
+      claimsOrphanCandidateDigit(event, options))
+  )
+}
+
+/**
+ * A logical key a Latin layout could have produced. Only then is `key` authoritative:
+ * Dvorak moving `c` elsewhere is a real remap and must be honoured.
+ */
+function isLatinLetterKey(normalizedKey: string): boolean {
+  return normalizedKey.length === 1 && normalizedKey >= 'a' && normalizedKey <= 'z'
 }
 
 function isTerminalInterruptCKey(event: XtermBypassEvent): boolean {
   const normalizedKey = event.key.toLowerCase()
-  const logicalKeyAvailable = normalizedKey !== '' && normalizedKey !== 'unidentified'
-  return logicalKeyAvailable ? normalizedKey === 'c' : event.code === 'KeyC' || event.keyCode === 67
+  if (isLatinLetterKey(normalizedKey)) {
+    return normalizedKey === 'c'
+  }
+  // A non-Latin input source reports its own glyph here — a Hangul jamo on Korean 2-Set,
+  // Cyrillic es on Russian — and cannot express a control chord in `key` at all. Ask the
+  // layout map what this physical key produces unmodified: for an IME layered over a Latin
+  // layout that answers `c`, and for a Dvorak base it answers `j`, which correctly declines.
+  const layoutBaseKey = event.code
+    ? getLayoutBaseCharacterForCode(event.code)?.toLowerCase()
+    : undefined
+  if (layoutBaseKey !== undefined && isLatinLetterKey(layoutBaseKey)) {
+    return layoutBaseKey === 'c'
+  }
+  // Why the physical fallback: on a true non-Latin *layout* the map is non-Latin too, so it
+  // cannot answer the question either. Terminals resolve control chords by physical position,
+  // so KeyC is the interrupt. Empty and Unidentified land here as they always did.
+  return event.code === 'KeyC' || event.keyCode === 67
 }
 
 function isPlainCtrlC(event: XtermBypassEvent): boolean {

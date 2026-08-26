@@ -13,8 +13,8 @@ vi.mock('child_process', () => ({
 }))
 
 import { searchWithGitGrep } from './filesystem-search-git'
-import { EventEmitter } from 'events'
-import type { ChildProcess } from 'child_process'
+import { EventEmitter } from 'node:events'
+import type { ChildProcess } from 'node:child_process'
 
 function createMockProcess(): ChildProcess {
   const p = new EventEmitter() as unknown as ChildProcess
@@ -184,6 +184,9 @@ describe('filesystem-search-git', () => {
 
       const promise = searchWithGitGrep('/mock/root', { query: 'ok', rootPath: '/mock/root' }, 100)
 
+      await vi.waitFor(() =>
+        expect((proc.stdout as unknown as EventEmitter).listenerCount('data')).toBeGreaterThan(0)
+      )
       ;(proc.stdout as unknown as EventEmitter).emit('data', 'valid.ts\x001\x00ok\npartial')
 
       await vi.runOnlyPendingTimersAsync()

@@ -12,7 +12,13 @@ import {
   canOpenMobileBranchCompareDiff,
   type MobileGitBranchChangeEntry
 } from './mobile-branch-compare'
-import { isMobileGitUnavailable, type MobileGitStatusEntry } from './mobile-git-status'
+import {
+  canOpenMobileGitStatusEntry,
+  isMobileGitUnavailable,
+  type MobileGitStatusEntry
+} from './mobile-git-status'
+import { buildMobileReviewFileRoute } from './mobile-review-route'
+import { revealMobileSourceControlSessionDiff } from './reveal-mobile-source-control-session-diff'
 import type {
   GitDiffTextResult,
   MobileBranchCompareState,
@@ -28,6 +34,11 @@ type Params = {
   origin: string
   embedded: boolean
   onRequestClose?: () => void
+  // Fired synchronously at tap time (before the openDiff RPC) so the session can
+  // snapshot the active tab then — capturing it post-await would misread a tab
+  // the user switched to during the RPC window as the tap-time tab.
+  onFileOpenStart?: () => void
+  onOpenedFileDiff?: (relativePath: string) => void
   branchCompareState: MobileBranchCompareState
   mountedRef: MutableRefObject<boolean>
   busyActionRef: MutableRefObject<string | null>
@@ -46,6 +57,8 @@ export function useMobileSourceControlOpeners(params: Params) {
     origin,
     embedded,
     onRequestClose,
+    onFileOpenStart,
+    onOpenedFileDiff,
     branchCompareState,
     mountedRef,
     busyActionRef,
@@ -62,7 +75,9 @@ export function useMobileSourceControlOpeners(params: Params) {
 
   const openFile = useCallback(
     async (entry: MobileGitStatusEntry) => {
-      if (entry.status === 'deleted' || entry.conflictStatus === 'unresolved') {
+      // Deletions are openable (pre-delete text/image via git.diff); only block
+      // unresolved conflicts, matching canOpenMobileGitStatusEntry / row UI.
+      if (!canOpenMobileGitStatusEntry(entry)) {
         return
       }
       if (openingPathRef.current || busyActionRef.current) {
@@ -79,16 +94,35 @@ export function useMobileSourceControlOpeners(params: Params) {
       setOpeningPath(entry.path)
       try {
         setActionError(null)
+        if (origin !== 'session') {
+          triggerSelection()
+          router.push(
+            buildMobileReviewFileRoute({
+              hostId,
+              worktreeId,
+              worktreeName: name,
+              filePath: entry.path,
+              area: entry.area
+            }) as Parameters<typeof router.push>[0]
+          )
+          return
+        }
+        // Snapshot the active tab now, at tap time, before the openDiff RPC —
+        // the session uses it to avoid stealing focus if the user switches tabs
+        // during the RPC window.
+        onFileOpenStart?.()
         let response = await client.sendRequest('files.openDiff', {
           worktree: `id:${worktreeId}`,
           relativePath: entry.path,
           staged: entry.area === 'staged'
         })
+        let openedTabMode: 'diff' | 'edit' = 'diff'
         if (!response.ok && isMobileGitUnavailable(response.error?.code, response.error?.message)) {
           response = await client.sendRequest('files.open', {
             worktree: `id:${worktreeId}`,
             relativePath: entry.path
           })
+          openedTabMode = 'edit'
         }
         if (!response.ok) {
           throw new Error(response.error?.message || 'Unable to open diff')
@@ -96,27 +130,33 @@ export function useMobileSourceControlOpeners(params: Params) {
         if (!mountedRef.current) {
           return
         }
-        triggerSelection()
-        if (origin === 'session') {
-          // Why: when launched from the session screen, opening a file dismisses
-          // this surface back to the session. In embedded mode there is nothing
-          // to pop (the panel docks beside the terminal), so close the dock
-          // instead of calling router.back().
-          if (embedded) {
-            onRequestClose?.()
-          } else {
-            router.back()
-          }
+        const revealResult = await revealMobileSourceControlSessionDiff({
+          client,
+          worktreeId,
+          relativePath: entry.path,
+          tabMode: openedTabMode,
+          staged: entry.area === 'staged',
+          onOpenedFileDiff,
+          isCurrent: () => mountedRef.current && openingPathRef.current === entry.path
+        })
+        if (revealResult === 'cancelled') {
           return
         }
-        const sessionParams = new URLSearchParams()
-        if (name) {
-          sessionParams.set('name', name)
+        if (revealResult === 'timeout') {
+          throw new Error("The file opened, but its tab isn't ready yet. Try again.")
         }
-        const query = sessionParams.toString()
-        router.replace(
-          `/h/${encodeURIComponent(hostId)}/session/${encodeURIComponent(worktreeId)}${query ? `?${query}` : ''}`
-        )
+        triggerSelection()
+        // Why: when launched from the session screen, opening a file dismisses
+        // this surface back to the session. In embedded mode there is nothing
+        // to pop (the panel docks beside the terminal), so close the dock
+        // instead of calling router.back() — falling back to router.back() when
+        // no close handler is wired, mirroring MobileSourceControlPanel, so the
+        // panel never sits on top of the activated diff tab.
+        if (embedded) {
+          ;(onRequestClose ?? (() => router.back()))()
+        } else {
+          router.back()
+        }
       } catch (err) {
         if (!mountedRef.current) {
           return
@@ -140,6 +180,8 @@ export function useMobileSourceControlOpeners(params: Params) {
       hostId,
       mountedRef,
       name,
+      onFileOpenStart,
+      onOpenedFileDiff,
       onRequestClose,
       origin,
       router,
@@ -170,6 +212,23 @@ export function useMobileSourceControlOpeners(params: Params) {
 
       openingBranchPathRef.current = entry.path
       setOpeningBranchPath(entry.path)
+      if (origin !== 'session') {
+        triggerSelection()
+        router.push(
+          buildMobileReviewFileRoute({
+            hostId,
+            worktreeId,
+            worktreeName: name,
+            filePath: entry.path,
+            area: 'branch'
+          }) as Parameters<typeof router.push>[0]
+        )
+        openingBranchPathRef.current = null
+        if (mountedRef.current) {
+          setOpeningBranchPath(null)
+        }
+        return
+      }
       setBranchDiffPreview({ kind: 'loading', entry })
       try {
         const response = await client.sendRequest('git.branchDiff', {
@@ -222,7 +281,19 @@ export function useMobileSourceControlOpeners(params: Params) {
         }
       }
     },
-    [branchCompareState, busyActionRef, client, connState, mountedRef, setActionError, worktreeId]
+    [
+      branchCompareState,
+      busyActionRef,
+      client,
+      connState,
+      hostId,
+      mountedRef,
+      name,
+      origin,
+      router,
+      setActionError,
+      worktreeId
+    ]
   )
 
   return {

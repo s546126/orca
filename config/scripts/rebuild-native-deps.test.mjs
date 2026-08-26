@@ -18,6 +18,9 @@ const sourceScriptPath = fileURLToPath(new URL('./rebuild-native-deps.mjs', impo
 const sourceInstallScriptPath = fileURLToPath(
   new URL('./install-electron-package-binary.mjs', import.meta.url)
 )
+const sourceNodePtyJobOwnershipPath = fileURLToPath(
+  new URL('./node-pty-job-ownership.cjs', import.meta.url)
+)
 
 describe('rebuild-native-deps Electron install fallback', () => {
   it('continues non-strict postinstall when Electron retry download fails', () => {
@@ -124,6 +127,121 @@ describe('rebuild-native-deps Electron install fallback', () => {
 })
 
 describe('rebuild-native-deps patched node-pty rebuild', () => {
+  it.skipIf(process.platform !== 'win32')(
+    'repairs a missing ConPTY runtime before probing without recompiling node-pty',
+    () => {
+      const projectDir = mkTempProject()
+
+      try {
+        const rebuildLogPath = join(projectDir, 'electron-rebuild.log')
+        writeFakeUsableElectronPackage(projectDir, { platform: 'win32' })
+        writeFakeElectronRebuild(projectDir, { logPathEnv: 'ORCA_REBUILD_TEST_LOG' })
+        writeFakeLoadableNodePty(projectDir, { nativeDir: '../build/Release/' })
+        writeFakeWindowsRegistry(projectDir)
+        writeFakeWindowsProcessTree(projectDir)
+        writeFakeNodePtyConptyPayload(projectDir, process.arch)
+
+        const result = runRebuildScript(projectDir, {
+          ORCA_REBUILD_TEST_LOG: rebuildLogPath,
+          npm_config_platform: 'win32',
+          npm_config_arch: process.arch
+        })
+
+        expect(result.status, result.stderr).toBe(0)
+        expect(result.stdout).toContain('Restored node-pty ConPTY runtime files')
+        expect(result.stdout).toContain(
+          'Native modules already load in Electron; skipping rebuild.'
+        )
+        expect(existsSync(rebuildLogPath)).toBe(false)
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true })
+      }
+    }
+  )
+
+  it('restores the ConPTY runtime payload after a Windows Electron rebuild', () => {
+    const projectDir = mkTempProject()
+
+    try {
+      writeFakeUsableElectronPackage(projectDir, { platform: 'win32' })
+      writeFakeElectronRebuild(projectDir)
+      writeFakeNodePtyConptyPayload(projectDir, 'x64')
+
+      const result = runRebuildScript(
+        projectDir,
+        { npm_config_platform: 'win32', npm_config_arch: 'x64' },
+        ['--platform=win32', '--arch=x64', '--force']
+      )
+
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stdout).toContain('Restored node-pty ConPTY runtime files for win10-x64')
+      const runtimeDir = join(projectDir, 'node_modules', 'node-pty', 'build', 'Release', 'conpty')
+      expect(readFileSync(join(runtimeDir, 'conpty.dll'), 'utf8')).toBe('conpty.dll x64')
+      expect(readFileSync(join(runtimeDir, 'OpenConsole.exe'), 'utf8')).toBe('OpenConsole.exe x64')
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it.skipIf(process.platform !== 'win32')(
+    'does not rebuild a healthy node-pty when another Windows addon fails its probe',
+    () => {
+      const projectDir = mkTempProject()
+
+      try {
+        const rebuildLogPath = join(projectDir, 'electron-rebuild.log')
+        writeFakeUsableElectronPackage(projectDir, { platform: 'win32' })
+        writeFakeElectronRebuild(projectDir, { logPathEnv: 'ORCA_REBUILD_TEST_LOG' })
+        writeFakeLoadableNodePty(projectDir)
+        writeFakeWindowsProcessTree(projectDir)
+        writeFakeNodePtyConptyPayload(projectDir, process.arch)
+
+        const result = runRebuildScript(projectDir, {
+          ORCA_REBUILD_TEST_LOG: rebuildLogPath,
+          npm_config_platform: 'win32',
+          npm_config_arch: process.arch
+        })
+
+        expect(result.status, result.stderr).toBe(0)
+        expect(result.stdout).toContain('Rebuilding failed native modules: windows-native-registry')
+        const rebuildCall = JSON.parse(readFileSync(rebuildLogPath, 'utf8').trim())
+        expect(rebuildCall.onlyModules).toEqual(['windows-native-registry'])
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true })
+      }
+    }
+  )
+
+  it.skipIf(process.platform !== 'win32')(
+    'rebuilds a loadable ConPTY native that lacks Orca job ownership',
+    () => {
+      const projectDir = mkTempProject()
+
+      try {
+        const rebuildLogPath = join(projectDir, 'electron-rebuild.log')
+        writeFakeUsableElectronPackage(projectDir, { platform: 'win32' })
+        writeFakeElectronRebuild(projectDir, { logPathEnv: 'ORCA_REBUILD_TEST_LOG' })
+        writeFakeLoadableNodePty(projectDir, { ownsPtyJob: false })
+        writeFakeWindowsRegistry(projectDir)
+        writeFakeWindowsProcessTree(projectDir)
+
+        const result = runRebuildScript(projectDir, {
+          ORCA_REBUILD_TEST_LOG: rebuildLogPath,
+          npm_config_platform: 'win32',
+          npm_config_arch: process.arch
+        })
+
+        expect(result.status, result.stderr).toBe(0)
+        expect(result.stdout).toContain('Rebuilding failed native modules: node-pty')
+        expect(result.stdout).toContain('missing listJobProcessIds')
+        const rebuildCall = JSON.parse(readFileSync(rebuildLogPath, 'utf8').trim())
+        expect(rebuildCall.onlyModules).toEqual(['node-pty'])
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true })
+      }
+    }
+  )
+
   it.skipIf(process.platform === 'win32')(
     'rebuilds when Electron can load node-pty but patched build artifacts are missing',
     () => {
@@ -201,7 +319,7 @@ describe('rebuild-native-deps patched node-pty rebuild', () => {
         })
 
         expect(result.status, result.stderr).toBe(0)
-        expect(result.stdout).toContain('Native modules do not load in Electron; rebuilding.')
+        expect(result.stdout).toContain('Rebuilding failed native modules: node-pty')
         expect(result.stdout).toContain("expected build/Release so Orca's node-pty patch is active")
 
         const rebuildCall = JSON.parse(readFileSync(rebuildLogPath, 'utf8').trim())
@@ -222,10 +340,14 @@ function mkTempProject() {
     sourceInstallScriptPath,
     join(projectDir, 'config', 'scripts', 'install-electron-package-binary.mjs')
   )
+  copyFileSync(
+    sourceNodePtyJobOwnershipPath,
+    join(projectDir, 'config', 'scripts', 'node-pty-job-ownership.cjs')
+  )
   return projectDir
 }
 
-function runRebuildScript(projectDir, extraEnv = {}) {
+function runRebuildScript(projectDir, extraEnv = {}, args = []) {
   const env = {
     ...process.env,
     npm_config_platform: 'linux',
@@ -239,7 +361,7 @@ function runRebuildScript(projectDir, extraEnv = {}) {
       delete env[key]
     }
   }
-  return spawnSync(process.execPath, ['config/scripts/rebuild-native-deps.mjs'], {
+  return spawnSync(process.execPath, ['config/scripts/rebuild-native-deps.mjs', ...args], {
     cwd: projectDir,
     encoding: 'utf8',
     env: {
@@ -360,16 +482,20 @@ export async function rebuild(options) {
   )
 }
 
-function writeFakeUsableElectronPackage(projectDir) {
+function writeFakeUsableElectronPackage(projectDir, { platform = 'linux' } = {}) {
   writeFakeElectronPackage(projectDir)
   const electronDir = join(projectDir, 'node_modules', 'electron')
-  const electronPath = join(electronDir, 'dist', 'electron')
+  const platformExecutable = platform === 'win32' ? 'electron.exe' : 'electron'
+  const electronPath = join(electronDir, 'dist', platformExecutable)
   mkdirSync(join(electronDir, 'dist'), { recursive: true })
-  writeFileSync(join(electronDir, 'path.txt'), 'electron')
+  writeFileSync(join(electronDir, 'path.txt'), platformExecutable)
   writeFileSync(join(electronDir, 'dist', 'version'), 'v41.5.0')
-  writeFileSync(
-    electronPath,
-    `#!/usr/bin/env node
+  if (platform === 'win32') {
+    copyFileSync(process.execPath, electronPath)
+  } else {
+    writeFileSync(
+      electronPath,
+      `#!/usr/bin/env node
 const { spawnSync } = require('node:child_process')
 
 const result = spawnSync(process.execPath, process.argv.slice(2), {
@@ -385,11 +511,33 @@ if (result.error) {
 
 process.exit(result.status ?? 0)
 `
-  )
-  chmodSync(electronPath, 0o755)
+    )
+    chmodSync(electronPath, 0o755)
+  }
 }
 
-function writeFakeLoadableNodePty(projectDir, { nativeDir = 'prebuilds/pty' } = {}) {
+function writeFakeNodePtyConptyPayload(projectDir, arch) {
+  const releaseDir = join(projectDir, 'node_modules', 'node-pty', 'build', 'Release')
+  mkdirSync(releaseDir, { recursive: true })
+  writeFileSync(join(releaseDir, 'conpty.node'), 'native addon')
+  const sourceDir = join(
+    projectDir,
+    'node_modules',
+    'node-pty',
+    'third_party',
+    'conpty',
+    '0.1.0',
+    `win10-${arch}`
+  )
+  mkdirSync(sourceDir, { recursive: true })
+  writeFileSync(join(sourceDir, 'conpty.dll'), `conpty.dll ${arch}`)
+  writeFileSync(join(sourceDir, 'OpenConsole.exe'), `OpenConsole.exe ${arch}`)
+}
+
+function writeFakeLoadableNodePty(
+  projectDir,
+  { nativeDir = 'prebuilds/pty', ownsPtyJob = true } = {}
+) {
   const nodePtyDir = join(projectDir, 'node_modules', 'node-pty')
   mkdirSync(join(nodePtyDir, 'lib'), { recursive: true })
   writeFileSync(join(nodePtyDir, 'index.js'), 'module.exports = {}\n')
@@ -397,10 +545,37 @@ function writeFakeLoadableNodePty(projectDir, { nativeDir = 'prebuilds/pty' } = 
     join(nodePtyDir, 'lib', 'utils.js'),
     `
 exports.loadNativeModule = function loadNativeModule(nativeName) {
-  return { dir: ${JSON.stringify(nativeDir)}, module: { nativeName } }
+  return {
+    dir: ${JSON.stringify(nativeDir)},
+    module: {
+      nativeName,
+      ...(${JSON.stringify(ownsPtyJob)}
+        ? {
+            listJobProcessIds() {},
+            terminateJob() {},
+            assignCurrentProcessToJob() {}
+          }
+        : {})
+    }
+  }
 }
 `
   )
+}
+
+function writeFakeWindowsRegistry(projectDir) {
+  const registryDir = join(projectDir, 'node_modules', 'windows-native-registry')
+  mkdirSync(registryDir, { recursive: true })
+  writeFileSync(
+    join(registryDir, 'index.js'),
+    'exports.HK = { CU: 0x80000001 }; exports.getRegistryKey = () => ({})\n'
+  )
+}
+
+function writeFakeWindowsProcessTree(projectDir) {
+  const processTreeDir = join(projectDir, 'node_modules', '@vscode', 'windows-process-tree')
+  mkdirSync(processTreeDir, { recursive: true })
+  writeFileSync(join(processTreeDir, 'index.js'), 'module.exports = {}\n')
 }
 
 function writeNodePtyPatchFile(projectDir) {
@@ -412,5 +587,7 @@ function writePatchedNodePtyBuildArtifacts(projectDir) {
   const buildDir = join(projectDir, 'node_modules', 'node-pty', 'build', 'Release')
   mkdirSync(buildDir, { recursive: true })
   writeFileSync(join(buildDir, 'pty.node'), '')
-  writeFileSync(join(buildDir, 'spawn-helper'), '')
+  if (process.platform === 'darwin') {
+    writeFileSync(join(buildDir, 'spawn-helper'), '')
+  }
 }

@@ -3,16 +3,16 @@
 </h1>
 
 <p align="center">
-  <a href="https://github.com/stablyai/orca/stargazers"><img src="https://badgen.net/github/stars/stablyai/orca?label=%E2%98%85" alt="GitHub stars" /></a>
+  <a href="https://github.com/stablyai/orca"><img src="https://img.shields.io/github/stars/stablyai/orca?style=flat&amp;label=%E2%98%85&amp;color=08C" alt="GitHub stars" /></a>
   <a href="https://github.com/stablyai/orca/releases"><img src="docs/assets/readme-downloads.svg" alt="Total downloads across all releases" /></a>
-  <img src="https://badgen.net/github/license/stablyai/orca" alt="License" />
+  <img src="https://img.shields.io/badge/license-MIT-08C?style=flat" alt="License: MIT" />
   <a href="https://discord.gg/fzjDKHxv8Q"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Join the Orca Discord" /></a>
   <a href="https://x.com/orca_build"><img src="https://img.shields.io/badge/X-000000?logo=x&logoColor=white" alt="Follow Orca on X" /></a>
   <img src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-4493F8?style=flat-square" alt="Supported platforms: macOS, Windows, and Linux" />
 </p>
 
 <p align="center">
-  <sub><a href="docs/readme/README.es.md">Español</a> · <a href="docs/readme/README.zh-CN.md">中文</a> · <a href="docs/readme/README.ja.md">日本語</a> · <a href="docs/readme/README.ko.md">한국어</a></sub>
+  <sub><a href="docs/readme/README.zh-CN.md">中文</a> · <a href="docs/readme/README.ja.md">日本語</a> · <a href="docs/readme/README.ko.md">한국어</a> · <a href="docs/readme/README.es.md">Español</a> · <a href="docs/readme/README.fr.md">Français</a> · <a href="docs/readme/README.pt.md">Português</a></sub>
 </p>
 
 <p align="center">
@@ -36,7 +36,7 @@
 
 Monitor and steer your agents from your phone — get notified when an agent finishes and send follow-ups from anywhere.
 
-[iOS App Store](https://apps.apple.com/us/app/orca-ide/id6766130217) · [TestFlight](https://testflight.apple.com/join/YjeGMQBA) · [Android APK 0.0.16](https://github.com/stablyai/orca/releases/download/mobile-android-v0.0.16/app-release.apk) · [Docs →](https://www.onorca.dev/docs/mobile)
+[iOS App Store](https://apps.apple.com/us/app/orca-ide/id6766130217) · [TestFlight](https://testflight.apple.com/join/YjeGMQBA) · [Android APK 0.0.44](https://github.com/stablyai/orca/releases/download/mobile-android-v0.0.44/app-release.apk) · [Docs →](https://www.onorca.dev/docs/mobile)
 
 </td>
 <td width="50%">
@@ -213,6 +213,7 @@ Works with **any CLI agent** — if it runs in a terminal, it runs in Orca.
 
 - **[Download from onOrca.dev](https://onorca.dev/download)**
 - Or grab a build directly: [macOS Apple Silicon](https://github.com/stablyai/orca/releases/latest/download/orca-macos-arm64.dmg) · [macOS Intel](https://github.com/stablyai/orca/releases/latest/download/orca-macos-x64.dmg) · [Windows (.exe)](https://github.com/stablyai/orca/releases/latest/download/orca-windows-setup.exe) · [Linux AppImage](https://github.com/stablyai/orca/releases/latest/download/orca-linux.AppImage) · [All builds](https://github.com/stablyai/orca/releases/latest)
+- Running `orca serve` on a headless Linux server? See the [headless Linux server guide](docs/reference/headless-linux-server.md).
 
 _Or via a package manager:_
 
@@ -229,7 +230,7 @@ yay -S stably-orca-bin
 Pair with your desktop app to monitor and steer your agents from your phone.
 
 - **iOS:** [Download on the App Store](https://apps.apple.com/us/app/orca-ide/id6766130217) or [join TestFlight](https://testflight.apple.com/join/YjeGMQBA)
-- **Android:** [Download APK 0.0.16](https://github.com/stablyai/orca/releases/download/mobile-android-v0.0.16/app-release.apk)
+- **Android:** [Download APK 0.0.44](https://github.com/stablyai/orca/releases/download/mobile-android-v0.0.44/app-release.apk) · [Install guide](https://www.onorca.dev/docs/android-apk)
 
 ---
 
@@ -237,9 +238,10 @@ Pair with your desktop app to monitor and steer your agents from your phone.
 
 - **Discord:** Join the community on **[Discord](https://discord.gg/fzjDKHxv8Q)**.
 - **Twitter / X:** Follow **[@orca_build](https://x.com/orca_build)** for updates and announcements.
-- **WeChat:** Scan the QR code to join the community.
+- **WeChat:** Scan to join the Orca community WeChat group 7. If it is full, use group 8.
 
-  <img src="docs/assets/wechat-qr.png" alt="WeChat QR code for the Orca community" width="160" />
+  <img src="docs/assets/wechat-qr-group7.jpg" alt="WeChat group 7 QR code for the Orca community" width="160" />&nbsp;&nbsp;
+  <img src="docs/assets/wechat-qr-group8.jpg" alt="WeChat group 8 QR code for the Orca community" width="160" />
 
 - **Feedback &amp; Ideas:** We ship fast. Missing something? [Request a new feature](https://github.com/stablyai/orca/issues).
 - **Privacy:** See the [privacy &amp; telemetry docs](https://www.onorca.dev/docs/telemetry) for what anonymous usage data Orca collects and how to opt out.
@@ -251,9 +253,31 @@ Pair with your desktop app to monitor and steer your agents from your phone.
 
 Want to contribute or run locally? See our [CONTRIBUTING.md](.github/CONTRIBUTING.md) guide.
 
+Desktop development now uses **Tauri v2** (the same stack as [Pake](https://github.com/tw93/Pake): Tauri + the system webview), not Electron:
+
+```bash
+pnpm install
+pnpm dev
+```
+
+That starts three processes:
+
+1. **Desktop host** — Node sidecar on `ws://127.0.0.1:6769` (never 6768 in dev) for PTY/IPC
+2. **Renderer** — Vite on `http://127.0.0.1:5174`
+3. **Tauri window** — system webview loading the renderer
+
+Packaged desktop: `pnpm build:tauri`. Electron remains in-tree only as a migration shim (`pnpm dev:electron`, `pnpm build:desktop:electron`) while remaining main-process features are ported.
+
 <a href="https://github.com/stablyai/orca/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=stablyai/orca" alt="Orca contributors" />
 </a>
+
+<p align="center">
+  <img src="docs/assets/star-history.png" alt="GitHub star history chart for stablyai/orca" width="880" />
+</p>
+
+## Signed Builds
+Windows code signing sponored/provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
 
 ## License
 

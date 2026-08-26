@@ -7,8 +7,8 @@ import {
   type PasteTerminalTextDetail
 } from '@/constants/terminal'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
-import { resetAllTerminalWebglAtlases } from '@/lib/pane-manager/pane-manager-registry'
 import type { PtyTransport } from './pty-transport'
+import type { IDisposable } from '@xterm/xterm'
 import { handleTerminalFileDrop } from './terminal-drop-handler'
 import { handleFocusTerminalPaneDetail } from './focus-terminal-pane-event'
 import { surfaceStaleAgentRow } from './stale-agent-row'
@@ -21,6 +21,11 @@ import {
   resumeTerminalVisibility,
   type TerminalHiddenReason
 } from './terminal-visibility-resume'
+import { useTerminalWindowWakeRecovery } from './use-terminal-window-wake-recovery'
+import {
+  releaseRendererPtyVisibilityClaim,
+  setRendererPtyVisibilityClaim
+} from './pty-renderer-delivery-claims'
 
 type UseTerminalPaneGlobalEffectsArgs = {
   tabId: string
@@ -34,9 +39,25 @@ type UseTerminalPaneGlobalEffectsArgs = {
   managerRef: React.RefObject<PaneManager | null>
   containerRef: React.RefObject<HTMLDivElement | null>
   paneTransportsRef: React.RefObject<Map<number, PtyTransport>>
+  panePtyBindingsRef?: React.RefObject<Map<number, IDisposable>>
   isActiveRef: React.RefObject<boolean>
   isVisibleRef: React.RefObject<boolean>
   toggleExpandPane: (paneId: number) => void
+}
+
+function reportRendererPtyVisibility(
+  paneTransports: ReadonlyMap<number, PtyTransport>,
+  visible: boolean
+): void {
+  for (const transport of paneTransports.values()) {
+    const ptyId = transport.getPtyId()
+    if (!ptyId || ptyId.startsWith('remote:')) {
+      // Why: remote-runtime PTYs use a relay path outside main's local
+      // renderer-visibility registry, so reporting them here is misleading.
+      continue
+    }
+    setRendererPtyVisibilityClaim(transport, ptyId, visible)
+  }
 }
 
 export function useTerminalPaneGlobalEffects({
@@ -51,6 +72,7 @@ export function useTerminalPaneGlobalEffects({
   managerRef,
   containerRef,
   paneTransportsRef,
+  panePtyBindingsRef,
   isActiveRef,
   isVisibleRef,
   toggleExpandPane
@@ -68,6 +90,18 @@ export function useTerminalPaneGlobalEffects({
   const hasCompletedVisibleResumeRef = useRef(false)
   const renderingSuspendedByVisibilityRef = useRef(false)
   const hiddenReasonRef = useRef<TerminalHiddenReason | null>(null)
+  const rendererVisible = isVisible && isWorktreeActive
+  // Why: the active pane can rebind to a new PTY (deferred reattach / eager
+  // adopt) or switch active leaf without isActive/isVisible/isWorktreeActive
+  // flipping. Derive the active leaf's live PTY reactively from the same
+  // leaf→PTY binding the reattach path writes, so the active-renderer-pty report
+  // below re-fires on rebind — otherwise main keeps the stale id and the live
+  // PTY loses its interactive reserve.
+  const activeLeafPtyId = useAppStore((state) => {
+    const layout = state.terminalLayoutsByTabId[tabId]
+    const activeLeafId = layout?.activeLeafId
+    return activeLeafId ? (layout.ptyIdsByLeafId?.[activeLeafId] ?? null) : null
+  })
   const {
     captureViewportPositions,
     withSuppressedScrollTracking,
@@ -79,18 +113,41 @@ export function useTerminalPaneGlobalEffects({
     visibleResumeCompleteRef: wasVisibleRef,
     paneCount
   })
-  useTerminalContainerFitSync({ isVisible, isSyncFitEnabled, managerRef, containerRef })
+  useTerminalContainerFitSync({
+    isVisible: rendererVisible,
+    isSyncFitEnabled,
+    managerRef,
+    containerRef
+  })
+  useTerminalWindowWakeRecovery({
+    isVisible: rendererVisible,
+    managerRef,
+    isActiveRef,
+    isVisibleRef,
+    panePtyBindingsRef
+  })
+
+  useEffect(() => {
+    const paneTransports = paneTransportsRef.current
+    reportRendererPtyVisibility(paneTransports, rendererVisible)
+    return () => {
+      for (const transport of paneTransports.values()) {
+        releaseRendererPtyVisibilityClaim(transport)
+      }
+    }
+  }, [rendererVisible, paneTransportsRef])
 
   useEffect(() => {
     const manager = managerRef.current
     if (!manager) {
       return
     }
+    manager.setAtlasRecoveryVisible?.(rendererVisible)
     const wasVisible = wasVisibleRef.current
     const wasWorktreeActive = wasWorktreeActiveRef.current
     isActiveRef.current = isActive
-    isVisibleRef.current = isVisible
-    if (isVisible) {
+    isVisibleRef.current = rendererVisible
+    if (rendererVisible) {
       const shouldUseLightTabResume =
         isWorktreeActive &&
         hasCompletedVisibleResumeRef.current &&
@@ -111,65 +168,34 @@ export function useTerminalPaneGlobalEffects({
       hiddenReasonRef.current = null
       applyPendingFollowOutputRequests()
       return
-    } else {
-      const hiddenState = hideTerminalVisibility({
-        manager,
-        wasVisible,
-        wasWorktreeActive,
-        isWorktreeActive,
-        hasCompletedVisibleResume: hasCompletedVisibleResumeRef.current,
-        captureViewportPositions
-      })
-      renderingSuspendedByVisibilityRef.current = hiddenState.renderingSuspended
-      hiddenReasonRef.current = hiddenState.hiddenReason
     }
+    const hiddenState = hideTerminalVisibility({
+      manager,
+      wasVisible,
+      wasWorktreeActive,
+      isWorktreeActive,
+      hasCompletedVisibleResume: hasCompletedVisibleResumeRef.current,
+      captureViewportPositions
+    })
+    renderingSuspendedByVisibilityRef.current = hiddenState.renderingSuspended
+    hiddenReasonRef.current = hiddenState.hiddenReason
+
     wasVisibleRef.current = false
     wasWorktreeActiveRef.current = isWorktreeActive
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, isVisible, isWorktreeActive])
+  }, [isActive, isWorktreeActive, rendererVisible])
 
   useEffect(() => {
-    if (!isVisible) {
-      return
-    }
-    const recoverWebglAtlases = (): void => {
-      // Why: WebGL atlas corruption does not always raise context loss; window
-      // foregrounding is a low-cost recovery point. Visible terminals can be
-      // inactive in split groups, and same-config terminals share the atlas.
-      resetAllTerminalWebglAtlases()
-    }
-    const onFocus = (): void => recoverWebglAtlases()
-    const onVisibilityChange = (): void => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        recoverWebglAtlases()
-      }
-    }
-    window.addEventListener('focus', onFocus)
-    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
-      document.addEventListener('visibilitychange', onVisibilityChange)
-    }
-    return () => {
-      window.removeEventListener('focus', onFocus)
-      if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
-        document.removeEventListener('visibilitychange', onVisibilityChange)
-      }
-    }
-  }, [isVisible])
-
-  useEffect(() => {
-    const manager = managerRef.current
-    const activePane = isActive && isVisible ? manager?.getActivePane() : null
-    const ptyId = activePane
-      ? (paneTransportsRef.current.get(activePane.id)?.getPtyId() ?? null)
-      : null
+    const ptyId = isActive && isVisible && isWorktreeActive ? activeLeafPtyId : null
     if (!ptyId || ptyId.startsWith('remote:')) {
       return
     }
     // Why: main uses this as a scheduler hint only, so the foreground pane's
-    // renderer output gets first chance at the bounded ACK reserve.
+    // renderer output gets first chance at the bounded ACK reserve. The cleanup
+    // reports the old PTY inactive before the effect re-runs for a rebind.
     window.api.pty.setActiveRendererPty?.(ptyId, true)
     return () => window.api.pty.setActiveRendererPty?.(ptyId, false)
-  }, [isActive, isVisible, managerRef, paneTransportsRef])
+  }, [isActive, isVisible, isWorktreeActive, activeLeafPtyId])
 
   useEffect(() => {
     const onToggleExpand = (event: Event): void => {

@@ -184,25 +184,6 @@ export async function withGitSpan<T>(meta: GitSpanArgs, fn: () => Promise<T>): P
   )
 }
 
-export type IpcSpanArgs = {
-  readonly channel: string
-}
-
-/** Wrap an ipcMain handler invocation in an `ipc.handle` span. Used by
- *  the highest-traffic handlers — `git`, `runtime`, `pty`, `worktree`,
- *  `agent` — not every handler. Tracing every IPC call would explode the
- *  trace tree and obscure the spans that matter. */
-export async function withIpcSpan<T>(meta: IpcSpanArgs, fn: () => Promise<T> | T): Promise<T> {
-  return withSpan(
-    'ipc.handle',
-    async (span) => {
-      span.setAttribute('ipc.channel', meta.channel)
-      return await fn()
-    },
-    { attributes: { kind: 'ipc' } }
-  )
-}
-
 export type WorktreeSpanArgs = {
   readonly stage: 'clone' | 'checkout' | 'install' | 'create' | 'remove'
   readonly path?: string
@@ -226,71 +207,26 @@ export async function withWorktreeSpan<T>(
   )
 }
 
-export type PtySpanArgs = {
-  readonly stage: 'spawn' | 'exit' | 'recover'
-  readonly shell?: string
-  readonly cwd?: string
-}
+/** Closed set so a typo can't silently mint an orphan span name. */
+export type WorktreeRemoveStage =
+  | 'archive_hook'
+  | 'cache_invalidation'
+  | 'git_remove'
+  | 'metadata_purge'
+  | 'pty_sweep'
+  | 'trash_rename'
+  | 'watcher_gate'
 
-/** Wrap a PTY-lifecycle event in a `pty.<stage>` span. The lifecycle is
- *  long-lived; callers typically use `startSpan` directly for the live
- *  session and call `withPtySpan` only for the spawn/exit moments. */
-export async function withPtySpan<T>(meta: PtySpanArgs, fn: () => Promise<T> | T): Promise<T> {
-  return withSpan(
-    `pty.${meta.stage}`,
-    async (span) => {
-      span.setAttribute('pty.stage', meta.stage)
-      if (meta.shell) {
-        span.setAttribute('pty.shell', meta.shell)
-      }
-      if (meta.cwd) {
-        span.setAttribute('cwd', meta.cwd)
-      }
-      return await fn()
-    },
-    { attributes: { kind: 'pty' } }
-  )
-}
-
-export type AgentSpanArgs = {
-  readonly stage: 'start' | 'turn' | 'stop' | 'recover'
-  readonly agentKind?: string
-}
-
-export async function withAgentSpan<T>(meta: AgentSpanArgs, fn: () => Promise<T> | T): Promise<T> {
-  return withSpan(
-    `agent.${meta.stage}`,
-    async (span) => {
-      span.setAttribute('agent.stage', meta.stage)
-      if (meta.agentKind) {
-        span.setAttribute('agent.kind', meta.agentKind)
-      }
-      return await fn()
-    },
-    { attributes: { kind: 'agent' } }
-  )
-}
-
-export type ExternalEditorSpanArgs = {
-  readonly editor: string
-  readonly path?: string
-}
-
-export async function withExternalEditorSpan<T>(
-  meta: ExternalEditorSpanArgs,
-  fn: () => Promise<T> | T
+/** Wrap one stage of a worktree removal. Children share the parent's `kind` so `kind`-filtered
+ *  views keep the whole tree, and `worktree.flow` separates the folder/remote/local removal paths. */
+export async function withWorktreeRemoveStageSpan<T>(
+  stage: WorktreeRemoveStage,
+  flow: 'folder' | 'remote' | 'local',
+  fn: () => Promise<T>
 ): Promise<T> {
-  return withSpan(
-    'external_editor.launch',
-    async (span) => {
-      span.setAttribute('editor', meta.editor)
-      if (meta.path) {
-        span.setAttribute('path', meta.path)
-      }
-      return await fn()
-    },
-    { attributes: { kind: 'external_editor' } }
-  )
+  return withSpan(`worktree.remove.${stage}`, fn, {
+    attributes: { kind: 'worktree', 'worktree.flow': flow }
+  })
 }
 
 export type UpdaterSpanArgs = {

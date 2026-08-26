@@ -1,11 +1,17 @@
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
-import { useConfirmationDialog } from '@/components/confirmation-dialog'
+import { useConfirmationDialog } from '@/components/confirmation-dialog-context'
 import type { GitHubPRAutoMergeAction } from '@/components/github-pr-merge-state'
 import type { HostedReviewInfo } from '../../../../shared/hosted-review'
-import type { PRInfo, Repo } from '../../../../shared/types'
-import type { GitHubPRMergeMethod } from '../../../../shared/types'
+import type { GitHubPRMergeMethod, PRInfo } from '../../../../shared/github/pull-request-types'
+import type { Repo } from '../../../../shared/repo-types'
+import {
+  mergeGitHubHostedReview,
+  setGitHubHostedReviewAutoMerge,
+  updateGitHubHostedReviewState
+} from './hosted-review-github-actions'
 import { translate } from '@/i18n/i18n'
+import { buildGitHubPRStackMergeConfirmation } from './github-pr-stack-confirmation'
 
 export type HostedReviewActionInfo = Pick<
   HostedReviewInfo,
@@ -58,6 +64,21 @@ export function useHostedReviewActions({
 
   const handleMerge = useCallback(
     async (method: GitHubPRMergeMethod = defaultMergeMethod) => {
+      if (!isGitLab && githubPR?.stack) {
+        const usesMergeQueue =
+          review.mergeQueueRequired === true || githubPR.mergeQueueRequired === true
+        const confirmed = await confirm(
+          buildGitHubPRStackMergeConfirmation({
+            stack: githubPR.stack,
+            currentPRNumber: review.number,
+            method,
+            usesMergeQueue
+          })
+        )
+        if (!confirmed) {
+          return
+        }
+      }
       setMerging(true)
       setActionError(null)
       try {
@@ -68,9 +89,8 @@ export function useHostedReviewActions({
               iid: review.number,
               method
             })
-          : await window.api.gh.mergePR({
-              repoPath: repo.path,
-              repoId: repo.id,
+          : await mergeGitHubHostedReview({
+              repo,
               prNumber: review.number,
               method,
               prRepo: githubPR?.prRepo ?? null
@@ -87,12 +107,15 @@ export function useHostedReviewActions({
       }
     },
     [
+      confirm,
       githubPR?.prRepo,
+      githubPR?.mergeQueueRequired,
+      githubPR?.stack,
       isGitLab,
       defaultMergeMethod,
       onRefreshReview,
-      repo.id,
-      repo.path,
+      repo,
+      review.mergeQueueRequired,
       review.number
     ]
   )
@@ -105,9 +128,8 @@ export function useHostedReviewActions({
     setMerging(true)
     setActionError(null)
     try {
-      const result = await window.api.gh.setPRAutoMerge({
-        repoPath: repo.path,
-        repoId: repo.id,
+      const result = await setGitHubHostedReviewAutoMerge({
+        repo,
         prNumber: review.number,
         enabled,
         method: enabled ? defaultMergeMethod : undefined,
@@ -129,8 +151,7 @@ export function useHostedReviewActions({
     autoMergeAction,
     defaultMergeMethod,
     onRefreshReview,
-    repo.id,
-    repo.path,
+    repo,
     review.number
   ])
 
@@ -175,11 +196,11 @@ export function useHostedReviewActions({
                 repoId: repo.id,
                 iid: review.number
               })
-          : await window.api.gh.updatePRState({
-              repoPath: repo.path,
-              repoId: repo.id,
+          : await updateGitHubHostedReviewState({
+              repo,
               prNumber: review.number,
-              updates: { state: nextState }
+              prRepo: githubPR?.prRepo ?? null,
+              nextState
             })
         if (!result.ok) {
           setActionError(result.error)
@@ -188,7 +209,7 @@ export function useHostedReviewActions({
           toast.success(
             isClosing
               ? translate(
-                  'auto.components.right.sidebar.HostedReviewActions.fa3ee9a515',
+                  'auto.components.right.sidebar.HostedReviewActions.closedToast',
                   '{{value0}} closed',
                   { value0: shortLabel }
                 )
@@ -211,10 +232,10 @@ export function useHostedReviewActions({
     },
     [
       confirm,
+      githubPR?.prRepo,
       isGitLab,
       onRefreshReview,
-      repo.id,
-      repo.path,
+      repo,
       review.number,
       reviewLabel,
       shortLabel,
