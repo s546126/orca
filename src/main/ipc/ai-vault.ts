@@ -1,8 +1,14 @@
 import { ipcMain } from 'electron'
 import { join } from 'path'
+import { importExternalAgentTranscripts } from '../ai-vault/ai-vault-external-transcript-import'
 import { scanAiVaultSessions } from '../ai-vault/session-scanner'
 import { getWslHomeAsync, listWslDistrosAsync } from '../wsl'
-import type { AiVaultListArgs, AiVaultListResult } from '../../shared/ai-vault-types'
+import type {
+  AiVaultImportExternalTranscriptsArgs,
+  AiVaultImportExternalTranscriptsResult,
+  AiVaultListArgs,
+  AiVaultListResult
+} from '../../shared/ai-vault-types'
 
 const AI_VAULT_CACHE_TTL_MS = 15_000
 
@@ -20,6 +26,10 @@ let cachedList: CachedAiVaultList | null = null
 let inflightList: Promise<AiVaultListResult> | null = null
 let inflightKey: string | null = null
 let handlerOptions: AiVaultHandlerOptions = {}
+
+function clearAiVaultCache(): void {
+  cachedList = null
+}
 
 async function listAiVaultSessions(args?: AiVaultListArgs): Promise<AiVaultListResult> {
   // Scope paths change the result set, so they must be part of the cache key.
@@ -63,10 +73,32 @@ async function listAiVaultSessions(args?: AiVaultListArgs): Promise<AiVaultListR
   return inflightList
 }
 
+async function importExternalTranscripts(
+  args?: AiVaultImportExternalTranscriptsArgs
+): Promise<AiVaultImportExternalTranscriptsResult> {
+  const importSummary = await importExternalAgentTranscripts()
+  clearAiVaultCache()
+  const listResult = await listAiVaultSessions({
+    limit: args?.limit,
+    scopePaths: args?.scopePaths,
+    force: true
+  })
+  return {
+    codexLinkedFiles: importSummary.codexBridge.linkedFiles,
+    codexScannedFiles: importSummary.codexBridge.scannedFiles,
+    listResult,
+    importedAt: importSummary.importedAt
+  }
+}
+
 export function registerAiVaultHandlers(options: AiVaultHandlerOptions = {}): void {
   handlerOptions = options
   ipcMain.handle('aiVault:listSessions', (_event, args?: AiVaultListArgs) =>
     listAiVaultSessions(args)
+  )
+  ipcMain.handle(
+    'aiVault:importExternalTranscripts',
+    (_event, args?: AiVaultImportExternalTranscriptsArgs) => importExternalTranscripts(args)
   )
 }
 

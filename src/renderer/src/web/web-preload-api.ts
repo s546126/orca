@@ -621,6 +621,17 @@ function createWebPreloadApi(): Partial<PreloadApi> {
           sessions: [],
           issues: [],
           scannedAt: new Date().toISOString()
+        }),
+      importExternalTranscripts: () =>
+        Promise.resolve({
+          codexLinkedFiles: 0,
+          codexScannedFiles: 0,
+          importedAt: new Date().toISOString(),
+          listResult: {
+            sessions: [],
+            issues: [],
+            scannedAt: new Date().toISOString()
+          }
         })
     },
     preflight: createPreflightApi(),

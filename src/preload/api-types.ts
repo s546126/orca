@@ -361,7 +361,12 @@ import type {
   OpenCodeUsageSnapshot,
   OpenCodeUsageSummary
 } from '../shared/opencode-usage-types'
-import type { AiVaultListArgs, AiVaultListResult } from '../shared/ai-vault-types'
+import type {
+  AiVaultImportExternalTranscriptsArgs,
+  AiVaultImportExternalTranscriptsResult,
+  AiVaultListArgs,
+  AiVaultListResult
+} from '../shared/ai-vault-types'
 import type { TelemetryConsentState } from '../shared/telemetry-consent-types'
 import type { AgentKind, LaunchSource, RequestKind } from '../shared/telemetry-events'
 import type { AppStarSource } from '../shared/gh-star-source'
@@ -710,6 +715,9 @@ export type OpenCodeUsageApi = {
 
 export type AiVaultApi = {
   listSessions: (args?: AiVaultListArgs) => Promise<AiVaultListResult>
+  importExternalTranscripts: (
+    args?: AiVaultImportExternalTranscriptsArgs
+  ) => Promise<AiVaultImportExternalTranscriptsResult>
 }
 
 export type AppApi = {

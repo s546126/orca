@@ -85,6 +85,19 @@ export type AiVaultListResult = {
   scannedAt: string
 }
 
+export type AiVaultImportExternalTranscriptsArgs = {
+  limit?: number
+  // Active workspace/project paths for scoped in-scope discovery after import.
+  scopePaths?: readonly string[]
+}
+
+export type AiVaultImportExternalTranscriptsResult = {
+  codexLinkedFiles: number
+  codexScannedFiles: number
+  listResult: AiVaultListResult
+  importedAt: string
+}
+
 export function buildAiVaultResumeCommand(args: {
   agent: AiVaultAgent
   sessionId: string
