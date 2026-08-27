@@ -21,8 +21,11 @@ export function readLocalRuntimePublicKeyB64(userDataPath: string): string | nul
     return null
   }
   try {
-    // Why: bound the read itself so a huge/corrupt keypair cannot exhaust memory during pairing.
-    const raw = readNodeFileSyncWithinLimit(filePath, MAX_KEYPAIR_FILE_BYTES).buffer.toString('utf8')
+    // Why: bound the read itself so a huge/corrupt keypair cannot exhaust memory
+    // during pairing.
+    const raw = readNodeFileSyncWithinLimit(filePath, MAX_KEYPAIR_FILE_BYTES).buffer.toString(
+      'utf8'
+    )
     const parsed: unknown = JSON.parse(raw)
     const publicKeyB64 = (parsed as { publicKeyB64?: unknown } | null)?.publicKeyB64
     return typeof publicKeyB64 === 'string' && publicKeyB64.length > 0 ? publicKeyB64 : null
