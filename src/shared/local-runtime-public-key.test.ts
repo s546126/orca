@@ -1,8 +1,12 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { E2EE_KEYPAIR_FILENAME, readLocalRuntimePublicKeyB64 } from './local-runtime-public-key'
+import {
+  E2EE_KEYPAIR_FILENAME,
+  MAX_KEYPAIR_FILE_BYTES,
+  readLocalRuntimePublicKeyB64
+} from './local-runtime-public-key'
 
 describe('readLocalRuntimePublicKeyB64', () => {
   const tempDirs: string[] = []
@@ -44,6 +48,19 @@ describe('readLocalRuntimePublicKeyB64', () => {
     const userDataPath = makeUserDataPath()
 
     expect(readLocalRuntimePublicKeyB64(userDataPath)).toBeNull()
+    expect(readLocalRuntimePublicKeyB64(userDataPath)).toBeNull()
+    expect(existsSync(join(userDataPath, E2EE_KEYPAIR_FILENAME))).toBe(false)
+  })
+
+  it('returns null for an oversized sparse keypair without reading it wholesale', () => {
+    const userDataPath = makeUserDataPath()
+    const path = join(userDataPath, E2EE_KEYPAIR_FILENAME)
+    writeFileSync(
+      path,
+      JSON.stringify({ v: 1, publicKeyB64: 'public-key', secretKeyB64: 'secret-key' })
+    )
+    truncateSync(path, MAX_KEYPAIR_FILE_BYTES + 1)
+
     expect(readLocalRuntimePublicKeyB64(userDataPath)).toBeNull()
   })
 })
