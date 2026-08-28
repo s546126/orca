@@ -74,6 +74,9 @@ describe('Store workspace agent filter', () => {
 
     const store = await createStore()
     expect(store.getUI().filterAgentIds).toEqual(['openclaude'])
+    expectNoLeftoverAgentFilterKeys(store.getUI())
+    store.flush()
+    expectNoLeftoverAgentFilterKeys((readDataFile() as { ui: Record<string, unknown> }).ui)
   })
 
   it('loads leftover harness-only filterHarnessId from an on-disk profile', async () => {
@@ -89,6 +92,9 @@ describe('Store workspace agent filter', () => {
 
     const store = await createStore()
     expect(store.getUI().filterAgentIds).toEqual(['claude'])
+    expectNoLeftoverAgentFilterKeys(store.getUI())
+    store.flush()
+    expectNoLeftoverAgentFilterKeys((readDataFile() as { ui: Record<string, unknown> }).ui)
   })
 
   it('updateUI hydrates leftover singular filterAgentId onto filterAgentIds', async () => {
