@@ -26,13 +26,21 @@ import { AgentIcon } from '@/lib/agent-catalog'
 import { cn } from '@/lib/utils'
 import {
   AI_VAULT_AGENTS,
+  AI_VAULT_SESSION_HOSTS,
   type AiVaultAgent,
   type AiVaultGroup,
   type AiVaultScope,
-  type AiVaultSort
+  type AiVaultSessionHost,
+  type AiVaultSort,
+  type AiVaultTimeRange
 } from '../../../../shared/ai-vault-types'
 import { getExecutionHostLabel, type ExecutionHostScope } from '../../../../shared/execution-host'
+import {
+  AI_VAULT_SEARCH_SCOPES,
+  type AiVaultSearchScope
+} from '../../../../shared/ai-vault-session-search-scope'
 import { agentLabel, type AiVaultSessionGroup } from './ai-vault-session-filters'
+import { aiVaultSearchScopeLabel } from './AiVaultSearchScopeControl'
 import { translate } from '@/i18n/i18n'
 import type { AiVaultHostScopeOption } from './ai-vault-host-scope'
 import { AiVaultSessionLimitMenu } from './AiVaultSessionLimitMenu'
@@ -209,6 +217,9 @@ export function VaultViewMenu({
   group,
   hideEmptySessions,
   sessionLimit,
+  timeRange,
+  hosts,
+  searchScope,
   adjustmentCount,
   onAgentEnabledChange,
   onAllAgentsEnabledChange,
@@ -216,6 +227,9 @@ export function VaultViewMenu({
   onGroupChange,
   onHideEmptySessionsChange,
   onSessionLimitChange,
+  onTimeRangeChange,
+  onHostEnabledChange,
+  onSearchScopeChange,
   onReset
 }: {
   agents: readonly AiVaultAgent[]
@@ -223,6 +237,9 @@ export function VaultViewMenu({
   group: AiVaultGroup
   hideEmptySessions: boolean
   sessionLimit: AiVaultSessionLimit
+  timeRange: AiVaultTimeRange
+  hosts: readonly AiVaultSessionHost[]
+  searchScope: AiVaultSearchScope
   adjustmentCount: number
   onAgentEnabledChange: (agent: AiVaultAgent, enabled: boolean) => void
   onAllAgentsEnabledChange: (enabled: boolean) => void
@@ -230,6 +247,9 @@ export function VaultViewMenu({
   onGroupChange: (group: AiVaultGroup) => void
   onHideEmptySessionsChange: (hideEmptySessions: boolean) => void
   onSessionLimitChange: (limit: AiVaultSessionLimit) => void
+  onTimeRangeChange: (timeRange: AiVaultTimeRange) => void
+  onHostEnabledChange: (host: AiVaultSessionHost, enabled: boolean) => void
+  onSearchScopeChange: (searchScope: AiVaultSearchScope) => void
   onReset: () => void
 }): React.JSX.Element {
   const allAgentsSelected = agents.length === AI_VAULT_AGENTS.length
@@ -269,6 +289,20 @@ export function VaultViewMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={6} className="w-56">
+        <DropdownMenuLabel>
+          {translate('auto.components.right.sidebar.AiVaultPanelControls.searchIn', 'Search in')}
+        </DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={searchScope}
+          onValueChange={(value) => onSearchScopeChange(value as AiVaultSearchScope)}
+        >
+          {AI_VAULT_SEARCH_SCOPES.map((scope) => (
+            <DropdownMenuRadioItem key={scope} value={scope}>
+              {aiVaultSearchScopeLabel(scope)}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
         {/* Why: Select all / Clear lets users isolate one agent without unchecking 15 boxes. */}
         <div className="flex items-center justify-between px-2 py-1">
           <span className="text-[11px] font-semibold text-muted-foreground">
@@ -354,6 +388,53 @@ export function VaultViewMenu({
             {translate('auto.components.right.sidebar.AiVaultPanelControls.agent', 'Agent')}
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>
+          {translate('auto.components.right.sidebar.AiVaultPanelControls.updated', 'Updated')}
+        </DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={timeRange}
+          onValueChange={(value) => onTimeRangeChange(value as AiVaultTimeRange)}
+        >
+          <DropdownMenuRadioItem value="all">
+            {translate('auto.components.right.sidebar.AiVaultPanelControls.anyTime', 'Any time')}
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="24h">
+            {translate(
+              'auto.components.right.sidebar.AiVaultPanelControls.last24Hours',
+              'Last 24 hours'
+            )}
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="7d">
+            {translate(
+              'auto.components.right.sidebar.AiVaultPanelControls.last7Days',
+              'Last 7 days'
+            )}
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="30d">
+            {translate(
+              'auto.components.right.sidebar.AiVaultPanelControls.last30Days',
+              'Last 30 days'
+            )}
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>
+          {translate('auto.components.right.sidebar.AiVaultPanelControls.host', 'Host')}
+        </DropdownMenuLabel>
+        {AI_VAULT_SESSION_HOSTS.map((host) => (
+          <DropdownMenuCheckboxItem
+            key={host}
+            checked={hosts.includes(host)}
+            disabled={hosts.length === 1 && hosts.includes(host)}
+            onCheckedChange={(checked) => onHostEnabledChange(host, checked === true)}
+            onSelect={(event) => event.preventDefault()}
+          >
+            {host === 'wsl'
+              ? translate('auto.components.right.sidebar.AiVaultPanelControls.wslHost', 'WSL')
+              : translate('auto.components.right.sidebar.AiVaultPanelControls.localHost', 'Local')}
+          </DropdownMenuCheckboxItem>
+        ))}
         <DropdownMenuSeparator />
         <DropdownMenuCheckboxItem
           checked={hideEmptySessions}

@@ -11360,7 +11360,25 @@
             "sessionHostMismatchUnsupported": "Esta sesión pertenece a un host diferente. Abre un espacio de trabajo en el mismo host para reanudarla.",
             "prepareSessionResumeFailed": "Could not prepare this session for resume.",
             "sessionDeleted": "Sesión eliminada",
-            "sessionDeleteFailed": "No se pudo eliminar la sesión"
+            "sessionDeleteFailed": "No se pudo eliminar la sesión",
+            "askPastSessions": "Ask about past sessions",
+            "aiSearch": "AI search",
+            "aiRankedSessions": "AI ranked these sessions",
+            "aiSearchHint": "Press Enter to rank with the auto-rename agent",
+            "searchSessionsWithAi": "Search sessions with AI",
+            "searchingSessions": "Searching…",
+            "enterQueryToSearchWithAi": "Enter a query to search sessions with AI.",
+            "searchWithAi": "Search with AI",
+            "searchingTranscripts": "Searching transcripts…",
+            "transcriptHits": "{{count}} transcript hit",
+            "searchScopeFull": "Full text",
+            "searchScopeTitle": "Title",
+            "searchScopeSummary": "Summary",
+            "searchScopeWithoutTools": "Without tools",
+            "searchScopeUser": "User",
+            "searchScopeAssistant": "Assistant",
+            "searchScopeErrors": "Errors",
+            "searchIn": "Search in"
           },
           "AiVaultPanelControls": {
             "scanningSessions": "Buscando sesiones",
@@ -11393,7 +11411,15 @@
             "currentProjectLower": "proyecto actual",
             "project": "Proyecto",
             "hostScopeAriaLabel": "Host del historial de sesiones: {{value0}}",
-            "host": "Host"
+            "host": "Host",
+            "updated": "Updated",
+            "anyTime": "Any time",
+            "last24Hours": "Last 24 hours",
+            "last7Days": "Last 7 days",
+            "last30Days": "Last 30 days",
+            "wslHost": "WSL",
+            "localHost": "Local",
+            "searchIn": "Search in"
           },
           "AiVaultSessionDetails": {
             "updated": "Actualizado",
@@ -11496,7 +11522,8 @@
             "delete": "Eliminar",
             "deleteReasonNonLocalHost": "Solo se pueden eliminar las sesiones de este dispositivo.",
             "deleteReasonSyntheticPath": "Esta sesión no se puede eliminar desde Orca.",
-            "deleteReasonUnsupportedAgent": "Las sesiones de {{value0}} no se pueden eliminar desde Orca."
+            "deleteReasonUnsupportedAgent": "Las sesiones de {{value0}} no se pueden eliminar desde Orca.",
+            "errorRole": "Error"
           },
           "AiVaultSessionDeleteDialog": {
             "title": "¿Eliminar esta sesión?",
@@ -11601,6 +11628,9 @@
             "mayBeSlower": "Puede ser más lento",
             "slowest": "Más lento",
             "unlimited": "Sin límite"
+          },
+          "AiVaultSearchField": {
+            "65b6a40200": "Pick an agent in Settings -> Git -> Source Control AI."
           }
         }
       },
