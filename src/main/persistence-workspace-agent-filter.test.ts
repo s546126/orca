@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { rmSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { testState, createStore, readDataFile } from './persistence-test-harness'
+import { testState, createStore, readDataFile, writeDataFile } from './persistence-test-harness'
 
 const { loadUserSshConfigMock, sshConfigHostsToTargetsMock } = vi.hoisted(() => ({
   loadUserSshConfigMock: vi.fn(),
@@ -59,6 +59,36 @@ describe('Store workspace agent filter', () => {
 
   afterEach(() => {
     rmSync(testState.dir, { recursive: true, force: true })
+  })
+
+  it('loads leftover singular filterAgentId from an on-disk profile', async () => {
+    writeDataFile({
+      schemaVersion: 1,
+      repos: [],
+      worktreeMeta: {},
+      settings: {},
+      ui: { filterAgentId: 'openclaude' },
+      githubCache: { pr: {}, issue: {} },
+      workspaceSession: {}
+    })
+
+    const store = await createStore()
+    expect(store.getUI().filterAgentIds).toEqual(['openclaude'])
+  })
+
+  it('loads leftover harness-only filterHarnessId from an on-disk profile', async () => {
+    writeDataFile({
+      schemaVersion: 1,
+      repos: [],
+      worktreeMeta: {},
+      settings: {},
+      ui: { filterHarnessId: 'cc' },
+      githubCache: { pr: {}, issue: {} },
+      workspaceSession: {}
+    })
+
+    const store = await createStore()
+    expect(store.getUI().filterAgentIds).toEqual(['claude'])
   })
 
   it('updateUI hydrates leftover singular filterAgentId onto filterAgentIds', async () => {
