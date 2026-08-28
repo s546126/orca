@@ -15,7 +15,9 @@ import type {
   AiVaultGroup,
   AiVaultScope,
   AiVaultSession,
-  AiVaultSort
+  AiVaultSessionHost,
+  AiVaultSort,
+  AiVaultTimeRange
 } from './ai-vault-types'
 import {
   aiVaultAgentLabel,
@@ -24,6 +26,17 @@ import {
 } from './ai-vault-types'
 import type { ExecutionHostId } from './execution-host'
 import { sessionPreviewSearchText } from './ai-vault-session-display'
+import { deriveAiVaultSessionHost } from './ai-vault-session-host'
+import {
+  parseVaultQuery as parseExtendedVaultQuery,
+  timeRangeStartMs
+} from './ai-vault-session-query'
+import {
+  DEFAULT_AI_VAULT_SEARCH_SCOPE,
+  isAiVaultRgSearchScope,
+  type AiVaultSearchScope
+} from './ai-vault-session-search-scope'
+import type { AiVaultIndexQueryMode, AiVaultSessionSearchIndex } from './ai-vault-session-index'
 
 // Why: the plain project descriptor is relocated here (no runtime dep) so the
 // filter-state type can reference it without dragging the renderer-located
@@ -47,6 +60,17 @@ export type AiVaultSessionFilterState = {
   sessionProjectById?: ReadonlyMap<string, AiVaultSessionProject>
   projectLabelByKey?: ReadonlyMap<string, string>
   hideEmptySessions: boolean
+  timeRange?: AiVaultTimeRange
+  hosts?: readonly AiVaultSessionHost[]
+  searchScope?: AiVaultSearchScope
+}
+
+export type AiVaultSessionFilterOptions = {
+  index?: AiVaultSessionSearchIndex
+  nowMs?: number
+  termMode?: AiVaultIndexQueryMode
+  queryTerms?: readonly string[]
+  forceCardTerms?: boolean
 }
 
 export type AiVaultSessionGroup = {
@@ -72,14 +96,20 @@ export function isAiVaultSessionFilterQueryTooLarge(
 
 export function filterAiVaultSessions(
   sessions: readonly AiVaultSession[],
-  filters: AiVaultSessionFilterState
+  filters: AiVaultSessionFilterState,
+  options: AiVaultSessionFilterOptions = {}
 ): AiVaultSession[] {
   if (isAiVaultSessionFilterQueryTooLarge(filters.query)) {
     return []
   }
 
   const agentSet = new Set(filters.agents)
+  const hostSet = new Set(filters.hosts ?? [])
   const parsedQuery = parseVaultQuery(filters.query)
+  const extendedQuery = parseExtendedVaultQuery(filters.query)
+  const rangeStartMs = timeRangeStartMs(filters.timeRange ?? 'all', options.nowMs ?? Date.now())
+  const searchScope = filters.searchScope ?? DEFAULT_AI_VAULT_SEARCH_SCOPE
+  const skipCardTerms = isAiVaultRgSearchScope(searchScope) && options.forceCardTerms !== true
   const workspaceMatchers =
     filters.scope === 'workspace'
       ? filters.activeWorktreePaths.map(createAiVaultWorkspaceMatcher)
@@ -87,6 +117,28 @@ export function filterAiVaultSessions(
 
   const filtered = sessions.filter((session) => {
     if (!agentSet.has(session.agent)) {
+      return false
+    }
+    if (hostSet.size > 0 && !hostSet.has(deriveAiVaultSessionHost(session))) {
+      return false
+    }
+    const updatedMs = Date.parse(session.updatedAt ?? session.modifiedAt)
+    if (rangeStartMs !== null && Number.isFinite(updatedMs) && updatedMs < rangeStartMs) {
+      return false
+    }
+    if (extendedQuery.afterMs !== null && Number.isFinite(updatedMs) && updatedMs < extendedQuery.afterMs) {
+      return false
+    }
+    if (extendedQuery.beforeMs !== null && Number.isFinite(updatedMs) && updatedMs > extendedQuery.beforeMs) {
+      return false
+    }
+    if (extendedQuery.hostTerms.length > 0 && !extendedQuery.hostTerms.includes(deriveAiVaultSessionHost(session))) {
+      return false
+    }
+    if (extendedQuery.modelTerms.some((term) => !(session.model ?? '').toLowerCase().includes(term))) {
+      return false
+    }
+    if (extendedQuery.branchTerms.some((term) => !(session.branch ?? '').toLowerCase().includes(term))) {
       return false
     }
     // Hide plain empty sessions, but keep sessions with resumable content
@@ -115,7 +167,17 @@ export function filterAiVaultSessions(
         return false
       }
     }
-    return matchesQuery(session, parsedQuery, filters)
+    if (skipCardTerms) {
+      return matchesAiVaultQueryOperators(
+        {
+          cwd: session.cwd,
+          filePath: session.filePath,
+          repoLabel: repoLabelForSession(session, filters)
+        },
+        parsedQuery
+      )
+    }
+    return matchesQuery(session, parsedQuery, filters, searchScope, options.forceCardTerms === true)
   })
   if (filtered.length < 2) {
     return filtered
@@ -237,38 +299,52 @@ export function matchesAiVaultQueryOperators(
   return true
 }
 
+function repoLabelForSession(
+  session: AiVaultSession,
+  filters: Pick<AiVaultSessionFilterState, 'sessionProjectById' | 'projectLabelByKey'>
+): string | undefined {
+  const sessionProject = filters.sessionProjectById?.get(session.id)
+  return sessionProject?.kind === 'repo'
+    ? (filters.projectLabelByKey?.get(sessionProject.key) ?? sessionProject.label)
+    : undefined
+}
+
 function matchesQuery(
   session: AiVaultSession,
   parsed: ParsedQuery,
-  filters: Pick<AiVaultSessionFilterState, 'sessionProjectById' | 'projectLabelByKey'>
+  filters: Pick<AiVaultSessionFilterState, 'sessionProjectById' | 'projectLabelByKey'>,
+  searchScope: AiVaultSearchScope = DEFAULT_AI_VAULT_SEARCH_SCOPE,
+  forceCardTerms = false
 ): boolean {
   if (parsed.terms.length > 0) {
-    const searchable = [
-      session.title,
-      session.sessionId,
-      session.agent,
-      session.branch,
-      session.model,
-      session.cwd,
-      session.filePath,
-      sessionPreviewSearchText(session)
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
+    const preview = sessionPreviewSearchText(session)
+    const searchable = (
+      !forceCardTerms && searchScope === 'title'
+        ? session.title
+        : !forceCardTerms && searchScope === 'summary'
+          ? preview
+          : [
+              session.title,
+              session.sessionId,
+              session.agent,
+              session.branch,
+              session.model,
+              session.cwd,
+              session.filePath,
+              preview
+            ]
+              .filter(Boolean)
+              .join(' ')
+    ).toLowerCase()
     if (parsed.terms.some((term) => !searchable.includes(term))) {
       return false
     }
   }
-  const sessionProject = filters.sessionProjectById?.get(session.id)
   return matchesAiVaultQueryOperators(
     {
       cwd: session.cwd,
       filePath: session.filePath,
-      repoLabel:
-        sessionProject?.kind === 'repo'
-          ? (filters.projectLabelByKey?.get(sessionProject.key) ?? sessionProject.label)
-          : undefined
+      repoLabel: repoLabelForSession(session, filters)
     },
     parsed
   )
