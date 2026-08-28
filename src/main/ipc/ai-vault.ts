@@ -59,12 +59,32 @@ import {
 } from './ai-vault-session-title-routing'
 import { projectStructuredAiVaultSessions } from '../ai-vault/structured-session-ownership'
 import { AI_VAULT_ALL_HOST_TIMEOUT_MS } from './ai-vault-all-host-timeouts'
+import type { GlobalSettings } from '../../shared/global-settings-types'
+import type { Repo } from '../../shared/repo-types'
+import type {
+  AiVaultRankSessionsArgs,
+  AiVaultRankSessionsResult
+} from '../../shared/ai-vault-session-ai-query'
+import type {
+  AiVaultSearchSessionsArgs,
+  AiVaultSearchSessionsResult
+} from '../../shared/ai-vault-session-search-scope'
+import {
+  clearListedAiVaultSessions,
+  rankListedAiVaultSessions,
+  rememberListedAiVaultSessions,
+  searchListedAiVaultSessions,
+  syncDurableSessionIndex
+} from '../ai-vault/listed-session-search'
 
 type AiVaultHandlerOptions = AiVaultSessionSources &
   AiVaultResumeHandlerOptions & {
     getActiveRuntimeAiVaultHostInfos?: () => readonly RuntimeAiVaultHostInfo[]
     scanRuntimeAiVaultSessions?: RuntimeAiVaultScanner
     resolveRuntimeAiVaultSessionTitles?: RuntimeAiVaultSessionTitleResolver
+    getSettings?: () => GlobalSettings
+    getRepo?: (repoId: string) => Repo | undefined
+    getWslDistroForRepo?: (repo: Repo) => string | undefined
   }
 
 let scanCoordinator = new AiVaultScanCoordinator()
@@ -102,7 +122,7 @@ async function listAiVaultSessions(
   // Why: every renderer request carries its own cancellation signal, so
   // coalescing has to survive them — the coordinator hands all same-key callers
   // one scan and only aborts it once every one of them has cancelled.
-  return scanCoordinator.run({
+  const result = await scanCoordinator.run({
     key: scanKey,
     force: args?.force,
     signal: options.signal,
@@ -120,6 +140,8 @@ async function listAiVaultSessions(
       })
     }
   })
+  rememberListedAiVaultSessions(result.sessions)
+  return result
 }
 
 async function scanAiVaultSessionsByHostScope(
@@ -252,7 +274,7 @@ async function scanLocalAiVaultSessions(
   // Why: the shared cache module owns codex-home/WSL sourcing and the local
   // scan cache, so the desktop IPC path and the runtime RPC method (mobile)
   // share one cache instance and one source of managed-Codex homes.
-  return listCachedLocalAiVaultSessions(
+  const result = await listCachedLocalAiVaultSessions(
     {
       limit: args?.limit,
       unlimited: args?.unlimited,
@@ -261,6 +283,8 @@ async function scanLocalAiVaultSessions(
     },
     { signal }
   )
+  syncDurableSessionIndex(result)
+  return result
 }
 
 export function registerAiVaultHandlers(options: AiVaultHandlerOptions = {}): void {
@@ -314,6 +338,18 @@ export function registerAiVaultHandlers(options: AiVaultHandlerOptions = {}): vo
     handleAiVaultGetFirstUserPrompt(args)
   )
   registerAiVaultDeleteHandler(aiVaultDeleteDeps)
+  ipcMain.handle(
+    'aiVault:rankSessions',
+    (_event, args: AiVaultRankSessionsArgs): Promise<AiVaultRankSessionsResult> =>
+      rankListedAiVaultSessions(args, handlerOptions)
+  )
+  // Why: main's `aiVault:searchSessions` is the host-scoped index. Listed-file
+  // rg/FTS for Session History scopes uses this sibling channel.
+  ipcMain.handle(
+    'aiVault:searchListedSessions',
+    (_event, args: AiVaultSearchSessionsArgs): Promise<AiVaultSearchSessionsResult> =>
+      searchListedAiVaultSessions(args)
+  )
   // macOS app activation skips DOM focus events, so emit the refresh signal here.
   app.on('browser-window-focus', (_event, window) => {
     if (!window.isDestroyed()) {
@@ -326,6 +362,7 @@ function resetAiVaultCacheForTests(): void {
   resetAiVaultHostLegCacheForTests()
   scanCoordinator = new AiVaultScanCoordinator()
   handlerOptions = {}
+  clearListedAiVaultSessions()
   // Keep tests isolated from the shared local-leg cache.
   resetAiVaultSessionListCacheForTests()
 }
