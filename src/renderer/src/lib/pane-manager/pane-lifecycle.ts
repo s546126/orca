@@ -56,13 +56,27 @@ export function openTerminal(pane: ManagedPaneInternal): void {
   terminal.loadAddon(serializeAddon)
   terminal.loadAddon(unicode11Addon)
   terminal.loadAddon(webLinksAddon)
+  // Why: @xterm/addon-image is still beta (Kitty TGP is alpha upstream). A
+  // construct/load failure must not abort the rest of openTerminal — text
+  // panes should still come up.
   // Why size reports stay off: Orca's capability responder already answers
   // CSI 14t/16t (pty-connection), so xterm's built-in responder would send a
   // second reply that leaks stray bytes into program stdin (#7329 class).
   // Storage capped at 64MB (half default) since Orca may have many panes.
-  const imageAddon = new ImageAddon({ enableSizeReports: false, storageLimit: 64 })
-  terminal.loadAddon(imageAddon)
-  pane.imageAddon = imageAddon
+  let imageAddon: ImageAddon | null = null
+  try {
+    imageAddon = new ImageAddon({ enableSizeReports: false, storageLimit: 64 })
+    terminal.loadAddon(imageAddon)
+    pane.imageAddon = imageAddon
+  } catch (err) {
+    try {
+      imageAddon?.dispose()
+    } catch {
+      /* ignore — a half-constructed addon may throw on dispose */
+    }
+    pane.imageAddon = null
+    console.warn('[terminal] image addon failed to attach for pane', pane.id, err)
+  }
   attachTerminalMouseWheelMultiplier(terminal, {
     getTuiMouseWheelMultiplier: terminalTuiScrollSensitivity
   })
