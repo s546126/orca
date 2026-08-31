@@ -5,7 +5,7 @@ import { openTerminal } from './pane-lifecycle'
 const imageAddonMock = vi.hoisted(() => ({
   constructError: null as Error | null,
   loadError: null as Error | null,
-  instances: [] as Array<{ dispose: ReturnType<typeof vi.fn> }>
+  instances: [] as { dispose: ReturnType<typeof vi.fn> }[]
 }))
 
 vi.mock('@xterm/addon-image', () => ({
