@@ -113,6 +113,9 @@ export type ManagedPane = {
   fitAddon: FitAddon
   searchAddon: SearchAddon
   serializeAddon: SerializeAddon
+  // Why optional: DA1 withholds the sixel bit unless ImageAddon attached.
+  // Absent on older test fixtures and means "no graphics handler".
+  hasImageSupport?: boolean
 }
 
 export type PaneRenderingDiagnostics = {
@@ -166,7 +169,8 @@ export type ManagedPaneInternal = {
   // so the addon instance only exists while the feature is active. A null
   // value means "currently disabled".
   ligaturesAddon: LigaturesAddon | null
-  // Why nullable: image addon is loaded in openTerminal; null means not yet attached.
+  // Why nullable: image addon is loaded in openTerminal; null means not
+  // attached yet or construct/load failed (text-only pane, no sixel DA1).
   imageAddon: ImageAddon | null
   fitResizeObserver: ResizeObserver | null
   // Why: fit-element pixel size at the last successful fit; the reveal fit compares
