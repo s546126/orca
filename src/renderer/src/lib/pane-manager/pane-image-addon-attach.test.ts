@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ManagedPaneInternal } from './pane-manager-types'
 import { openTerminal } from './pane-lifecycle'
+import { toPublicPane } from './pane-public-view'
 
 const imageAddonMock = vi.hoisted(() => ({
   constructError: null as Error | null,
@@ -135,6 +136,7 @@ describe('openTerminal — image addon isolation', () => {
     openTerminal(pane)
 
     expect(pane.imageAddon).toBe(imageAddonMock.instances[0])
+    expect(toPublicPane(pane).hasImageSupport).toBe(true)
     expect(events).toContain('loadAddon:image')
     expect(events).toContain('activeVersion=11')
     expect(pane.arabicShapingJoinerCleanup).toBeTypeOf('function')
@@ -147,6 +149,7 @@ describe('openTerminal — image addon isolation', () => {
     openTerminal(pane)
 
     expect(pane.imageAddon).toBeNull()
+    expect(toPublicPane(pane).hasImageSupport).toBe(false)
     expect(imageAddonMock.instances).toHaveLength(0)
     expect(events).toContain('loadAddon:unicode11')
     expect(events).toContain('activeVersion=11')
@@ -165,6 +168,7 @@ describe('openTerminal — image addon isolation', () => {
     openTerminal(pane)
 
     expect(pane.imageAddon).toBeNull()
+    expect(toPublicPane(pane).hasImageSupport).toBe(false)
     expect(imageAddonMock.instances).toHaveLength(1)
     expect(imageAddonMock.instances[0]?.dispose).toHaveBeenCalledTimes(1)
     expect(events).not.toContain('loadAddon:image')
