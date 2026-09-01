@@ -171,5 +171,7 @@ describe('RuntimeEmulatorCommands folder workspace routing', () => {
     expect(typeof runtime.emulatorAdbConnect).toBe('function')
     expect(typeof runtime.emulatorAdbDisconnect).toBe('function')
     expect(typeof runtime.emulatorAdbConnectionStatus).toBe('function')
+    expect(typeof runtime.emulatorInstall).toBe('function')
+    expect(typeof runtime.emulatorLaunch).toBe('function')
   })
 })
