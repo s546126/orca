@@ -146,4 +146,19 @@ describe('searchAiVaultSessionsWithRg', () => {
     )
     expect(userFromError.matchedIds).toEqual([])
   })
+
+  it('does not spawn desktop rg for SSH-owned transcript paths', async () => {
+    const remote = createAiVaultTestSession({
+      id: 'claude:ssh',
+      executionHostId: 'ssh:dev-box',
+      filePath: '/home/ada/.claude/projects/remote.jsonl',
+      title: 'Remote pairing notes'
+    })
+    const result = await searchAiVaultSessionsWithRg(
+      { query: 'pairing', searchScope: 'full', sessionIds: [remote.id] },
+      new Map([[remote.id, remote]])
+    )
+    expect(result.usedRg).toBe(false)
+    expect(result.matchedIds).toEqual([])
+  })
 })
