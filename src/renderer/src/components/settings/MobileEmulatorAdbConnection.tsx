@@ -182,10 +182,7 @@ export function MobileEmulatorAdbConnection({
     if (next === previous) {
       return
     }
-    const previousSerial = resolveAdbDefaultHygieneSerial(
-      lastStatusRef.current,
-      previous || null
-    )
+    const previousSerial = resolveAdbDefaultHygieneSerial(lastStatusRef.current, previous || null)
     const updates: Partial<GlobalSettings> = { mobileEmulatorAdbAddress: next || null }
     if (shouldClearAdbDefaultDevice(settings.mobileEmulatorDefaultDeviceUdid, previousSerial)) {
       updates.mobileEmulatorDefaultDeviceUdid = null
