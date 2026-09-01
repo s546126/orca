@@ -13,3 +13,21 @@ export function shouldClearAdbDefaultDevice(
   }
   return defaultDeviceUdid === previousRuntimeSerial
 }
+
+export type AdbLastStatusPair = {
+  address: string | null
+  serial: string | null
+}
+
+// Why: ADB TCP serials equal the saved host:port. Before the mount status
+// request returns, lastStatus is still empty — use the previous address so
+// default-device cleanup still matches the device that is going away.
+export function resolveAdbDefaultHygieneSerial(
+  lastStatus: AdbLastStatusPair,
+  previousAddress: string | null
+): string | null {
+  if (lastStatus.address === previousAddress && lastStatus.serial) {
+    return lastStatus.serial
+  }
+  return previousAddress
+}
