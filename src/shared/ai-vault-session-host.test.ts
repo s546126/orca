@@ -1,6 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import { deriveAiVaultSessionHost } from './ai-vault-session-host'
+import { deriveAiVaultSessionHost, sessionTranscriptIsRemoteOwned } from './ai-vault-session-host'
 import { createAiVaultTestSession } from './ai-vault-session-test-session'
+
+describe('sessionTranscriptIsRemoteOwned', () => {
+  it('treats SSH and runtime hosts as remote-owned transcripts', () => {
+    expect(
+      sessionTranscriptIsRemoteOwned(
+        createAiVaultTestSession({ id: 'ssh', executionHostId: 'ssh:dev-box' })
+      )
+    ).toBe(true)
+    expect(
+      sessionTranscriptIsRemoteOwned(
+        createAiVaultTestSession({ id: 'runtime', executionHostId: 'runtime:env-1' })
+      )
+    ).toBe(true)
+    expect(
+      sessionTranscriptIsRemoteOwned(
+        createAiVaultTestSession({ id: 'local', executionHostId: 'local' })
+      )
+    ).toBe(false)
+  })
+})
 
 describe('deriveAiVaultSessionHost', () => {
   it('marks WSL UNC session paths and leaves ordinary paths local', () => {
