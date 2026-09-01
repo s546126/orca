@@ -50,6 +50,33 @@ describe('/shared ai-vault-session-filters (lifted core)', () => {
     ).toEqual(['claude:1'])
   })
 
+  it('keeps card-term matching when searchScope is unset', () => {
+    expect(
+      filterAiVaultSessions([baseSession, otherSession], {
+        query: 'repair',
+        agents: ['claude', 'codex'],
+        scope: 'all',
+        sort: 'updated',
+        activeWorktreePaths: [],
+        hideEmptySessions: true
+      }).map((session) => session.id)
+    ).toEqual(['codex:2'])
+  })
+
+  it('skips card terms for an explicit full-text rg scope', () => {
+    expect(
+      filterAiVaultSessions([baseSession, otherSession], {
+        query: 'repair',
+        agents: ['claude', 'codex'],
+        scope: 'all',
+        sort: 'updated',
+        activeWorktreePaths: [],
+        hideEmptySessions: true,
+        searchScope: 'full'
+      }).map((session) => session.id)
+    ).toEqual(['claude:1', 'codex:2'])
+  })
+
   it('hides empty sessions by default and keeps non-empty ones', () => {
     // A session only counts as empty without conversation previews or
     // recoverable signals — preview turns alone make it resumable content.

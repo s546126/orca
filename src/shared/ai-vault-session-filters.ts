@@ -90,9 +90,15 @@ export function filterAiVaultSessions(
   const index = options.index ?? createEphemeralIndex(sessions, filters)
   const termMode = options.termMode ?? 'and'
   const queryTerms = options.queryTerms ?? parsedQuery.terms
-  const searchScope = filters.searchScope ?? DEFAULT_AI_VAULT_SEARCH_SCOPE
-  const skipIndexTerms = isAiVaultRgSearchScope(searchScope) && options.forceCardTerms !== true
-  const candidateIds = skipIndexTerms ? null : index.query(queryTerms, termMode)
+  const explicitSearchScope = filters.searchScope
+  const searchScope = explicitSearchScope ?? DEFAULT_AI_VAULT_SEARCH_SCOPE
+  // Why: mobile and other card-only callers omit searchScope. An unset scope
+  // must keep metadata terms; only an explicit rg scope defers them to rg/FTS.
+  const applyCardTerms =
+    options.forceCardTerms === true ||
+    explicitSearchScope === undefined ||
+    !isAiVaultRgSearchScope(explicitSearchScope)
+  const candidateIds = applyCardTerms ? index.query(queryTerms, termMode) : null
   const agentSet = new Set(filters.agents)
   const hostSet = new Set(filters.hosts ?? [])
   const rangeStartMs = timeRangeStartMs(filters.timeRange ?? 'all', options.nowMs ?? Date.now())
@@ -120,15 +126,7 @@ export function filterAiVaultSessions(
     ) {
       continue
     }
-    if (
-      !matchesSearchScopeTerms(
-        document,
-        queryTerms,
-        searchScope,
-        termMode,
-        options.forceCardTerms === true
-      )
-    ) {
+    if (!matchesSearchScopeTerms(document, queryTerms, searchScope, termMode, applyCardTerms)) {
       continue
     }
     matches.push(byId.get(session.id) ?? session)
@@ -154,19 +152,20 @@ function matchesSearchScopeTerms(
   terms: readonly string[],
   searchScope: AiVaultSearchScope,
   termMode: AiVaultIndexQueryMode,
-  forceCardTerms: boolean
+  applyCardTerms: boolean
 ): boolean {
   if (terms.length === 0) {
     return true
   }
-  if (isAiVaultRgSearchScope(searchScope) && !forceCardTerms) {
+  if (!applyCardTerms) {
     return true
   }
-  const haystack = forceCardTerms
-    ? document.searchable
-    : searchScope === 'title'
+  const haystack =
+    searchScope === 'title'
       ? document.titleSearchable
-      : document.summarySearchable
+      : searchScope === 'summary'
+        ? document.summarySearchable
+        : document.searchable
   if (termMode === 'or') {
     return terms.some((term) => haystack.includes(term))
   }
