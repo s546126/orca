@@ -14,6 +14,7 @@ import {
   type AiVaultSearchSessionsArgs,
   type AiVaultSearchSessionsResult
 } from '../../shared/ai-vault-session-search-scope'
+import { sessionTranscriptIsRemoteOwned } from '../../shared/ai-vault-session-host'
 import { transcriptLineMatchesSearchScope } from '../../shared/ai-vault-session-transcript-scope'
 import type { AiVaultSession } from '../../shared/ai-vault-types'
 import { wslAwareSpawn } from '../git/runner'
@@ -40,7 +41,7 @@ export async function searchAiVaultSessionsWithRg(
       break
     }
     const session = sessionsById.get(sessionId)
-    if (!session) {
+    if (!session || sessionTranscriptIsRemoteOwned(session)) {
       continue
     }
     const sessionTargets = aiVaultSessionRgTargets(session)
