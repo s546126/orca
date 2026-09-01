@@ -24,10 +24,7 @@ describe('partitionListedSearchSessions', () => {
     ])
 
     expect(
-      partitionListedSearchSessions(
-        [local.id, ssh.id, runtime.id, 'claude:unknown'],
-        sessionsById
-      )
+      partitionListedSearchSessions([local.id, ssh.id, runtime.id, 'claude:unknown'], sessionsById)
     ).toEqual({
       localIds: [local.id, 'claude:unknown'],
       remoteSessions: [ssh, runtime]
