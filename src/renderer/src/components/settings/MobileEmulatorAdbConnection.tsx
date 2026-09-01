@@ -7,7 +7,10 @@ import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
-import { shouldClearAdbDefaultDevice } from './mobile-emulator-adb-default-device-hygiene'
+import {
+  resolveAdbDefaultHygieneSerial,
+  shouldClearAdbDefaultDevice
+} from './mobile-emulator-adb-default-device-hygiene'
 import { translate } from '@/i18n/i18n'
 
 // Renderer-safe mirror of src/main/emulator/android/adb-device-connection.ts —
@@ -179,8 +182,10 @@ export function MobileEmulatorAdbConnection({
     if (next === previous) {
       return
     }
-    const previousSerial =
-      lastStatusRef.current.address === (previous || null) ? lastStatusRef.current.serial : null
+    const previousSerial = resolveAdbDefaultHygieneSerial(
+      lastStatusRef.current,
+      previous || null
+    )
     const updates: Partial<GlobalSettings> = { mobileEmulatorAdbAddress: next || null }
     if (shouldClearAdbDefaultDevice(settings.mobileEmulatorDefaultDeviceUdid, previousSerial)) {
       updates.mobileEmulatorDefaultDeviceUdid = null
@@ -249,8 +254,7 @@ export function MobileEmulatorAdbConnection({
     if (!address) {
       return
     }
-    const previousSerial =
-      lastStatusRef.current.address === address ? lastStatusRef.current.serial : null
+    const previousSerial = resolveAdbDefaultHygieneSerial(lastStatusRef.current, address)
     if (shouldClearAdbDefaultDevice(settings.mobileEmulatorDefaultDeviceUdid, previousSerial)) {
       updateSettings({ mobileEmulatorDefaultDeviceUdid: null })
     }

@@ -241,15 +241,26 @@ export class RuntimeEmulatorCommands {
     return worktree ? await this.host.resolveEmulatorCleanupWorkspaceId(worktree) : undefined
   }
 
-  // ── ADB network device connection ── (RuntimeEmulatorAdbCommands, own file,
-  // keeps this file under the max-lines limit.)
-  emulatorAdbConnect: RuntimeEmulatorAdbCommands['emulatorAdbConnect'] = (params) =>
-    this.adbCommands.emulatorAdbConnect(params)
-  emulatorAdbDisconnect: RuntimeEmulatorAdbCommands['emulatorAdbDisconnect'] = (params) =>
-    this.adbCommands.emulatorAdbDisconnect(params)
-  emulatorAdbConnectionStatus: RuntimeEmulatorAdbCommands['emulatorAdbConnectionStatus'] = (
-    params
-  ) => this.adbCommands.emulatorAdbConnectionStatus(params)
+  // Why: these must be prototype methods. bindPrefixedMethods only copies
+  // emulator* names from the prototype, so instance-field arrows would never
+  // appear on the runtime edge surface.
+  async emulatorAdbConnect(
+    params: Parameters<RuntimeEmulatorAdbCommands['emulatorAdbConnect']>[0]
+  ): ReturnType<RuntimeEmulatorAdbCommands['emulatorAdbConnect']> {
+    return this.adbCommands.emulatorAdbConnect(params)
+  }
+
+  async emulatorAdbDisconnect(
+    params: Parameters<RuntimeEmulatorAdbCommands['emulatorAdbDisconnect']>[0]
+  ): ReturnType<RuntimeEmulatorAdbCommands['emulatorAdbDisconnect']> {
+    return this.adbCommands.emulatorAdbDisconnect(params)
+  }
+
+  async emulatorAdbConnectionStatus(
+    params: Parameters<RuntimeEmulatorAdbCommands['emulatorAdbConnectionStatus']>[0]
+  ): ReturnType<RuntimeEmulatorAdbCommands['emulatorAdbConnectionStatus']> {
+    return this.adbCommands.emulatorAdbConnectionStatus(params)
+  }
 
   async emulatorInstall(
     params: EmulatorTargetParams & { path: string; reinstall?: boolean }
