@@ -13,6 +13,10 @@ import {
 import type { AiVaultListResult, AiVaultSession } from '../../shared/ai-vault-types'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { Repo } from '../../shared/repo-types'
+import {
+  matchListedSessionsByCardMetadata,
+  partitionListedSearchSessions
+} from './listed-session-remote-search'
 import { rankAiVaultSessionsWithModel } from './session-ai-rerank'
 import {
   getAiVaultSessionMessageFtsStore,
@@ -104,35 +108,62 @@ export async function searchListedAiVaultSessions(
   const sessionsById = new Map<string, AiVaultSession>(
     lastListedSessions.map((session) => [session.id, session])
   )
-  const fts = await searchListedSessionsWithMessageFts({
-    query: args.query,
-    searchScope: args.searchScope,
-    sessionIds
-  })
+  const { localIds, remoteSessions } = partitionListedSearchSessions(sessionIds, sessionsById)
+  const remoteMatchedIds = matchListedSessionsByCardMetadata(remoteSessions, args.query)
+  const fts =
+    localIds.length === 0
+      ? null
+      : await searchListedSessionsWithMessageFts({
+          query: args.query,
+          searchScope: args.searchScope,
+          sessionIds: localIds
+        })
   if (!fts) {
-    return searchAiVaultSessionsWithRg(
-      { query: args.query, searchScope: args.searchScope, sessionIds },
+    // Why: remote-only lists must not report empty local-rg success; the
+    // renderer then card-filters. Mixed lists rg local files only.
+    if (localIds.length === 0) {
+      return emptyAiVaultSearchSessionsResult()
+    }
+    const rg = await searchAiVaultSessionsWithRg(
+      { query: args.query, searchScope: args.searchScope, sessionIds: localIds },
       sessionsById
     )
+    return withRemoteCardMatches(rg, remoteMatchedIds)
   }
   const indexed = new Set(fts.indexedSessionIds)
-  const unindexedIds = sessionIds.filter((id) => !indexed.has(id))
-  if (unindexedIds.length === 0) {
-    return toFtsSearchResult(fts)
+  const unindexedLocalIds = localIds.filter((id) => !indexed.has(id))
+  if (unindexedLocalIds.length === 0) {
+    return withRemoteCardMatches(toFtsSearchResult(fts), remoteMatchedIds)
   }
-  // Why: SSH/unreadable transcripts stay off the local FTS index; rg those only
-  // so Without-tools empty FTS hits are not reopened to tool-payload matches.
+  // Why: only locally readable unindexed transcripts go to desktop rg.
+  // SSH/runtime stay on card metadata so a missing remote path is not a miss.
   const rg = await searchAiVaultSessionsWithRg(
-    { query: args.query, searchScope: args.searchScope, sessionIds: unindexedIds },
+    { query: args.query, searchScope: args.searchScope, sessionIds: unindexedLocalIds },
     sessionsById
   )
+  return withRemoteCardMatches(
+    {
+      matchedIds: uniqueStrings([...fts.matchedIds, ...rg.matchedIds]),
+      usedRg: rg.usedRg,
+      usedFts: true,
+      truncated: rg.truncated,
+      degraded: fts.degraded,
+      hits: fts.hits
+    },
+    remoteMatchedIds
+  )
+}
+
+function withRemoteCardMatches(
+  result: AiVaultSearchSessionsResult,
+  remoteMatchedIds: readonly string[]
+): AiVaultSearchSessionsResult {
+  if (remoteMatchedIds.length === 0) {
+    return result
+  }
   return {
-    matchedIds: uniqueStrings([...fts.matchedIds, ...rg.matchedIds]),
-    usedRg: rg.usedRg,
-    usedFts: true,
-    truncated: rg.truncated,
-    degraded: fts.degraded,
-    hits: fts.hits
+    ...result,
+    matchedIds: uniqueStrings([...result.matchedIds, ...remoteMatchedIds])
   }
 }
 

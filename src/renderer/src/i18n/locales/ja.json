@@ -13263,7 +13263,7 @@
             "searchIn": "検索対象"
           },
           "AiVaultSearchField": {
-            "65b6a40200": "Pick an agent in Settings -> Git -> Source Control AI."
+            "65b6a40200": "設定 -> Git -> ソース管理 AI でエージェントを選択してください。"
           },
           "AiVaultSessionDetails": {
             "updated": "更新済み",
