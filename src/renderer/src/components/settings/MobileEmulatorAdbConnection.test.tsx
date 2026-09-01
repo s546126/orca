@@ -196,6 +196,65 @@ describe('MobileEmulatorAdbConnection', () => {
     expect(screen.getByText(/Approve the RSA key prompt/i)).toBeVisible()
   })
 
+  it('clears a default device matching the previous address even before status returns', async () => {
+    const statusDeferred = createDeferred<unknown>()
+    callMock.mockImplementation(async ({ method }: RuntimeCallRequest) => {
+      if (method === 'emulator.adbConnectionStatus') {
+        return runtimeSuccess(await statusDeferred.promise)
+      }
+      throw new Error(`unexpected method ${method}`)
+    })
+    const { user, updateSettings } = renderConnection({
+      mobileEmulatorAdbAddress: '192.168.1.50:5555',
+      mobileEmulatorDefaultDeviceUdid: '192.168.1.50:5555'
+    })
+
+    const input = screen.getByLabelText('Device address')
+    await user.clear(input)
+    await user.type(input, '10.0.0.8:5555')
+    await user.tab()
+
+    expect(updateSettings).toHaveBeenCalledWith({
+      mobileEmulatorAdbAddress: '10.0.0.8:5555',
+      mobileEmulatorDefaultDeviceUdid: null
+    })
+
+    statusDeferred.resolve({
+      state: 'disconnected',
+      address: '192.168.1.50:5555',
+      serial: '192.168.1.50:5555'
+    })
+  })
+
+  it('preserves an unrelated default device when replacing the address before status returns', async () => {
+    const statusDeferred = createDeferred<unknown>()
+    callMock.mockImplementation(async ({ method }: RuntimeCallRequest) => {
+      if (method === 'emulator.adbConnectionStatus') {
+        return runtimeSuccess(await statusDeferred.promise)
+      }
+      throw new Error(`unexpected method ${method}`)
+    })
+    const { user, updateSettings } = renderConnection({
+      mobileEmulatorAdbAddress: '192.168.1.50:5555',
+      mobileEmulatorDefaultDeviceUdid: 'emulator-5554'
+    })
+
+    const input = screen.getByLabelText('Device address')
+    await user.clear(input)
+    await user.type(input, '10.0.0.8:5555')
+    await user.tab()
+
+    expect(updateSettings).toHaveBeenCalledWith({
+      mobileEmulatorAdbAddress: '10.0.0.8:5555'
+    })
+
+    statusDeferred.resolve({
+      state: 'disconnected',
+      address: '192.168.1.50:5555',
+      serial: '192.168.1.50:5555'
+    })
+  })
+
   it('shows an unsupported note and no actionable buttons when the RPC method is unavailable', async () => {
     callMock.mockResolvedValue(
       runtimeFailure('method_not_found', 'Unknown method: emulator.adbConnectionStatus')
