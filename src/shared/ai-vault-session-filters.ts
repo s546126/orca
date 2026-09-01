@@ -108,8 +108,14 @@ export function filterAiVaultSessions(
   const parsedQuery = parseVaultQuery(filters.query)
   const extendedQuery = parseExtendedVaultQuery(filters.query)
   const rangeStartMs = timeRangeStartMs(filters.timeRange ?? 'all', options.nowMs ?? Date.now())
-  const searchScope = filters.searchScope ?? DEFAULT_AI_VAULT_SEARCH_SCOPE
-  const skipCardTerms = isAiVaultRgSearchScope(searchScope) && options.forceCardTerms !== true
+  const explicitSearchScope = filters.searchScope
+  const searchScope = explicitSearchScope ?? DEFAULT_AI_VAULT_SEARCH_SCOPE
+  // Why: mobile and other card-only callers omit searchScope. An unset scope
+  // must keep metadata terms; only an explicit rg scope defers them to rg/FTS.
+  const skipCardTerms =
+    options.forceCardTerms !== true &&
+    explicitSearchScope !== undefined &&
+    isAiVaultRgSearchScope(explicitSearchScope)
   const workspaceMatchers =
     filters.scope === 'workspace'
       ? filters.activeWorktreePaths.map(createAiVaultWorkspaceMatcher)
