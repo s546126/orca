@@ -160,8 +160,7 @@ export function persistedUIWriteFieldsToWireUpdate(
       // main, which owns a mutable array — copy at the boundary rather than widening the wire type.
       update.filterRepoIds = [...(fields.filterRepoIds ?? [])]
     } else if (field === 'filterAgentIds') {
-      update.filterAgentIds =
-        fields.filterAgentIds == null ? null : [...fields.filterAgentIds]
+      update.filterAgentIds = fields.filterAgentIds == null ? null : [...fields.filterAgentIds]
     } else {
       assignSameNameWireField(
         update,
