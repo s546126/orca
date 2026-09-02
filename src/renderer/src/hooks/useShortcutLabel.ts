@@ -27,6 +27,15 @@ export function formatShortcutLabel(
   )
 }
 
+export function formatPrimaryShortcutLabel(
+  actionId: KeybindingActionId,
+  overrides?: KeybindingOverrides
+): string {
+  const platform = getShortcutPlatform()
+  const [binding] = getEffectiveKeybindingsForAction(actionId, platform, overrides)
+  return binding ? formatKeybindingList([binding], platform) : 'Unassigned'
+}
+
 export function useShortcutLabel(actionId: KeybindingActionId): string {
   const keybindings = useAppStore((state) => state.keybindings)
   return formatShortcutLabel(actionId, keybindings)
@@ -52,18 +61,6 @@ export function useOptionalShortcutLabel(actionId: KeybindingActionId): string |
   return formatOptionalShortcutLabel(actionId, keybindings)
 }
 
-export function formatShortcutKeys(
-  actionId: KeybindingActionId,
-  overrides?: KeybindingOverrides
-): string[] {
-  return formatShortcutKeyComboDetails(actionId, overrides)[0]?.keys ?? []
-}
-
-export function useShortcutKeys(actionId: KeybindingActionId): string[] {
-  const keybindings = useAppStore((state) => state.keybindings)
-  return formatShortcutKeys(actionId, keybindings)
-}
-
 export function formatShortcutKeyComboDetails(
   actionId: KeybindingActionId,
   overrides?: KeybindingOverrides
@@ -84,15 +81,4 @@ export function useShortcutKeyComboDetails(
 
 export function useShortcutKeyDetails(actionId: KeybindingActionId): ShortcutKeyComboDetails {
   return useShortcutKeyComboDetails(actionId)[0] ?? { keys: [], doubleTap: false }
-}
-
-export function formatShortcutKeyCombos(
-  actionId: KeybindingActionId,
-  overrides?: KeybindingOverrides
-): string[][] {
-  return formatShortcutKeyComboDetails(actionId, overrides).map((combo) => combo.keys)
-}
-
-export function useShortcutKeyCombos(actionId: KeybindingActionId): string[][] {
-  return useShortcutKeyComboDetails(actionId).map((combo) => combo.keys)
 }
