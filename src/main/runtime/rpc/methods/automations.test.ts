@@ -13,6 +13,10 @@ describe('automation RPC methods', () => {
     const runtime = {
       getRuntimeId: () => 'test-runtime',
       listAutomations: vi.fn().mockReturnValue([{ id: 'auto-1', name: 'Daily review' }]),
+      listAutomationsForScope: vi.fn().mockReturnValue({
+        automations: [{ id: 'auto-1', name: 'Daily review' }],
+        items: [{ automationId: 'auto-1', selector: { kind: 'self' } }]
+      }),
       showAutomation: vi.fn().mockReturnValue({ id: 'auto-1', name: 'Daily review' }),
       createAutomation: vi.fn().mockResolvedValue({ id: 'auto-2', name: 'New review' }),
       updateAutomation: vi.fn().mockResolvedValue({ id: 'auto-1', name: 'Paused' }),
@@ -48,6 +52,7 @@ describe('automation RPC methods', () => {
           providerIdentity: { provider: 'github', owner: 'stablyai', repo: 'orca' }
         },
         repo: 'repo-1',
+        setupDecision: 'skip',
         reuseSession: true,
         rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
         dtstart: 1
@@ -58,6 +63,7 @@ describe('automation RPC methods', () => {
         id: 'auto-1',
         updates: {
           enabled: false,
+          setupDecision: 'run',
           reuseSession: false,
           rrule: '0 9 * * 1-5',
           dtstart: 2
@@ -68,8 +74,9 @@ describe('automation RPC methods', () => {
     await dispatcher.dispatch(makeRequest('automation.runNow', { id: 'auto-1' }))
     await dispatcher.dispatch(makeRequest('automation.runs', { automationId: 'auto-1' }))
 
-    expect(runtime.listAutomations).toHaveBeenCalled()
-    expect(runtime.showAutomation).toHaveBeenCalledWith('auto-1')
+    expect(runtime.listAutomationsForScope).toHaveBeenCalledWith({})
+    // A legacy client sends no precondition, so each call forwards an absent expected owner.
+    expect(runtime.showAutomation).toHaveBeenCalledWith('auto-1', undefined)
     expect(runtime.createAutomation).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'New review',
@@ -79,16 +86,23 @@ describe('automation RPC methods', () => {
         runContext: expect.objectContaining({ hostId: 'runtime:gpu' }),
         sourceContext: expect.objectContaining({ hostId: 'local' }),
         repo: 'repo-1',
+        setupDecision: 'skip',
         reuseSession: true
       })
     )
     expect(runtime.updateAutomation).toHaveBeenCalledWith(
       'auto-1',
-      expect.objectContaining({ enabled: false, reuseSession: false, rrule: '0 9 * * 1-5' })
+      expect.objectContaining({
+        enabled: false,
+        setupDecision: 'run',
+        reuseSession: false,
+        rrule: '0 9 * * 1-5'
+      }),
+      { expectedOwner: undefined, destination: undefined }
     )
-    expect(runtime.deleteAutomation).toHaveBeenCalledWith('auto-1')
-    expect(runtime.runAutomationNow).toHaveBeenCalledWith('auto-1')
-    expect(runtime.listAutomationRuns).toHaveBeenCalledWith('auto-1')
+    expect(runtime.deleteAutomation).toHaveBeenCalledWith('auto-1', undefined)
+    expect(runtime.runAutomationNow).toHaveBeenCalledWith('auto-1', undefined)
+    expect(runtime.listAutomationRuns).toHaveBeenCalledWith('auto-1', undefined)
   })
 
   it('rejects unknown providers and invalid schedules', async () => {
@@ -139,6 +153,10 @@ describe('automation RPC methods', () => {
       })
     )
 
-    expect(runtime.updateAutomation).toHaveBeenCalledWith('auto-1', { baseBranch: null })
+    expect(runtime.updateAutomation).toHaveBeenCalledWith(
+      'auto-1',
+      { baseBranch: null },
+      { expectedOwner: undefined, destination: undefined }
+    )
   })
 })

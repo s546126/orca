@@ -3,31 +3,56 @@ import type { EmulatorBridge } from '../emulator/emulator-bridge'
 import { EmulatorError } from '../emulator/emulator-errors'
 import {
   inspectEmulatorAvailability,
-  pickDefaultSimulatorDevice,
   type EmulatorAvailability
 } from '../emulator/emulator-availability'
-import { serveSimStateWatcher } from '../emulator/serve-sim-state-watcher'
+import { resolveDefaultAttachDevice } from '../emulator/emulator-default-attach-device'
+import { setConfiguredAndroidSdkPath } from '../emulator/android/android-sdk-host-discovery'
 import type { EmulatorGesturePoint } from '../emulator/emulator-gesture-sender'
 import type { EmulatorSessionInfo } from '../emulator/emulator-types'
 import type { SimulatorDevice } from '../emulator/simctl-simulator-devices'
-import type { GlobalSettings } from '../../shared/types'
+import type { EmulatorDevice } from '../emulator/backends/emulator-backend'
+import type { GlobalSettings } from '../../shared/global-settings-types'
+import { RuntimeEmulatorAdbCommands } from './orca-runtime-emulator-adb'
+import { RuntimeEmulatorCapabilityCommands } from './orca-runtime-emulator-capabilities'
+
+// Settings slice the emulator surface needs; keeps the host contract honest (no widening cast).
+type EmulatorHostSettings = Pick<
+  GlobalSettings,
+  'mobileEmulatorEnabled' | 'mobileEmulatorDefaultDeviceUdid' | 'androidSdkPath'
+>
 
 // Why: dedicated file for "one surface" separation (emulator), parallel to orca-runtime-browser.ts. Keeps OrcaRuntimeService focused; emulator routing easy to scan. No max-lines disable (split further if grows; per AGENTS + plan Phase 3).
 export type RuntimeEmulatorCommandHost = {
   getEmulatorBridge(): EmulatorBridge | null
-  resolveWorktreeSelector(selector: string): Promise<{ id: string }>
+  resolveEmulatorWorkspaceId(selector: string): Promise<string>
+  resolveEmulatorCleanupWorkspaceId(selector: string): Promise<string>
   getAuthoritativeWindow(): BrowserWindow
-  getSettings(): Pick<GlobalSettings, 'mobileEmulatorEnabled' | 'mobileEmulatorDefaultDeviceUdid'>
+  getSettings(): EmulatorHostSettings
 }
 
+type EmulatorTargetParams = { device?: string; emulator?: string; worktree?: string }
+
 export class RuntimeEmulatorCommands {
-  constructor(private readonly host: RuntimeEmulatorCommandHost) {}
+  private readonly adbCommands: RuntimeEmulatorAdbCommands
+  private readonly capabilityCommands: RuntimeEmulatorCapabilityCommands
+
+  constructor(private readonly host: RuntimeEmulatorCommandHost) {
+    this.adbCommands = new RuntimeEmulatorAdbCommands({
+      requireEmulatorBridge: () => this.requireEmulatorBridge()
+    })
+    this.capabilityCommands = new RuntimeEmulatorCapabilityCommands({
+      requireEmulatorBridge: () => this.requireEmulatorBridge(),
+      resolveWorktreeId: (worktree) => this.resolveWorktreeId(worktree)
+    })
+  }
 
   private requireEmulatorBridge(): EmulatorBridge {
     const bridge = this.host.getEmulatorBridge()
     if (!bridge) {
       throw new EmulatorError('emulator_no_active', 'No emulator session is active')
     }
+    // Honor the user's configured Android SDK path before the backend resolves it.
+    setConfiguredAndroidSdkPath(this.host.getSettings().androidSdkPath ?? null)
     return bridge
   }
 
@@ -35,17 +60,11 @@ export class RuntimeEmulatorCommands {
   private static readonly OK = { ok: true as const }
 
   // High-level delegation (mirror browser* methods).
-  async emulatorTap(params: {
-    x: number
-    y: number
-    device?: string
-    emulator?: string
-    worktree?: string
-  }): Promise<{ ok: true }> {
+  async emulatorTap(
+    params: EmulatorTargetParams & { x: number; y: number }
+  ): Promise<{ ok: true }> {
     const bridge = this.requireEmulatorBridge()
-    const worktreeId = params.worktree
-      ? (await this.host.resolveWorktreeSelector(params.worktree)).id
-      : undefined
+    const worktreeId = await this.resolveWorktreeId(params.worktree)
     await bridge.tap(params.x, params.y, { device: params.device ?? params.emulator, worktreeId })
     return RuntimeEmulatorCommands.OK
   }
@@ -57,9 +76,7 @@ export class RuntimeEmulatorCommands {
     worktree?: string
   }): Promise<{ ok: true }> {
     const bridge = this.requireEmulatorBridge()
-    const worktreeId = params.worktree
-      ? (await this.host.resolveWorktreeSelector(params.worktree)).id
-      : undefined
+    const worktreeId = await this.resolveWorktreeId(params.worktree)
     await bridge.gesture(params.points, { device: params.device ?? params.emulator, worktreeId })
     return RuntimeEmulatorCommands.OK
   }
@@ -71,9 +88,7 @@ export class RuntimeEmulatorCommands {
     worktree?: string
   }): Promise<{ ok: true }> {
     const bridge = this.requireEmulatorBridge()
-    const worktreeId = params.worktree
-      ? (await this.host.resolveWorktreeSelector(params.worktree)).id
-      : undefined
+    const worktreeId = await this.resolveWorktreeId(params.worktree)
     await bridge.type(params.text, { device: params.device ?? params.emulator, worktreeId })
     return RuntimeEmulatorCommands.OK
   }
@@ -85,9 +100,7 @@ export class RuntimeEmulatorCommands {
     worktree?: string
   }): Promise<{ ok: true }> {
     const bridge = this.requireEmulatorBridge()
-    const worktreeId = params.worktree
-      ? (await this.host.resolveWorktreeSelector(params.worktree)).id
-      : undefined
+    const worktreeId = await this.resolveWorktreeId(params.worktree)
     await bridge.button(params.name, { device: params.device ?? params.emulator, worktreeId })
     return RuntimeEmulatorCommands.OK
   }
@@ -99,9 +112,7 @@ export class RuntimeEmulatorCommands {
     worktree?: string
   }): Promise<{ ok: true }> {
     const bridge = this.requireEmulatorBridge()
-    const worktreeId = params.worktree
-      ? (await this.host.resolveWorktreeSelector(params.worktree)).id
-      : undefined
+    const worktreeId = await this.resolveWorktreeId(params.worktree)
     await bridge.rotate(params.orientation, {
       device: params.device ?? params.emulator,
       worktreeId
@@ -116,9 +127,7 @@ export class RuntimeEmulatorCommands {
     worktree?: string
   }): Promise<unknown> {
     const bridge = this.requireEmulatorBridge()
-    const worktreeId = params.worktree
-      ? (await this.host.resolveWorktreeSelector(params.worktree)).id
-      : undefined
+    const worktreeId = await this.resolveWorktreeId(params.worktree)
     return bridge.exec(params.command, {
       device: params.device,
       emulator: params.emulator,
@@ -138,7 +147,7 @@ export class RuntimeEmulatorCommands {
     const bridge = this.requireEmulatorBridge()
     let device = params.device ?? settings.mobileEmulatorDefaultDeviceUdid ?? undefined
     if (!device) {
-      device = pickDefaultSimulatorDevice(await bridge.listSimulators())?.udid
+      device = await resolveDefaultAttachDevice(bridge)
     }
     if (!device) {
       throw new EmulatorError(
@@ -146,36 +155,52 @@ export class RuntimeEmulatorCommands {
         'No emulator device specified. Choose a default device in Settings > Mobile Emulator or pass a device.'
       )
     }
-    const worktreeId = params.worktree
-      ? (await this.host.resolveWorktreeSelector(params.worktree)).id
-      : undefined
+    const worktreeId = await this.resolveWorktreeId(params.worktree)
     if (worktreeId) {
       const reusable = await bridge.getReusableActiveForWorktree(worktreeId, device)
       if (reusable) {
         // Why: renderer remounts should reconnect to the existing stream, not
         // kill it and create the stream-disconnected reload loop users see.
-        serveSimStateWatcher.markOrcaManaged(reusable)
         this.notifyRendererEmulatorAutoAttach(worktreeId, reusable)
         if (params.focus) {
           this.notifyRendererEmulatorPaneFocus(worktreeId)
         }
         return { attached: true, info: reusable }
       }
-      // Why: a different requested device is an explicit simulator switch.
-      // Replace the old Orca-owned helper so switching does not leak devices.
-      const stoppedUdid = await bridge.stopActiveForWorktree(worktreeId, { shutdownDevice: true })
-      if (stoppedUdid) {
-        serveSimStateWatcher.unmarkOrcaManaged(stoppedUdid)
-      }
+      // A different requested device is an explicit switch; the bridge keeps a
+      // slow-to-boot Android emulator alive for instant switch-back.
+      await bridge.stopActiveForSwitch(worktreeId)
     }
-    const info = await bridge.startHelperForDevice(device)
+    const lease = await bridge.acquireHelperForDevice(device)
+    const { info } = lease
     if (worktreeId) {
+      try {
+        const currentWorktreeId = await this.resolveWorktreeId(params.worktree)
+        if (currentWorktreeId !== worktreeId) {
+          throw new EmulatorError(
+            'emulator_no_active',
+            'The workspace changed while the emulator was starting. Reattach the emulator.'
+          )
+        }
+      } catch (error) {
+        // Why: the workspace can disappear while a slow Android device boots.
+        await lease.release({ cleanupIfUnused: true }).catch(() => {})
+        if (error instanceof Error && error.message === 'selector_not_found') {
+          throw new EmulatorError(
+            'emulator_no_active',
+            'The workspace changed while the emulator was starting. Reattach the emulator.'
+          )
+        }
+        throw error
+      }
       bridge.registerActiveEmulator(worktreeId, info, { managed: true })
-      serveSimStateWatcher.markOrcaManaged(info)
+      await lease.release()
       this.notifyRendererEmulatorAutoAttach(worktreeId, info)
       if (params.focus) {
         this.notifyRendererEmulatorPaneFocus(worktreeId)
       }
+    } else {
+      await lease.release()
     }
     // Default: no auto steal (mirror browser tab create/switch). --focus sends emulator:pane-focus only when requested.
     return { attached: true, info }
@@ -188,9 +213,7 @@ export class RuntimeEmulatorCommands {
 
   async emulatorUnregisterActive(params: { worktree?: string }): Promise<{ ok: true }> {
     const bridge = this.requireEmulatorBridge()
-    const worktreeId = params.worktree
-      ? (await this.host.resolveWorktreeSelector(params.worktree)).id
-      : undefined
+    const worktreeId = await this.resolveCleanupWorktreeId(params.worktree)
     if (worktreeId) {
       bridge.unregisterActiveEmulator(worktreeId)
     }
@@ -210,17 +233,48 @@ export class RuntimeEmulatorCommands {
     return inspectEmulatorAvailability(this.requireEmulatorBridge())
   }
 
+  // Why: unified device inventory across backends (iOS simulators + Android
+  // devices/AVDs) for the cross-platform `orca emulator devices` command.
+  async emulatorListDevices(_params: { worktree?: string } = {}): Promise<EmulatorDevice[]> {
+    return this.requireEmulatorBridge().listAllDevices()
+  }
+
+  private async resolveWorktreeId(worktree?: string): Promise<string | undefined> {
+    return worktree ? await this.host.resolveEmulatorWorkspaceId(worktree) : undefined
+  }
+
+  private async resolveCleanupWorktreeId(worktree?: string): Promise<string | undefined> {
+    return worktree ? await this.host.resolveEmulatorCleanupWorkspaceId(worktree) : undefined
+  }
+
+  // Instance-field arrows: bindPrefixedMethods copies own emulator* functions
+  // onto the runtime edge surface (prototype-only binding would drop these).
+  emulatorAdbConnect: RuntimeEmulatorAdbCommands['emulatorAdbConnect'] = (params) =>
+    this.adbCommands.emulatorAdbConnect(params)
+  emulatorAdbDisconnect: RuntimeEmulatorAdbCommands['emulatorAdbDisconnect'] = (params) =>
+    this.adbCommands.emulatorAdbDisconnect(params)
+  emulatorAdbConnectionStatus: RuntimeEmulatorAdbCommands['emulatorAdbConnectionStatus'] = (
+    params
+  ) => this.adbCommands.emulatorAdbConnectionStatus(params)
+  emulatorInstall: RuntimeEmulatorCapabilityCommands['emulatorInstall'] = (params) =>
+    this.capabilityCommands.emulatorInstall(params)
+  emulatorLaunch: RuntimeEmulatorCapabilityCommands['emulatorLaunch'] = (params) =>
+    this.capabilityCommands.emulatorLaunch(params)
+  emulatorPermissions: RuntimeEmulatorCapabilityCommands['emulatorPermissions'] = (params) =>
+    this.capabilityCommands.emulatorPermissions(params)
+  emulatorAx: RuntimeEmulatorCapabilityCommands['emulatorAx'] = (params) =>
+    this.capabilityCommands.emulatorAx(params)
+  emulatorLogcat: RuntimeEmulatorCapabilityCommands['emulatorLogcat'] = (params) =>
+    this.capabilityCommands.emulatorLogcat(params)
+
   async emulatorKill(params: {
     device?: string
     emulator?: string
     worktree?: string
   }): Promise<{ ok: true; deviceUdid: string }> {
     const bridge = this.requireEmulatorBridge()
-    const worktreeId = params.worktree
-      ? (await this.host.resolveWorktreeSelector(params.worktree)).id
-      : undefined
+    const worktreeId = await this.resolveCleanupWorktreeId(params.worktree)
     const killedUdid = await bridge.kill(params.device ?? params.emulator, worktreeId)
-    serveSimStateWatcher.unmarkOrcaManaged(killedUdid)
     return { ok: true, deviceUdid: killedUdid }
   }
 
@@ -231,38 +285,31 @@ export class RuntimeEmulatorCommands {
     managedOnly?: boolean
   }): Promise<{ ok: true; deviceUdid?: string }> {
     const bridge = this.requireEmulatorBridge()
-    const worktreeId = params.worktree
-      ? (await this.host.resolveWorktreeSelector(params.worktree)).id
-      : undefined
+    const worktreeId = await this.resolveCleanupWorktreeId(params.worktree)
     if (params.managedOnly && worktreeId && !params.device && !params.emulator) {
       const shutdownUdid = await bridge.shutdownActiveManagedForWorktree(worktreeId)
-      if (shutdownUdid) {
-        serveSimStateWatcher.unmarkOrcaManaged(shutdownUdid)
-      }
       return { ok: true, deviceUdid: shutdownUdid ?? undefined }
     }
     const shutdownUdid = await bridge.shutdown(params.device ?? params.emulator, worktreeId)
-    serveSimStateWatcher.unmarkOrcaManaged(shutdownUdid)
     return { ok: true, deviceUdid: shutdownUdid }
+  }
+
+  // Window may not exist during shutdown, so sends are best-effort.
+  private sendToRenderer(channel: string, payload: unknown): void {
+    try {
+      this.host.getAuthoritativeWindow().webContents.send(channel, payload)
+    } catch {
+      // Window may not exist during shutdown
+    }
   }
 
   // Why: mirror browser:pane-focus — scoped per worktree, no cross-worktree yank unless user is already there.
   private notifyRendererEmulatorPaneFocus(worktreeId: string): void {
-    try {
-      const win = this.host.getAuthoritativeWindow()
-      win.webContents.send('emulator:pane-focus', { worktreeId })
-    } catch {
-      // Window may not exist during shutdown
-    }
+    this.sendToRenderer('emulator:pane-focus', { worktreeId })
   }
 
   private notifyRendererEmulatorAutoAttach(worktreeId: string, info: EmulatorSessionInfo): void {
-    try {
-      const win = this.host.getAuthoritativeWindow()
-      win.webContents.send('ui:emulatorAutoAttach', { worktreeId, info })
-    } catch {
-      // Window may not exist during shutdown
-    }
+    this.sendToRenderer('ui:emulatorAutoAttach', { worktreeId, info })
   }
 
   // Raw for extensibility.
@@ -274,22 +321,4 @@ export class RuntimeEmulatorCommands {
   }): Promise<unknown> {
     return this.emulatorExec(params)
   }
-}
-
-// Singleton accessor pattern (mirror requireAgentBrowserBridge).
-let emulatorBridgeInstance: EmulatorBridge | null = null
-
-export function setEmulatorBridge(bridge: EmulatorBridge | null): void {
-  emulatorBridgeInstance = bridge
-}
-
-export function getEmulatorBridge(): EmulatorBridge | null {
-  return emulatorBridgeInstance
-}
-
-export function requireEmulatorBridge(): EmulatorBridge {
-  if (!emulatorBridgeInstance) {
-    throw new EmulatorError('emulator_no_active', 'Emulator bridge not initialized')
-  }
-  return emulatorBridgeInstance
 }

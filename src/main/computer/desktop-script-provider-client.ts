@@ -1,6 +1,6 @@
-import { mkdtemp, rm, writeFile } from 'fs/promises'
-import { tmpdir } from 'os'
-import { join } from 'path'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type {
   ComputerActionResult,
   ComputerListAppsResult,
@@ -152,6 +152,7 @@ export class DesktopScriptProviderClient {
       to_y: optionalNumberParam(params, 'toY'),
       click_count: optionalNumberParam(params, 'clickCount'),
       mouse_button: optionalStringParam(params, 'mouseButton'),
+      modifiers: optionalStringParam(params, 'modifiers'),
       action: optionalStringParam(params, 'action'),
       direction: optionalStringParam(params, 'direction'),
       pages: optionalNumberParam(params, 'pages'),
