@@ -5,10 +5,12 @@ import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 import { AiVaultSearchScopeControl } from './AiVaultSearchScopeControl'
 
-export const AI_VAULT_SEARCH_UNCONFIGURED_HINT = translate(
-  'auto.components.right.sidebar.AiVaultSearchField.65b6a40200',
-  'Pick an agent in Settings -> Git -> Source Control AI.'
-)
+export function aiVaultSearchUnconfiguredHint(): string {
+  return translate(
+    'auto.components.right.sidebar.AiVaultSearchField.65b6a40200',
+    'Pick an agent in Settings -> Git -> Source Control AI.'
+  )
+}
 
 export function AiVaultSearchField({
   query,
@@ -52,7 +54,7 @@ export function AiVaultSearchField({
       'Searching…'
     )
   } else if (!aiAgentConfigured) {
-    generateDisabledReason = AI_VAULT_SEARCH_UNCONFIGURED_HINT
+    generateDisabledReason = aiVaultSearchUnconfiguredHint()
   } else if (!queryReady) {
     generateDisabledReason = translate(
       'auto.components.right.sidebar.AiVaultPanel.enterQueryToSearchWithAi',

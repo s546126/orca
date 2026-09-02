@@ -58,10 +58,12 @@ export function syncDurableSessionIndex(result: AiVaultListResult): void {
     getAiVaultSessionFtsStore(join(app.getPath('userData'), 'ai-vault-session-fts.sqlite')).sync(
       result.sessions
     )
+    // Why: message-index path also needs userData. Keep it inside this try so a
+    // missing Electron app path cannot turn a successful host scan into an issue.
+    void indexListedSessionMessages(result.sessions)
   } catch (error) {
     console.warn('[ai-vault] Failed to update session search index:', error)
   }
-  void indexListedSessionMessages(result.sessions)
 }
 
 // Why: list IPC is fire-and-forget; overlapping scans must share one exclusive
