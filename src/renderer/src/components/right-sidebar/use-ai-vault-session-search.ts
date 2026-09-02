@@ -44,6 +44,23 @@ export function useAiVaultSessionSearch(args: {
   const [rgUnavailable, setRgUnavailable] = useState(false)
   const requestIdRef = useRef(0)
   const rgRequestIdRef = useRef(0)
+  const searchReset = takeAiVaultSearchReset(filters, sessions)
+  const [appliedSearchReset, setAppliedSearchReset] = useState(searchReset)
+  if (aiVaultSearchResetChanged(appliedSearchReset, searchReset)) {
+    // Why: reset during render so a query/scope change never paints stale AI/rg hits.
+    setAppliedSearchReset(searchReset)
+    requestIdRef.current += 1
+    rgRequestIdRef.current += 1
+    setAiResult(null)
+    setAiError(null)
+    setAiLoading(false)
+    setRgMatchedIds(null)
+    setRgLoading(false)
+    setUsedRg(false)
+    setUsedFts(false)
+    setMessageHits([])
+    setRgUnavailable(false)
+  }
 
   const lexicalSessions = useMemo(() => {
     indexRef.current.sync(sessions, {
@@ -61,44 +78,8 @@ export function useAiVaultSessionSearch(args: {
   const candidateIdKey = lexicalSessions.map((session) => session.id).join('\n')
 
   useEffect(() => {
-    // Why: a slower AI/rg request must not restore hits from a previous query,
-    // host, project, or workspace scope after the user already changed inputs.
-    requestIdRef.current += 1
-    rgRequestIdRef.current += 1
-    setAiResult(null)
-    setAiError(null)
-    setAiLoading(false)
-    setRgMatchedIds(null)
-    setRgLoading(false)
-    setUsedRg(false)
-    setUsedFts(false)
-    setMessageHits([])
-    setRgUnavailable(false)
-  }, [
-    filters.activeProjectKey,
-    filters.activeWorktreePaths,
-    filters.agents,
-    filters.hideEmptySessions,
-    filters.hosts,
-    filters.projectLabelByKey,
-    filters.query,
-    filters.scope,
-    filters.searchScope,
-    filters.sessionProjectById,
-    filters.sort,
-    filters.timeRange,
-    sessions
-  ])
-
-  useEffect(() => {
     if (!rgQueryActive) {
       rgRequestIdRef.current += 1
-      setRgMatchedIds(null)
-      setRgLoading(false)
-      setUsedRg(false)
-      setUsedFts(false)
-      setMessageHits([])
-      setRgUnavailable(false)
       return
     }
 
@@ -224,4 +205,59 @@ export function useAiVaultSessionSearch(args: {
     messageHitsBySessionId: new Map(messageHits.map((hit) => [hit.sessionId, hit])),
     runAiSearch
   }
+}
+
+type AiVaultSearchReset = {
+  activeProjectKey: AiVaultSessionFilterState['activeProjectKey']
+  activeWorktreePaths: AiVaultSessionFilterState['activeWorktreePaths']
+  agents: AiVaultSessionFilterState['agents']
+  hideEmptySessions: boolean
+  hosts: AiVaultSessionFilterState['hosts']
+  projectLabelByKey: AiVaultSessionFilterState['projectLabelByKey']
+  query: string
+  scope: AiVaultSessionFilterState['scope']
+  searchScope: AiVaultSessionFilterState['searchScope']
+  sessionProjectById: AiVaultSessionFilterState['sessionProjectById']
+  sort: AiVaultSessionFilterState['sort']
+  timeRange: AiVaultSessionFilterState['timeRange']
+  sessions: readonly AiVaultSession[]
+}
+
+function takeAiVaultSearchReset(
+  filters: AiVaultSessionFilterState,
+  sessions: readonly AiVaultSession[]
+): AiVaultSearchReset {
+  return {
+    activeProjectKey: filters.activeProjectKey,
+    activeWorktreePaths: filters.activeWorktreePaths,
+    agents: filters.agents,
+    hideEmptySessions: filters.hideEmptySessions,
+    hosts: filters.hosts,
+    projectLabelByKey: filters.projectLabelByKey,
+    query: filters.query,
+    scope: filters.scope,
+    searchScope: filters.searchScope,
+    sessionProjectById: filters.sessionProjectById,
+    sort: filters.sort,
+    timeRange: filters.timeRange,
+    sessions
+  }
+}
+
+function aiVaultSearchResetChanged(left: AiVaultSearchReset, right: AiVaultSearchReset): boolean {
+  return (
+    left.sessions !== right.sessions ||
+    left.query !== right.query ||
+    left.searchScope !== right.searchScope ||
+    left.scope !== right.scope ||
+    left.sort !== right.sort ||
+    left.timeRange !== right.timeRange ||
+    left.hideEmptySessions !== right.hideEmptySessions ||
+    left.activeProjectKey !== right.activeProjectKey ||
+    left.activeWorktreePaths !== right.activeWorktreePaths ||
+    left.agents !== right.agents ||
+    left.hosts !== right.hosts ||
+    left.projectLabelByKey !== right.projectLabelByKey ||
+    left.sessionProjectById !== right.sessionProjectById
+  )
 }
