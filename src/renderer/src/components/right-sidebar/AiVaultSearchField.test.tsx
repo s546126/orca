@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { AI_VAULT_SEARCH_UNCONFIGURED_HINT, AiVaultSearchField } from './AiVaultSearchField'
+import { aiVaultSearchUnconfiguredHint, AiVaultSearchField } from './AiVaultSearchField'
 
 type ReactElementLike = {
   type: unknown
@@ -141,7 +141,7 @@ describe('AiVaultSearchField', () => {
     expect(hasDisabledAttribute(button)).toBe(true)
     expect(button).toContain('Pick an agent in Settings')
     expect(button).toContain('Source Control AI')
-    expect(AI_VAULT_SEARCH_UNCONFIGURED_HINT).toContain('Source Control AI')
+    expect(aiVaultSearchUnconfiguredHint()).toContain('Source Control AI')
 
     const tree = AiVaultSearchField(
       fieldProps({

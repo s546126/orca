@@ -177,7 +177,13 @@ async function scanLocalAiVaultSessions(
     },
     { signal }
   )
-  syncDurableSessionIndex(result)
+  // Why: FTS/rg indexing is best-effort. A userData/Electron miss must not
+  // replace a completed local scan with an issue row (SSH use case too).
+  try {
+    syncDurableSessionIndex(result)
+  } catch (error) {
+    console.warn('[ai-vault] Failed to update session search index:', error)
+  }
   return result
 }
 
