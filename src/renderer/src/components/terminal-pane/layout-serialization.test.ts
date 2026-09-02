@@ -1,7 +1,5 @@
-/* oxlint-disable max-lines -- Why: this test keeps split layout replay fixtures together so
- * stable leaf-id migration regressions are visible in one focused suite. */
 import { describe, expect, it, beforeAll, vi } from 'vitest'
-import type { TerminalPaneLayoutNode } from '../../../../shared/types'
+import type { TerminalPaneLayoutNode } from '../../../../shared/terminal-tab-types'
 
 // ---------------------------------------------------------------------------
 // Provide a minimal HTMLElement so `instanceof HTMLElement` passes in Node env
@@ -35,7 +33,17 @@ beforeAll(() => {
 })
 
 import {
+  buildPostReplayLiveAgentReattachReset,
+  POST_REPLAY_LIVE_AGENT_REATTACH_RESET,
+  POST_REPLAY_MODE_RESET,
+  replayPayloadEndsWithCursorHidden,
+  RESET_GRAPHIC_RENDITION,
+  RESET_KITTY_KEYBOARD_PROTOCOL,
+  RESET_TERMINAL_CURSOR_STYLE
+} from '../../../../shared/terminal-mode-reset-profiles'
+import {
   buildFontFamily,
+  restoreScrollbackBuffers,
   serializePaneTree,
   serializeTerminalLayout,
   replayTerminalLayout,
@@ -66,7 +74,7 @@ const LEAF_4 = '44444444-4444-4444-8444-444444444444'
 // buildFontFamily
 // ---------------------------------------------------------------------------
 const FULL_FALLBACK =
-  '"SF Mono", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono", "Symbols Nerd Font Mono", "MesloLGS Nerd Font", "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace'
+  '"SF Mono", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono", "Orca Nerd Font Symbols", "Symbols Nerd Font Mono", "MesloLGS Nerd Font", "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace'
 
 describe('buildFontFamily', () => {
   it('puts custom font first with full cross-platform fallback chain', () => {
@@ -77,7 +85,7 @@ describe('buildFontFamily', () => {
   it('does not duplicate SF Mono when it is the input', () => {
     const result = buildFontFamily('SF Mono')
     expect(result).toBe(
-      '"SF Mono", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono", "Symbols Nerd Font Mono", "MesloLGS Nerd Font", "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace'
+      '"SF Mono", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono", "Orca Nerd Font Symbols", "Symbols Nerd Font Mono", "MesloLGS Nerd Font", "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace'
     )
   })
 
@@ -94,21 +102,28 @@ describe('buildFontFamily', () => {
   it('does not duplicate when font name contains "sf mono" (case-insensitive)', () => {
     const result = buildFontFamily('My SF Mono Custom')
     expect(result).toBe(
-      '"My SF Mono Custom", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono", "Symbols Nerd Font Mono", "MesloLGS Nerd Font", "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace'
+      '"My SF Mono Custom", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono", "Orca Nerd Font Symbols", "Symbols Nerd Font Mono", "MesloLGS Nerd Font", "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace'
     )
   })
 
   it('does not duplicate Consolas when it is the input', () => {
     const result = buildFontFamily('Consolas')
     expect(result).toBe(
-      '"Consolas", "SF Mono", "Menlo", "Monaco", "Cascadia Mono", "DejaVu Sans Mono", "Liberation Mono", "Symbols Nerd Font Mono", "MesloLGS Nerd Font", "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace'
+      '"Consolas", "SF Mono", "Menlo", "Monaco", "Cascadia Mono", "DejaVu Sans Mono", "Liberation Mono", "Orca Nerd Font Symbols", "Symbols Nerd Font Mono", "MesloLGS Nerd Font", "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace'
     )
   })
 
   it('does not duplicate MesloLGS Nerd Font when it is the input', () => {
     const result = buildFontFamily('MesloLGS Nerd Font')
     expect(result).toBe(
-      '"MesloLGS Nerd Font", "SF Mono", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono", "Symbols Nerd Font Mono", "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace'
+      '"MesloLGS Nerd Font", "SF Mono", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono", "Orca Nerd Font Symbols", "Symbols Nerd Font Mono", "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace'
+    )
+  })
+
+  it('does not duplicate the bundled Nerd Font symbol fallback', () => {
+    const result = buildFontFamily('Orca Nerd Font Symbols')
+    expect(result).toBe(
+      '"Orca Nerd Font Symbols", "SF Mono", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono", "Symbols Nerd Font Mono", "MesloLGS Nerd Font", "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace'
     )
   })
 })
@@ -415,6 +430,43 @@ describe('replayTerminalLayout', () => {
   })
 })
 
+describe('restoreScrollbackBuffers', () => {
+  it('marks panes with restored scrollback for fresh-shell viewport blanking', () => {
+    const writes: string[] = []
+    const pane = {
+      id: 1,
+      terminal: {
+        write: vi.fn((data: string, callback?: () => void) => {
+          writes.push(data)
+          callback?.()
+        })
+      }
+    }
+    const manager = {
+      getPanes: vi.fn(() => [pane]),
+      hasWebglRenderer: vi.fn(() => true)
+    }
+    const replayingPanesRef = { current: new Map<number, number>() }
+    const restoredViewportBlankingPanesRef = { current: new Set<number>() }
+
+    restoreScrollbackBuffers(
+      manager as unknown as Parameters<typeof restoreScrollbackBuffers>[0],
+      { [LEAF_1]: 'restored output' },
+      new Map([[LEAF_1, 1]]),
+      replayingPanesRef,
+      restoredViewportBlankingPanesRef
+    )
+
+    expect(writes).toEqual([
+      `${RESET_GRAPHIC_RENDITION}restored output${RESET_GRAPHIC_RENDITION}\r\n`,
+      POST_REPLAY_MODE_RESET
+    ])
+    expect(manager.hasWebglRenderer).toHaveBeenCalledWith(1)
+    expect(restoredViewportBlankingPanesRef.current.has(1)).toBe(true)
+    expect(replayingPanesRef.current.size).toBe(0)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // collectLeafIdsInReplayCreationOrder
 // ---------------------------------------------------------------------------
@@ -450,5 +502,35 @@ describe('collectLeafIdsInReplayCreationOrder', () => {
     }
 
     expect(collectLeafIdsInReplayCreationOrder(layout)).toEqual(['A', 'B', 'C'])
+  })
+})
+
+describe('replayPayloadEndsWithCursorHidden', () => {
+  it('is true when the last DECTCEM sequence hides the cursor', () => {
+    expect(replayPayloadEndsWithCursorHidden('\x1b[?25h frame \x1b[?25l')).toBe(true)
+    expect(replayPayloadEndsWithCursorHidden('\x1b[?1004h\x1b[?25lparked screen')).toBe(true)
+  })
+
+  it('is false when the cursor was re-shown or never touched', () => {
+    expect(replayPayloadEndsWithCursorHidden('\x1b[?25l frame \x1b[?25h')).toBe(false)
+    expect(replayPayloadEndsWithCursorHidden('plain shell output')).toBe(false)
+    expect(replayPayloadEndsWithCursorHidden('')).toBe(false)
+  })
+})
+
+describe('buildPostReplayLiveAgentReattachReset', () => {
+  it('preserves an intentionally hidden cursor', () => {
+    expect(buildPostReplayLiveAgentReattachReset('agent frame\x1b[?25l')).toBe(
+      `${RESET_TERMINAL_CURSOR_STYLE}${RESET_KITTY_KEYBOARD_PROTOCOL}`
+    )
+  })
+
+  it('re-shows the cursor when the payload left it visible', () => {
+    expect(buildPostReplayLiveAgentReattachReset('agent frame\x1b[?25l\x1b[?25h')).toBe(
+      POST_REPLAY_LIVE_AGENT_REATTACH_RESET
+    )
+    expect(buildPostReplayLiveAgentReattachReset('no dectcem at all')).toBe(
+      POST_REPLAY_LIVE_AGENT_REATTACH_RESET
+    )
   })
 })

@@ -9,6 +9,9 @@ import { makePaneKey } from '../../shared/stable-pane-id'
 
 const dropStatusEntry = vi.fn()
 const dropStatusEntriesByTabPrefix = vi.fn()
+const retirePaneAuthority = vi.fn()
+const transferPaneAuthority = vi.fn()
+const canTransferPaneAuthority = vi.fn(() => true)
 const getStatusSnapshot = vi.fn()
 const inferInterrupt = vi.fn()
 const clearMigrationUnsupportedPtysByTabPrefix = vi.fn()
@@ -42,6 +45,9 @@ vi.mock('../agent-hooks/server', async () => {
     agentHookServer: {
       dropStatusEntry,
       dropStatusEntriesByTabPrefix,
+      retirePaneAuthority,
+      transferPaneAuthority,
+      canTransferPaneAuthority,
       getStatusSnapshot,
       inferInterrupt
     }
@@ -100,6 +106,10 @@ vi.mock('../kimi/hook-service', () => ({
 beforeEach(() => {
   dropStatusEntry.mockReset()
   dropStatusEntriesByTabPrefix.mockReset()
+  retirePaneAuthority.mockReset()
+  transferPaneAuthority.mockReset()
+  canTransferPaneAuthority.mockReset()
+  canTransferPaneAuthority.mockReturnValue(true)
   getStatusSnapshot.mockReset()
   inferInterrupt.mockReset()
   clearMigrationUnsupportedPtysByTabPrefix.mockReset()
@@ -195,72 +205,6 @@ describe('agentStatus:getSnapshot IPC', () => {
         }
       }
     ])
-  })
-})
-
-describe('agentHooks:antigravityStatus IPC', () => {
-  it('returns Antigravity hook installation status', async () => {
-    const { registerAgentHookHandlers } = await import('./agent-hooks')
-    registerAgentHookHandlers()
-
-    const handler = handleHandlers.get('agentHooks:antigravityStatus')
-    expect(handler).toBeDefined()
-    expect(handler!({})).toEqual({ agent: 'antigravity', state: 'absent' })
-  })
-})
-
-describe('agentHooks:ampStatus IPC', () => {
-  it('returns Amp hook installation status', async () => {
-    const { registerAgentHookHandlers } = await import('./agent-hooks')
-    registerAgentHookHandlers()
-
-    const handler = handleHandlers.get('agentHooks:ampStatus')
-    expect(handler).toBeDefined()
-    expect(handler!({})).toEqual({ agent: 'amp', state: 'absent' })
-  })
-})
-
-describe('agentHooks:openClaudeStatus IPC', () => {
-  it('returns OpenClaude hook installation status', async () => {
-    const { registerAgentHookHandlers } = await import('./agent-hooks')
-    registerAgentHookHandlers()
-
-    const handler = handleHandlers.get('agentHooks:openClaudeStatus')
-    expect(handler).toBeDefined()
-    expect(handler!({})).toEqual({ agent: 'openclaude', state: 'absent' })
-  })
-})
-
-describe('agentHooks:commandCodeStatus IPC', () => {
-  it('returns Command Code hook installation status', async () => {
-    const { registerAgentHookHandlers } = await import('./agent-hooks')
-    registerAgentHookHandlers()
-
-    const handler = handleHandlers.get('agentHooks:commandCodeStatus')
-    expect(handler).toBeDefined()
-    expect(handler!({})).toEqual({ agent: 'command-code', state: 'absent' })
-  })
-})
-
-describe('agentHooks:devinStatus IPC', () => {
-  it('returns Devin hook installation status', async () => {
-    const { registerAgentHookHandlers } = await import('./agent-hooks')
-    registerAgentHookHandlers()
-
-    const handler = handleHandlers.get('agentHooks:devinStatus')
-    expect(handler).toBeDefined()
-    expect(handler!({})).toEqual({ agent: 'devin', state: 'absent' })
-  })
-})
-
-describe('agentHooks:kimiStatus IPC', () => {
-  it('returns Kimi hook installation status', async () => {
-    const { registerAgentHookHandlers } = await import('./agent-hooks')
-    registerAgentHookHandlers()
-
-    const handler = handleHandlers.get('agentHooks:kimiStatus')
-    expect(handler).toBeDefined()
-    expect(handler!({})).toEqual({ agent: 'kimi', state: 'absent' })
   })
 })
 
@@ -376,5 +320,75 @@ describe('agentStatus:dropByTabPrefix IPC', () => {
     registerAgentHookHandlers()
 
     expect(removeAllListeners).toHaveBeenCalledWith('agentStatus:dropByTabPrefix')
+  })
+})
+
+describe('agent pane authority IPC', () => {
+  it('retires one validated pane authority', async () => {
+    const { registerAgentHookHandlers } = await import('./agent-hooks')
+    registerAgentHookHandlers()
+
+    onHandlers.get('agentStatus:retirePaneAuthority')!({}, PANE_KEY)
+
+    expect(retirePaneAuthority).toHaveBeenCalledWith(PANE_KEY)
+    expect(clearMigrationUnsupportedPtysForPaneKey).toHaveBeenCalledWith(PANE_KEY)
+  })
+
+  it('transfers validated pane authority with its provider PTY', async () => {
+    const { registerAgentHookHandlers } = await import('./agent-hooks')
+    registerAgentHookHandlers()
+
+    onHandlers.get('agentStatus:transferPaneAuthority')!(
+      {},
+      {
+        fromPaneKey: PANE_KEY,
+        toPaneKey: CHILD_PANE_KEY,
+        ptyId: 'pty-1'
+      }
+    )
+
+    expect(transferPaneAuthority).toHaveBeenCalledWith(PANE_KEY, CHILD_PANE_KEY, 'pty-1')
+  })
+
+  it('rejects malformed pane authority messages and replaces prior listeners', async () => {
+    const { registerAgentHookHandlers } = await import('./agent-hooks')
+    registerAgentHookHandlers()
+
+    onHandlers.get('agentStatus:retirePaneAuthority')!({}, 'tab-1:0')
+    onHandlers.get('agentStatus:transferPaneAuthority')!(
+      {},
+      {
+        fromPaneKey: PANE_KEY,
+        toPaneKey: 'invalid',
+        ptyId: ''
+      }
+    )
+
+    expect(retirePaneAuthority).not.toHaveBeenCalled()
+    expect(transferPaneAuthority).not.toHaveBeenCalled()
+    expect(removeAllListeners).toHaveBeenCalledWith('agentStatus:retirePaneAuthority')
+    expect(removeAllListeners).toHaveBeenCalledWith('agentStatus:transferPaneAuthority')
+  })
+
+  it('rejects unowned and oversized pane authority transfers', async () => {
+    const { registerAgentHookHandlers } = await import('./agent-hooks')
+    registerAgentHookHandlers()
+    const transfer = onHandlers.get('agentStatus:transferPaneAuthority')!
+
+    canTransferPaneAuthority.mockReturnValue(false)
+    transfer({}, { fromPaneKey: PANE_KEY, toPaneKey: CHILD_PANE_KEY, ptyId: 'forged-pty' })
+    transfer({}, { fromPaneKey: PANE_KEY, toPaneKey: CHILD_PANE_KEY })
+    canTransferPaneAuthority.mockReturnValue(true)
+    transfer({}, { fromPaneKey: PANE_KEY, toPaneKey: CHILD_PANE_KEY, ptyId: 'x'.repeat(513) })
+    transfer(
+      {},
+      {
+        fromPaneKey: `${'x'.repeat(180)}:11111111-1111-4111-8111-111111111111`,
+        toPaneKey: CHILD_PANE_KEY,
+        ptyId: 'pty-1'
+      }
+    )
+
+    expect(transferPaneAuthority).not.toHaveBeenCalled()
   })
 })
