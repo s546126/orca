@@ -15,198 +15,6 @@ import type { AiVaultSession } from '../../../../shared/ai-vault-types'
 
 const RG_SEARCH_DEBOUNCE_MS = 280
 
-export function useAiVaultSessionSearch(args: {
-  sessions: readonly AiVaultSession[]
-  filters: AiVaultSessionFilterState
-  repoId?: string | null
-}): {
-  filteredSessions: AiVaultSession[]
-  aiLoading: boolean
-  aiError: string | null
-  usedModel: boolean
-  rgLoading: boolean
-  rgHitCount: number | null
-  usedRg: boolean
-  usedFts: boolean
-  messageHitsBySessionId: ReadonlyMap<string, AiVaultSessionMessageHit>
-  runAiSearch: () => Promise<void>
-} {
-  const { sessions, filters, repoId } = args
-  const indexRef = useRef(new AiVaultSessionSearchIndex())
-  const [aiResult, setAiResult] = useState<AiVaultAiSearchResult | null>(null)
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiError, setAiError] = useState<string | null>(null)
-  const [rgMatchedIds, setRgMatchedIds] = useState<string[] | null>(null)
-  const [rgLoading, setRgLoading] = useState(false)
-  const [usedRg, setUsedRg] = useState(false)
-  const [usedFts, setUsedFts] = useState(false)
-  const [messageHits, setMessageHits] = useState<AiVaultSessionMessageHit[]>([])
-  const [rgUnavailable, setRgUnavailable] = useState(false)
-  const requestIdRef = useRef(0)
-  const rgRequestIdRef = useRef(0)
-  const searchReset = takeAiVaultSearchReset(filters, sessions)
-  const [appliedSearchReset, setAppliedSearchReset] = useState(searchReset)
-  if (aiVaultSearchResetChanged(appliedSearchReset, searchReset)) {
-    // Why: reset during render so a query/scope change never paints stale AI/rg hits.
-    setAppliedSearchReset(searchReset)
-    requestIdRef.current += 1
-    rgRequestIdRef.current += 1
-    setAiResult(null)
-    setAiError(null)
-    setAiLoading(false)
-    setRgMatchedIds(null)
-    setRgLoading(false)
-    setUsedRg(false)
-    setUsedFts(false)
-    setMessageHits([])
-    setRgUnavailable(false)
-  }
-
-  const lexicalSessions = useMemo(() => {
-    indexRef.current.sync(sessions, {
-      sessionProjectById: filters.sessionProjectById,
-      projectLabelByKey: filters.projectLabelByKey
-    })
-    return filterAiVaultSessions(sessions, filters, {
-      index: indexRef.current
-    })
-  }, [filters, sessions])
-
-  const searchTerms = useMemo(() => parseVaultQuery(filters.query).terms, [filters.query])
-  const usesRgScope = isAiVaultRgSearchScope(filters.searchScope ?? 'full')
-  const rgQueryActive = usesRgScope && searchTerms.length > 0
-  const candidateIdKey = lexicalSessions.map((session) => session.id).join('\n')
-
-  useEffect(() => {
-    if (!rgQueryActive) {
-      rgRequestIdRef.current += 1
-      return
-    }
-
-    const requestId = rgRequestIdRef.current + 1
-    rgRequestIdRef.current = requestId
-    setRgUnavailable(false)
-    setRgLoading(true)
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const result = await window.api.aiVault.searchSessions({
-            query: searchTerms.join(' '),
-            searchScope:
-              filters.searchScope === 'title' || filters.searchScope === 'summary'
-                ? 'full'
-                : (filters.searchScope ?? 'full'),
-            sessionIds: candidateIdKey.split('\n').filter(Boolean)
-          })
-          if (rgRequestIdRef.current !== requestId) {
-            return
-          }
-          if (!result.usedRg && !result.usedFts) {
-            setRgMatchedIds(null)
-            setUsedRg(false)
-            setUsedFts(false)
-            setMessageHits([])
-            setRgUnavailable(true)
-            return
-          }
-          setRgMatchedIds(result.matchedIds)
-          setUsedRg(result.usedRg)
-          setUsedFts(result.usedFts)
-          setMessageHits(result.hits)
-          setRgUnavailable(false)
-        } catch {
-          if (rgRequestIdRef.current === requestId) {
-            setRgMatchedIds(null)
-            setUsedRg(false)
-            setUsedFts(false)
-            setMessageHits([])
-            setRgUnavailable(true)
-          }
-        } finally {
-          if (rgRequestIdRef.current === requestId) {
-            setRgLoading(false)
-          }
-        }
-      })()
-    }, RG_SEARCH_DEBOUNCE_MS)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [candidateIdKey, filters.searchScope, rgQueryActive, searchTerms])
-
-  const cardFallbackSessions = useMemo(() => {
-    if (!rgQueryActive || !rgUnavailable) {
-      return null
-    }
-    return filterAiVaultSessions(sessions, filters, {
-      index: indexRef.current,
-      forceCardTerms: true
-    })
-  }, [filters, rgQueryActive, rgUnavailable, sessions])
-
-  const retrievalSessions = useMemo(() => {
-    if (!rgQueryActive) {
-      return lexicalSessions
-    }
-    if (cardFallbackSessions) {
-      return cardFallbackSessions
-    }
-    if ((!usedRg && !usedFts) || rgMatchedIds === null) {
-      // Why: keep the panel usable while rg is in flight; do not block typing.
-      return lexicalSessions
-    }
-    const allowed = new Set(rgMatchedIds)
-    return lexicalSessions.filter((session) => allowed.has(session.id))
-  }, [cardFallbackSessions, lexicalSessions, rgMatchedIds, rgQueryActive, usedFts, usedRg])
-
-  const runAiSearch = useCallback(async () => {
-    const requestId = requestIdRef.current + 1
-    requestIdRef.current = requestId
-    setAiLoading(true)
-    setAiError(null)
-    try {
-      const result = await searchAiVaultSessionsWithAi({
-        sessions: retrievalSessions,
-        filters,
-        candidates: retrievalSessions,
-        options: { index: indexRef.current },
-        rerank: async (query, cards) => {
-          const ranked = await window.api.aiVault.rankSessions({ query, cards, repoId })
-          if (!ranked.ok && ranked.error) {
-            throw new Error(ranked.error)
-          }
-          return { rankedIds: ranked.rankedIds, usedModel: ranked.usedModel }
-        }
-      })
-      if (requestIdRef.current === requestId) {
-        setAiResult(result)
-      }
-    } catch (error) {
-      if (requestIdRef.current === requestId) {
-        setAiError(error instanceof Error ? error.message : String(error))
-      }
-    } finally {
-      if (requestIdRef.current === requestId) {
-        setAiLoading(false)
-      }
-    }
-  }, [filters, repoId, retrievalSessions])
-
-  return {
-    filteredSessions: aiResult?.sessions ?? retrievalSessions,
-    aiLoading,
-    aiError,
-    usedModel: aiResult?.usedModel ?? false,
-    rgLoading,
-    rgHitCount: rgQueryActive && (usedRg || usedFts) && rgMatchedIds ? rgMatchedIds.length : null,
-    usedRg,
-    usedFts,
-    messageHitsBySessionId: new Map(messageHits.map((hit) => [hit.sessionId, hit])),
-    runAiSearch
-  }
-}
-
 type AiVaultSearchReset = {
   activeProjectKey: AiVaultSessionFilterState['activeProjectKey']
   activeWorktreePaths: AiVaultSessionFilterState['activeWorktreePaths']
@@ -221,6 +29,22 @@ type AiVaultSearchReset = {
   sort: AiVaultSessionFilterState['sort']
   timeRange: AiVaultSessionFilterState['timeRange']
   sessions: readonly AiVaultSession[]
+}
+
+type AiSearchSnapshot = {
+  reset: AiVaultSearchReset
+  result: AiVaultAiSearchResult | null
+  error: string | null
+  loading: boolean
+}
+
+type RgSearchHits = {
+  key: string
+  matchedIds: string[] | null
+  usedRg: boolean
+  usedFts: boolean
+  messageHits: AiVaultSessionMessageHit[]
+  unavailable: boolean
 }
 
 function takeAiVaultSearchReset(
@@ -260,4 +84,192 @@ function aiVaultSearchResetChanged(left: AiVaultSearchReset, right: AiVaultSearc
     left.projectLabelByKey !== right.projectLabelByKey ||
     left.sessionProjectById !== right.sessionProjectById
   )
+}
+
+export function useAiVaultSessionSearch(args: {
+  sessions: readonly AiVaultSession[]
+  filters: AiVaultSessionFilterState
+  repoId?: string | null
+}): {
+  filteredSessions: AiVaultSession[]
+  aiLoading: boolean
+  aiError: string | null
+  usedModel: boolean
+  rgLoading: boolean
+  rgHitCount: number | null
+  usedRg: boolean
+  usedFts: boolean
+  messageHitsBySessionId: ReadonlyMap<string, AiVaultSessionMessageHit>
+  runAiSearch: () => Promise<void>
+} {
+  const { sessions, filters, repoId } = args
+  const indexRef = useRef(new AiVaultSessionSearchIndex())
+  const requestIdRef = useRef(0)
+  const rgRequestIdRef = useRef(0)
+  const searchReset = takeAiVaultSearchReset(filters, sessions)
+  const [aiSnapshot, setAiSnapshot] = useState<AiSearchSnapshot | null>(null)
+  const [rgHits, setRgHits] = useState<RgSearchHits | null>(null)
+  const [rgLoading, setRgLoading] = useState(false)
+  // Why: key AI hits to the current filters so a query/scope change drops stale
+  // ranking without setState or ref writes during render.
+  const ai =
+    aiSnapshot != null && !aiVaultSearchResetChanged(aiSnapshot.reset, searchReset)
+      ? aiSnapshot
+      : null
+
+  const lexicalSessions = useMemo(() => {
+    indexRef.current.sync(sessions, {
+      sessionProjectById: filters.sessionProjectById,
+      projectLabelByKey: filters.projectLabelByKey
+    })
+    return filterAiVaultSessions(sessions, filters, {
+      index: indexRef.current
+    })
+  }, [filters, sessions])
+
+  const searchTerms = useMemo(() => parseVaultQuery(filters.query).terms, [filters.query])
+  const usesRgScope = isAiVaultRgSearchScope(filters.searchScope ?? 'full')
+  const rgQueryActive = usesRgScope && searchTerms.length > 0
+  const candidateIdKey = lexicalSessions.map((session) => session.id).join('\n')
+  const rgKey = `${searchTerms.join('\0')}\0${filters.searchScope ?? ''}\0${candidateIdKey}`
+  const rg = rgHits != null && rgHits.key === rgKey ? rgHits : null
+
+  useEffect(() => {
+    if (!rgQueryActive) {
+      rgRequestIdRef.current += 1
+      return
+    }
+
+    const requestId = rgRequestIdRef.current + 1
+    rgRequestIdRef.current = requestId
+    setRgLoading(true)
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const result = await window.api.aiVault.searchSessions({
+            query: searchTerms.join(' '),
+            searchScope:
+              filters.searchScope === 'title' || filters.searchScope === 'summary'
+                ? 'full'
+                : (filters.searchScope ?? 'full'),
+            sessionIds: candidateIdKey.split('\n').filter(Boolean)
+          })
+          if (rgRequestIdRef.current !== requestId) {
+            return
+          }
+          if (!result.usedRg && !result.usedFts) {
+            setRgHits({
+              key: rgKey,
+              matchedIds: null,
+              usedRg: false,
+              usedFts: false,
+              messageHits: [],
+              unavailable: true
+            })
+            return
+          }
+          setRgHits({
+            key: rgKey,
+            matchedIds: result.matchedIds,
+            usedRg: result.usedRg,
+            usedFts: result.usedFts,
+            messageHits: result.hits,
+            unavailable: false
+          })
+        } catch {
+          if (rgRequestIdRef.current === requestId) {
+            setRgHits({
+              key: rgKey,
+              matchedIds: null,
+              usedRg: false,
+              usedFts: false,
+              messageHits: [],
+              unavailable: true
+            })
+          }
+        } finally {
+          if (rgRequestIdRef.current === requestId) {
+            setRgLoading(false)
+          }
+        }
+      })()
+    }, RG_SEARCH_DEBOUNCE_MS)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [candidateIdKey, filters.searchScope, rgKey, rgQueryActive, searchTerms])
+
+  const cardFallbackSessions = useMemo(() => {
+    if (!rgQueryActive || !rg?.unavailable) {
+      return null
+    }
+    return filterAiVaultSessions(sessions, filters, {
+      index: indexRef.current,
+      forceCardTerms: true
+    })
+  }, [filters, rg, rgQueryActive, sessions])
+
+  const retrievalSessions = useMemo(() => {
+    if (!rgQueryActive) {
+      return lexicalSessions
+    }
+    if (cardFallbackSessions) {
+      return cardFallbackSessions
+    }
+    if ((!rg?.usedRg && !rg?.usedFts) || rg.matchedIds === null) {
+      // Why: keep the panel usable while rg is in flight; do not block typing.
+      return lexicalSessions
+    }
+    const allowed = new Set(rg.matchedIds)
+    return lexicalSessions.filter((session) => allowed.has(session.id))
+  }, [cardFallbackSessions, lexicalSessions, rg, rgQueryActive])
+
+  const runAiSearch = useCallback(async () => {
+    const requestId = requestIdRef.current + 1
+    requestIdRef.current = requestId
+    const reset = takeAiVaultSearchReset(filters, sessions)
+    setAiSnapshot({ reset, result: null, error: null, loading: true })
+    try {
+      const result = await searchAiVaultSessionsWithAi({
+        sessions: retrievalSessions,
+        filters,
+        candidates: retrievalSessions,
+        options: { index: indexRef.current },
+        rerank: async (query, cards) => {
+          const ranked = await window.api.aiVault.rankSessions({ query, cards, repoId })
+          if (!ranked.ok && ranked.error) {
+            throw new Error(ranked.error)
+          }
+          return { rankedIds: ranked.rankedIds, usedModel: ranked.usedModel }
+        }
+      })
+      if (requestIdRef.current === requestId) {
+        setAiSnapshot({ reset, result, error: null, loading: false })
+      }
+    } catch (error) {
+      if (requestIdRef.current === requestId) {
+        setAiSnapshot({
+          reset,
+          result: null,
+          error: error instanceof Error ? error.message : String(error),
+          loading: false
+        })
+      }
+    }
+  }, [filters, repoId, retrievalSessions, sessions])
+
+  return {
+    filteredSessions: ai?.result?.sessions ?? retrievalSessions,
+    aiLoading: ai?.loading ?? false,
+    aiError: ai?.error ?? null,
+    usedModel: ai?.result?.usedModel ?? false,
+    rgLoading: rgQueryActive && rgLoading,
+    rgHitCount:
+      rgQueryActive && (rg?.usedRg || rg?.usedFts) && rg.matchedIds ? rg.matchedIds.length : null,
+    usedRg: rg?.usedRg ?? false,
+    usedFts: rg?.usedFts ?? false,
+    messageHitsBySessionId: new Map((rg?.messageHits ?? []).map((hit) => [hit.sessionId, hit])),
+    runAiSearch
+  }
 }
