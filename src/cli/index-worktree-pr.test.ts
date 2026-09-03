@@ -88,6 +88,8 @@ describe('orca cli worktree --pr', () => {
     expect(callMock).toHaveBeenCalledWith('worktree.create', {
       repo: 'id:repo-1',
       name: 'feature',
+      displayName: 'feature',
+      displayNameKind: 'user',
       baseBranch: undefined,
       linkedIssue: undefined,
       linkedPR: 123,
