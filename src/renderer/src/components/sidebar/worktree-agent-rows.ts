@@ -3,7 +3,6 @@ import { isExplicitAgentStatusFresh } from '@/lib/agent-status'
 import type { RetainedAgentEntry } from '@/store/slices/agent-status'
 import {
   AGENT_STATUS_STALE_AFTER_MS,
-  type AgentType,
   type AgentStatusEntry,
   type AgentStatusOrchestrationContext
 } from '../../../../shared/agent-status-types'
@@ -16,86 +15,19 @@ import type {
   TerminalLayoutSnapshot,
   TerminalPaneLayoutNode,
   TerminalTab
-} from '../../../../shared/types'
+} from '../../../../shared/terminal-tab-types'
 import { resolveRuntimePaneTitleLeafId } from '@/lib/runtime-pane-title-leaf-id'
+import { resolveDecayedAgentRowState } from '@/lib/agent-row-decay-state'
+import { tabHasLivePty } from '@/lib/tab-has-live-pty'
+import { buildTitleDerivedAgentRows } from './worktree-title-derived-agent-rows'
+import { buildSubagentChildRows } from './worktree-subagent-child-rows'
+import { compareWorktreeAgentRows } from './worktree-agent-row-order'
 import {
-  buildTitleDerivedAgentRows,
-  resolveAgentTypeFromTerminalTitle
-} from './worktree-title-derived-agent-rows'
-
-function tabFromAttributedStatusEntry(entry: AgentStatusEntry): TerminalTab | null {
-  const parsed = parsePaneKey(entry.paneKey)
-  if (!parsed || !entry.worktreeId) {
-    return null
-  }
-  return {
-    id: parsed.tabId,
-    ptyId: null,
-    worktreeId: entry.worktreeId,
-    title: entry.terminalTitle ?? 'Agent',
-    customTitle: null,
-    color: null,
-    sortOrder: Number.MAX_SAFE_INTEGER,
-    createdAt: entry.stateStartedAt
-  }
-}
-
-function resolveRowAgentType(entry: AgentStatusEntry, tab?: TerminalTab | null): AgentType {
-  if (entry.agentType && entry.agentType !== 'unknown') {
-    return entry.agentType
-  }
-  return (
-    tab?.launchAgent ??
-    resolveAgentTypeFromTerminalTitle(entry.terminalTitle ?? tab?.title) ??
-    entry.agentType ??
-    'unknown'
-  )
-}
-
-function orchestrationContextsEqual(
-  a: AgentStatusOrchestrationContext,
-  b: AgentStatusOrchestrationContext
-): boolean {
-  return (
-    a.taskId === b.taskId &&
-    a.dispatchId === b.dispatchId &&
-    a.taskTitle === b.taskTitle &&
-    a.displayName === b.displayName &&
-    a.parentTerminalHandle === b.parentTerminalHandle &&
-    a.parentPaneKey === b.parentPaneKey &&
-    a.coordinatorHandle === b.coordinatorHandle &&
-    a.orchestrationRunId === b.orchestrationRunId
-  )
-}
-
-function entryWithRuntimeOrchestration(
-  entry: AgentStatusEntry,
-  runtimeAgentOrchestrationByPaneKey: Record<string, AgentStatusOrchestrationContext> | undefined
-): AgentStatusEntry {
-  const runtimeOrchestration = runtimeAgentOrchestrationByPaneKey?.[entry.paneKey]
-  const sameDispatch =
-    entry.orchestration &&
-    runtimeOrchestration &&
-    entry.orchestration.taskId === runtimeOrchestration.taskId &&
-    entry.orchestration.dispatchId === runtimeOrchestration.dispatchId
-  if (entry.orchestration && runtimeOrchestration && !sameDispatch) {
-    return entry
-  }
-  const orchestration =
-    sameDispatch && entry.orchestration && runtimeOrchestration
-      ? { ...entry.orchestration, ...runtimeOrchestration }
-      : (runtimeOrchestration ?? entry.orchestration)
-  if (!orchestration || orchestration === entry.orchestration) {
-    return entry
-  }
-  if (entry.orchestration && orchestrationContextsEqual(entry.orchestration, orchestration)) {
-    return entry
-  }
-  // Why: runtime graph metadata can arrive after a hook status ping. Keep old
-  // fields only for the same dispatch; a reused terminal must not inherit a
-  // previous worker's stale parent.
-  return { ...entry, orchestration }
-}
+  effectiveWorktreeAgentRowStartedAt,
+  tabFromWorktreeAttributedStatusEntry
+} from './worktree-agent-row-fallback-tab'
+import { resolveRowAgentType } from './worktree-agent-row-type'
+import { entryWithRuntimeOrchestration } from './worktree-agent-row-orchestration'
 
 function countTerminalLayoutLeaves(node: TerminalPaneLayoutNode | null | undefined): number {
   if (!node) {
@@ -234,8 +166,11 @@ export function buildWorktreeAgentRows(args: {
     }
   }
 
+  const ptyIdsByTabId = args.ptyIdsByTabId ?? {}
+
   for (const tab of args.tabs) {
     const explicitEntries = entriesByTabId.get(tab.id) ?? []
+    const hasLivePty = tabHasLivePty(ptyIdsByTabId, tab.id)
     for (const entry of explicitEntries) {
       const rowEntry = entryWithRuntimeOrchestration(entry, args.runtimeAgentOrchestrationByPaneKey)
       const isFresh = isExplicitAgentStatusFresh(rowEntry, args.now, AGENT_STATUS_STALE_AFTER_MS)
@@ -244,15 +179,17 @@ export function buildWorktreeAgentRows(args: {
         (rowEntry.state === 'working' ||
           rowEntry.state === 'blocked' ||
           rowEntry.state === 'waiting')
+      const startedAt = effectiveWorktreeAgentRowStartedAt(rowEntry)
       rows.push({
         paneKey: rowEntry.paneKey,
         entry: rowEntry,
         tab,
         agentType: resolveRowAgentType(rowEntry, tab),
         rowSource: 'live',
-        state: shouldDecay ? 'idle' : rowEntry.state,
-        startedAt: rowEntry.stateHistory[0]?.startedAt ?? rowEntry.stateStartedAt
+        state: shouldDecay ? resolveDecayedAgentRowState(rowEntry, hasLivePty) : rowEntry.state,
+        startedAt
       })
+      rows.push(...buildSubagentChildRows({ parentEntry: rowEntry, tab, parentIsFresh: isFresh }))
       seenPaneKeys.add(rowEntry.paneKey)
     }
   }
@@ -276,7 +213,8 @@ export function buildWorktreeAgentRows(args: {
       continue
     }
     const rowEntry = entryWithRuntimeOrchestration(entry, args.runtimeAgentOrchestrationByPaneKey)
-    const tab = tabFromAttributedStatusEntry(rowEntry)
+    const startedAt = effectiveWorktreeAgentRowStartedAt(rowEntry)
+    const tab = tabFromWorktreeAttributedStatusEntry(rowEntry, startedAt)
     if (!tab) {
       continue
     }
@@ -290,9 +228,14 @@ export function buildWorktreeAgentRows(args: {
       tab,
       agentType: resolveRowAgentType(rowEntry, tab),
       rowSource: 'live',
-      state: shouldDecay ? 'idle' : rowEntry.state,
-      startedAt: rowEntry.stateHistory[0]?.startedAt ?? rowEntry.stateStartedAt
+      // Why: this row's tab is synthesized because no tab for it exists in this renderer,
+      // so there is no live-PTY evidence to hold — the decay destination is always `idle`.
+      state: shouldDecay
+        ? resolveDecayedAgentRowState(rowEntry, tabHasLivePty(ptyIdsByTabId, tab.id))
+        : rowEntry.state,
+      startedAt
     })
+    rows.push(...buildSubagentChildRows({ parentEntry: rowEntry, tab, parentIsFresh: isFresh }))
     seenPaneKeys.add(rowEntry.paneKey)
   }
 
@@ -324,6 +267,8 @@ export function buildWorktreeAgentRows(args: {
     })
   }
 
-  rows.sort((a, b) => a.startedAt - b.startedAt)
+  // Why: hook pings can rebuild the live entry list in a different iteration
+  // order. Equal-start agents still need a deterministic sidebar order.
+  rows.sort(compareWorktreeAgentRows)
   return rows
 }

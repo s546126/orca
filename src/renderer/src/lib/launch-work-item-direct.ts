@@ -1,8 +1,6 @@
 import { toast } from 'sonner'
 import { useAppStore } from '@/store'
 import { planAgentCliArgsSuffix } from '@/lib/tui-agent-startup'
-import { TUI_AGENT_CONFIG } from '../../../shared/tui-agent-config'
-import { isTuiAgentEnabled, pickTuiAgent } from '../../../shared/tui-agent-selection'
 import { activateAndRevealWorktree } from '@/lib/worktree-activation'
 import { CLIENT_PLATFORM, getWorkspaceIntentName, getWorkspaceSeedName } from '@/lib/new-workspace'
 import {
@@ -13,14 +11,13 @@ import {
   workspaceActivationErrorMessage
 } from '@/lib/launch-work-item-direct-messages'
 import { ensureHooksConfirmed } from '@/lib/ensure-hooks-confirmed'
-import { getConnectionId } from '@/lib/connection-context'
-import type { GitPushTarget, SetupDecision, TuiAgent } from '../../../shared/types'
+import type { TuiAgent } from '../../../shared/tui-agent'
+import type { SetupDecision } from '../../../shared/worktree/create-types'
+import type { GitPushTarget } from '../../../shared/worktree/types'
 import { getLinearIssueWorkspaceName } from '../../../shared/workspace-name'
-import {
-  buildDirectWorkItemAgentStartupPlan,
-  buildDirectWorkItemStartupOpts,
-  pasteDirectWorkItemDraftWhenAgentReady
-} from '@/lib/launch-work-item-direct-agent'
+import { resolveGitHubWorkItemIdentity } from '@/lib/github-work-item-identity'
+import type { buildDirectWorkItemAgentStartupPlan } from '@/lib/launch-work-item-direct-agent'
+import { buildDirectWorkItemStartupOpts } from '@/lib/launch-work-item-direct-agent'
 import { getDirectWorkItemDraftContent } from '@/lib/launch-work-item-direct-draft'
 import {
   resolveDirectPrStartPoint,
@@ -29,10 +26,15 @@ import {
 import type { LaunchWorkItemDirectArgs } from '@/lib/launch-work-item-direct-types'
 import { resolveSourceControlLaunchPlatform } from '@/lib/source-control-launch-platform'
 import { getSettingsForRepoRuntimeOwner } from '@/lib/repo-runtime-owner'
-import {
-  getLocalProjectExecutionRuntimeContext,
-  getLocalRepoProjectExecutionRuntimeContext
-} from '@/lib/local-preflight-context'
+import { getLocalRepoProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
+import { settleDirectWorkItemStructuredLaunch } from '@/lib/launch-work-item-direct-agent-routing'
+import { deliverDirectWorkItemPrompt } from '@/lib/launch-work-item-direct-prompt-delivery'
+import { prepareDirectWorkItemAgentLaunch } from '@/lib/launch-work-item-direct-route-preparation'
+import { resolveAgentLaunchRoute, type AgentLaunchRoutingInput } from '@/lib/agent-launch-routing'
+
+function resolveDirectWorkItemRoute(input: AgentLaunchRoutingInput) {
+  return resolveAgentLaunchRoute(input)
+}
 
 /**
  * "Use" flow: create the workspace, activate it, launch the default agent,
@@ -70,6 +72,16 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
   const repoOwnerSettings = getSettingsForRepoRuntimeOwner(store, repoId)
   const promptDelivery = args.promptDelivery ?? 'draft'
   const repoConnectionId = repo.connectionId?.trim() || null
+  const githubIdentity =
+    item.number !== null && (item.type === 'issue' || item.type === 'pr')
+      ? resolveGitHubWorkItemIdentity({
+          type: item.type,
+          number: item.number,
+          url: item.url
+        })
+      : null
+  const itemType = githubIdentity?.type ?? item.type
+  const itemNumber = githubIdentity?.number ?? item.number
   const repoProjectRuntime = repoConnectionId
     ? undefined
     : getLocalRepoProjectExecutionRuntimeContext(store, repoId, CLIENT_PLATFORM)
@@ -107,10 +119,10 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
     trustDecision === 'skip' ? 'skip' : setupResolution.decision
 
   const workspaceIntentName =
-    item.number !== null
+    itemNumber !== null
       ? getWorkspaceIntentName({
           sourceText: item.pasteContent,
-          workItem: { ...item, number: item.number }
+          workItem: { ...item, type: itemType, number: itemNumber }
         })
       : null
   const workspaceName = getWorkspaceSeedName({
@@ -118,18 +130,18 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
       ? getLinearIssueWorkspaceName({ identifier: item.linearIdentifier, title: item.title })
       : (workspaceIntentName?.seedName ?? ''),
     prompt: '',
-    linkedIssueNumber: item.type === 'issue' ? (item.number ?? null) : null,
-    linkedPR: item.type === 'pr' ? (item.number ?? null) : null
+    linkedIssueNumber: itemType === 'issue' ? (itemNumber ?? null) : null,
+    linkedPR: itemType === 'pr' ? (itemNumber ?? null) : null
   })
   let resolvedBaseBranch = baseBranch
   let resolvedPushTarget: GitPushTarget | undefined
   let resolvedBranchNameOverride: string | undefined
   let resolvedCompareBaseRef: string | undefined
-  if (!resolvedBaseBranch && item.type === 'pr' && item.number) {
+  if (!resolvedBaseBranch && itemType === 'pr' && itemNumber) {
     try {
       // Why: direct "Use PR" launches bypass the Start-from picker, so they
       // must still resolve the PR head before `git worktree add`.
-      const result = await resolveDirectPrStartPoint(repoId, item.number, repoOwnerSettings, item)
+      const result = await resolveDirectPrStartPoint(repoId, itemNumber, repoOwnerSettings, item)
       resolvedBaseBranch = result.baseBranch
       resolvedPushTarget = result.pushTarget
       resolvedBranchNameOverride = result.branchNameOverride
@@ -141,11 +153,13 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
     }
   }
 
-  let worktreeId: string
+  let worktreeId: string,
+    worktreePath = ''
   let primaryTabId: string | null
   let startupPlan = null as ReturnType<typeof buildDirectWorkItemAgentStartupPlan>['startupPlan']
   let effectiveAgent: TuiAgent | null = null
   let draftLaunchedNatively = false
+  let structuredLaunch = false
   const draftContent = await getDirectWorkItemDraftContent(item, repoConnectionId)
   let startupPlanFailed = false
   try {
@@ -157,15 +171,15 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
       undefined,
       telemetrySource,
       workspaceIntentName?.displayName ?? item.title,
-      item.type === 'issue' && item.number ? item.number : undefined,
-      item.type === 'pr' && item.number ? item.number : undefined,
+      itemType === 'issue' && itemNumber ? itemNumber : undefined,
+      itemType === 'pr' && itemNumber ? itemNumber : undefined,
       resolvedPushTarget,
       undefined,
       item.linearIdentifier,
       resolvedBranchNameOverride,
       undefined,
-      item.type === 'mr' && item.number ? item.number : undefined,
-      gitLabIssueNumber(item),
+      itemType === 'mr' && itemNumber ? itemNumber : undefined,
+      gitLabIssueNumber({ ...item, type: itemType, number: itemNumber }),
       undefined,
       undefined,
       undefined,
@@ -177,101 +191,50 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
       resolvedCompareBaseRef
     )
     worktreeId = result.worktree.id
-    const worktreePath = result.worktree.path
+    worktreePath = result.worktree.path
 
-    const createdConnectionId = getConnectionId(worktreeId)
-    // Why: newly-created SSH worktrees can be activated before the store
-    // rehydrates their repo link; preserve the source repo connection.
-    const launchConnectionId = createdConnectionId ?? repoConnectionId
     const latestStore = useAppStore.getState()
-    const launchPlatform =
-      args.launchPlatform ??
-      resolveSourceControlLaunchPlatform({
-        connectionId: launchConnectionId,
-        worktreePath,
-        projectRuntime:
-          launchConnectionId === null
-            ? (getLocalProjectExecutionRuntimeContext(latestStore, worktreeId, CLIENT_PLATFORM) ??
-              repoProjectRuntime)
-            : undefined
+    const launchPreparation = await prepareDirectWorkItemAgentLaunch({
+      worktreeId,
+      worktreePath,
+      agentOverride,
+      agentArgs,
+      repoConnectionId,
+      detectedAgentsPromise,
+      latestStore,
+      settings,
+      draftContent,
+      promptDelivery,
+      launchPlatform: args.launchPlatform,
+      repoProjectRuntime,
+      routeResolver: resolveDirectWorkItemRoute
+    })
+    if (launchPreparation.unavailable) {
+      activateAndRevealWorktree(worktreeId, {
+        sidebarRevealBehavior: 'auto',
+        setup: result.setup
       })
-    if (agentOverride) {
-      const detectedAgents =
-        typeof launchConnectionId === 'string'
-          ? await latestStore.ensureRemoteDetectedAgents(launchConnectionId)
-          : await latestStore.ensureDetectedAgents()
-      if (
-        !detectedAgents.includes(agentOverride) ||
-        !isTuiAgentEnabled(agentOverride, latestStore.settings?.disabledTuiAgents)
-      ) {
-        activateAndRevealWorktree(worktreeId, {
-          sidebarRevealBehavior: 'auto',
-          setup: result.setup
-        })
-        toast.error(unavailableAgentErrorMessage())
-        return false
-      }
-      effectiveAgent = agentOverride
-    } else {
-      const detectedAgents =
-        launchConnectionId === repoConnectionId
-          ? await detectedAgentsPromise!
-          : typeof launchConnectionId === 'string'
-            ? await latestStore.ensureRemoteDetectedAgents(launchConnectionId)
-            : await latestStore.ensureDetectedAgents()
-      const detectedIds = new Set(detectedAgents)
-      effectiveAgent = pickTuiAgent(
-        settings?.defaultTuiAgent,
-        detectedIds,
-        settings?.disabledTuiAgents
-      )
+      toast.error(unavailableAgentErrorMessage())
+      return false
     }
-    if (effectiveAgent) {
-      // Why: direct task launch creates and starts the workspace in separate
-      // steps so agent detection can overlap git worktree creation. Persist
-      // the chosen agent once known so empty-worktree reopen can recreate it.
-      void store.updateWorktreeMeta(worktreeId, { createdWithAgent: effectiveAgent }).catch(() => {
-        // Non-critical: activation still has the explicit startup below.
-      })
-    }
-    // Why: agents that gate first-launch behind a "Do you trust this folder?"
-    // menu (cursor-agent, copilot) consume the bracketed paste as menu input.
-    // Pre-write the same trust artifact those CLIs write after the user
-    // accepts so the menu never fires. Best-effort — main swallows errors,
-    // and we guard the IPC presence so a stale preload bundle (which can
-    // ship a renderer that's ahead of the loaded preload) doesn't crash the
-    // launch with "Cannot read properties of undefined".
-    if (effectiveAgent && worktreePath && window.api.agentTrust?.markTrusted) {
-      const preflight = TUI_AGENT_CONFIG[effectiveAgent].preflightTrust
-      if (preflight) {
-        try {
-          await window.api.agentTrust.markTrusted({
-            preset: preflight,
-            workspacePath: worktreePath,
-            ...(repo.connectionId ? { connectionId: repo.connectionId } : {})
-          })
-        } catch {
-          // Best-effort: continue with launch even if the trust write
-          // throws. The user can dismiss the trust menu manually.
-        }
-      }
-    }
-
-    ;({ startupPlan, draftLaunchedNatively, startupPlanFailed } =
-      buildDirectWorkItemAgentStartupPlan({
-        agent: effectiveAgent,
-        agentArgs,
-        draftContent,
-        promptDelivery,
-        settings,
-        launchPlatform
-      }))
+    effectiveAgent = launchPreparation.effectiveAgent
+    startupPlan = launchPreparation.startupPlan
+    draftLaunchedNatively = launchPreparation.draftLaunchedNatively
+    startupPlanFailed = launchPreparation.startupPlanFailed
+    structuredLaunch = launchPreparation.structuredLaunch
 
     const activation = activateAndRevealWorktree(worktreeId, {
       sidebarRevealBehavior: 'auto',
       setup: result.setup,
       defaultTabs: result.defaultTabs,
-      ...buildDirectWorkItemStartupOpts(effectiveAgent, startupPlan, launchSource)
+      ...(structuredLaunch
+        ? { providesInitialSurface: true }
+        : buildDirectWorkItemStartupOpts(
+            effectiveAgent,
+            startupPlan,
+            launchSource,
+            promptDelivery === 'draft' ? draftContent : undefined
+          ))
     })
     if (!activation) {
       // Worktree vanished between create and activate — extremely unlikely but
@@ -288,26 +251,38 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
 
   store.setSidebarOpen(true)
 
+  const structuredResult = await settleDirectWorkItemStructuredLaunch({
+    structuredLaunch,
+    agent: effectiveAgent,
+    worktreeId,
+    workspacePath: worktreePath,
+    connectionId: repoConnectionId,
+    draftContent,
+    promptDelivery,
+    primaryTabId,
+    startupPlan,
+    launchSource
+  })
+  if (structuredResult.visibilityUnknown) {
+    return false
+  }
+  if (structuredResult.completed) {
+    return true
+  }
+  primaryTabId = structuredResult.primaryTabId
+
   if (startupPlanFailed) {
     toast.error(agentLaunchCommandErrorMessage())
     return false
   }
 
-  // Why: at this point the workspace is live and the agent (if any) has
-  // been queued on `primaryTabId`. The post-launch paste step below only
-  // applies to agents that lacked a native prefill flag; for agents that
-  // were launched with the draft already on argv (Claude --prefill today),
-  // the context is in the input box already — pasting again would duplicate it.
-  if (!primaryTabId || !startupPlan || draftLaunchedNatively) {
-    return true
-  }
-
-  void pasteDirectWorkItemDraftWhenAgentReady({
+  deliverDirectWorkItemPrompt({
     primaryTabId,
+    effectiveAgent,
+    draftContent,
+    promptDelivery,
     startupPlan,
-    content: draftContent,
-    submit: promptDelivery === 'submit-after-ready',
-    forcePaste: promptDelivery === 'submit-after-ready'
+    draftLaunchedNatively
   })
   return true
 }

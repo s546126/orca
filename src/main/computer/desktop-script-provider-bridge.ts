@@ -1,4 +1,4 @@
-import { execFile } from 'child_process'
+import { execFile } from 'node:child_process'
 import { RuntimeClientError } from './runtime-client-error'
 import type { DesktopScriptPlatform } from './desktop-script-provider-paths'
 
@@ -112,7 +112,7 @@ export function mapBridgeError(message: string): RuntimeClientError {
     return new RuntimeClientError('app_blocked', text)
   }
   if (
-    /unsupported capability|hotkey.*require|paste_text requires|GDK is required for non-character key synthesis/i.test(
+    /unsupported capability|hotkey.*require|paste_text requires|modified clicks require xdotool|GDK is required for non-character key synthesis/i.test(
       text
     )
   ) {

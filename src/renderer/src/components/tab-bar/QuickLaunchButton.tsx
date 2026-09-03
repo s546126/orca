@@ -1,16 +1,21 @@
 import React, { useCallback } from 'react'
-import { Settings as SettingsIcon } from 'lucide-react'
+import { Loader2, Settings as SettingsIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { DropdownMenuItem, DropdownMenuShortcut } from '@/components/ui/dropdown-menu'
 import { getAgentCatalog, AgentIcon } from '@/lib/agent-catalog'
 import { useAppStore } from '@/store'
+import { useAgentDetectionTargetForWorktree } from '@/hooks/useAgentDetectionTarget'
 import { useDetectedAgents } from '@/hooks/useDetectedAgents'
 import { useOptionalShortcutLabel } from '@/hooks/useShortcutLabel'
 import { launchAgentInNewTab } from '@/lib/launch-agent-in-new-tab'
-import type { TuiAgent } from '../../../../shared/types'
+import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { LaunchSource } from '../../../../shared/telemetry-events'
-import { filterEnabledTuiAgents } from '../../../../shared/tui-agent-selection'
+import {
+  DEFAULT_DISABLED_TUI_AGENTS,
+  filterEnabledTuiAgents
+} from '../../../../shared/tui-agent-selection'
 import { translate } from '@/i18n/i18n'
+import { useStructuredCodexLaunchStatus } from '@/lib/structured-agent-session-launch'
 
 export type QuickLaunchAgentMenuItemsProps = {
   worktreeId: string
@@ -99,25 +104,20 @@ function QuickLaunchAgentMenuItemsInner({
   launchSource,
   onPromptDelivered
 }: QuickLaunchAgentMenuItemsProps): React.JSX.Element | null {
-  // Why: must be a reactive selector (not getConnectionId() which reads a
-  // snapshot via getState()). This ensures the component re-renders when the
-  // SSH connection state changes. Returns undefined when the worktree isn't
-  // found (store not hydrated), null for local repos, string for remote.
-  const connectionId = useAppStore((s) => {
-    const allWorktrees = Object.values(s.worktreesByRepo ?? {}).flat()
-    const worktree = allWorktrees.find((w) => w.id === worktreeId)
-    if (!worktree) {
-      return undefined
-    }
-    const repo = s.repos?.find((r) => r.id === worktree.repoId)
-    return repo?.connectionId ?? null
-  })
-  const { detectedIds } = useDetectedAgents(connectionId)
+  // Why: resolving only the SSH connectionId here made paired-runtime
+  // worktrees fall back to LOCAL detection, listing the client's agents
+  // instead of the remote server's. Use the same ssh/runtime/local owner
+  // resolution as the rest of the tab bar.
+  const agentDetectionTarget = useAgentDetectionTargetForWorktree(worktreeId)
+  const { detectedIds } = useDetectedAgents(agentDetectionTarget)
   const defaultAgent = useAppStore((s) => s.settings?.defaultTuiAgent)
-  const disabledAgents = useAppStore((s) => s.settings?.disabledTuiAgents ?? [])
+  const disabledAgents = useAppStore(
+    (s) => s.settings?.disabledTuiAgents ?? DEFAULT_DISABLED_TUI_AGENTS
+  )
   const openSettingsPage = useAppStore((s) => s.openSettingsPage)
   const openSettingsTarget = useAppStore((s) => s.openSettingsTarget)
   const newAgentShortcut = useOptionalShortcutLabel('tab.newAgent')
+  const structuredCodexLaunchStatus = useStructuredCodexLaunchStatus(worktreeId)
 
   const openAgentSettings = useCallback(() => {
     openSettingsTarget({ pane: 'agents', repoId: null })
@@ -199,21 +199,31 @@ function QuickLaunchAgentMenuItemsInner({
       {agents.map((agent) => {
         const entry = getCatalogEntry(agent)
         const label = entry?.label ?? agent
+        const isStructuredCodexPending =
+          agent === 'codex' && structuredCodexLaunchStatus === 'pending'
+        const menuLabel = isStructuredCodexPending ? 'Starting Codex chat…' : label
         const showsDefaultAgentShortcut =
           newAgentShortcut !== null && defaultAgent !== 'blank' && agent === defaultAgent
         return (
           <DropdownMenuItem
             key={agent}
+            disabled={isStructuredCodexPending}
             onSelect={() => runLaunch(agent)}
             className="gap-2 rounded-[7px] px-2 py-1.5 text-[12px] leading-5 font-medium"
             title={translate(
               'auto.components.tab.bar.QuickLaunchButton.ec2adf093e',
-              'Launch {{value0}} in a new terminal',
-              { value0: label }
+              isStructuredCodexPending
+                ? 'Starting Codex chat…'
+                : 'Launch {{value0}} in a new terminal',
+              isStructuredCodexPending ? undefined : { value0: label }
             )}
           >
-            <AgentIcon agent={agent} size={14} />
-            <span className="flex-1">{label}</span>
+            {isStructuredCodexPending ? (
+              <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
+            ) : (
+              <AgentIcon agent={agent} size={14} />
+            )}
+            <span className="flex-1">{menuLabel}</span>
             {showsDefaultAgentShortcut ? (
               <DropdownMenuShortcut>{newAgentShortcut}</DropdownMenuShortcut>
             ) : null}
