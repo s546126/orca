@@ -120,6 +120,7 @@ describe('useVisibleSidebarWorktrees', () => {
         hideDetachedHeadWorkspaces: false,
         hideWorkspacesFromOtherDevices: false,
         alwaysShowDefaultBranchWorkspace: true,
+        filterAgentIds: null,
         visibleWorkspaceHostIds: null,
         workspaceHostScope: 'all'
       },
