@@ -1,3 +1,4 @@
+import type { Repo } from '../../../../shared/repo-types'
 import type { WorktreeLineage } from '../../../../shared/worktree/lineage-types'
 export type { SidebarFilterState } from './visible-worktree-kinds'
 export {
