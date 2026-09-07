@@ -1,4 +1,3 @@
-import { platform } from 'node:os'
 import { EmulatorError } from './emulator-errors'
 import type { EmulatorSessionInfo } from './emulator-types'
 import type { SimulatorDevice } from './simctl-simulator-devices'
@@ -10,11 +9,18 @@ import {
   type EmulatorStartLease
 } from './emulator-start-lease-registry'
 import { listAvailableEmulatorDevices } from './emulator-device-inventory'
-import { deriveAxUrlFromStreamUrl } from './serve-sim-detached-session'
 import { IosEmulatorBackend } from './backends/ios-emulator-backend'
 import { AndroidEmulatorBackend } from './backends/android-emulator-backend'
-import { isAdbNetworkSerial } from './android/adb-network-endpoint'
 import type { AdbConnectionStatus } from './android/adb-device-connection'
+import { resolveEmulatorBackendForDevice } from './emulator-backend-for-device'
+import {
+  adbNetworkConnectionStatus,
+  connectAdbNetworkDevice,
+  currentAdbNetworkAddress,
+  disconnectAdbNetworkDevice
+} from './emulator-bridge-adb-connection'
+import { readIosAccessibilityTree } from './emulator-ios-accessibility-tree'
+import { destroyManagedEmulatorSessions } from './emulator-session-teardown'
 import type {
   EmulatorBackend,
   EmulatorBackendCapabilities,
@@ -65,30 +71,20 @@ export class EmulatorBridge {
     return this.iosBackend.checkServeSimAvailable()
   }
 
-  // Explicit ADB network device connect/status — the only initiator of `adb
-  // connect` anywhere in the app (never called from availability/boot/pane-open).
   async adbConnect(address: string): Promise<AdbConnectionStatus> {
-    return this.androidBackend.adbConnection.connect(address)
+    return connectAdbNetworkDevice(this.androidBackend, address)
   }
 
   async adbConnectionStatus(address: string): Promise<AdbConnectionStatus> {
-    return this.androidBackend.adbConnection.status(address)
+    return adbNetworkConnectionStatus(this.androidBackend, address)
   }
 
-  // For RPC disconnect/status calls that don't name an address explicitly —
-  // surfaces the manager's own address->serial mapping, no new state owned here.
   adbCurrentAddress(): string | null {
-    return this.androidBackend.adbConnection.currentAddress()
+    return currentAdbNetworkAddress(this.androidBackend)
   }
 
-  // Explicit Disconnect lifecycle: stop this device's scrcpy helper (+ orphan
-  // forwards) and drop it from the session registry BEFORE `adb disconnect`,
-  // so no session is left pointing at a serial adb no longer recognizes.
   async adbDisconnect(address: string): Promise<AdbConnectionStatus> {
-    const serial = this.androidBackend.adbConnection.serialFor(address) ?? address
-    await this.androidBackend.stopHelperForDevice(serial, { includeOrphaned: true })
-    this.sessionRegistry.clearSessionAndWorktrees(serial)
-    return this.androidBackend.adbConnection.disconnect(address)
+    return disconnectAdbNetworkDevice(this.androidBackend, this.sessionRegistry, address)
   }
 
   registerActiveEmulator(
@@ -231,24 +227,13 @@ export class EmulatorBridge {
       if (backend.kind !== 'ios') {
         return backend.accessibilityTree!(device)
       }
-      const udid = await backend.resolveDeviceId(device)
-      const worktreeId = opts?.worktreeId
-      // Fall back to the udid-keyed session so an explicit --device read works
-      // from a worktree with no active emulator (matching tap/type reachability);
-      // sessions are stored once per udid, so both lookups hit the same state.
-      const session =
-        (worktreeId ? this.getActiveForWorktree(worktreeId) : null) ??
-        this.sessionRegistry.getSession(udid)
-      if (worktreeId && session && session.deviceUdid !== udid) {
-        throw new EmulatorError(
-          'emulator_no_active',
-          `iOS simulator ${udid} is not active for this worktree (active: ${session.deviceUdid}); attach the requested simulator first.`
-        )
-      }
-      // Heal sessions registered without an axUrl (parse-time derivation only
-      // covers fresh --detach output) by deriving it from the mjpeg stream URL.
-      const axUrl = session?.axUrl ?? deriveAxUrlFromStreamUrl(session?.streamUrl)
-      return backend.accessibilityTree!(udid, axUrl)
+      return readIosAccessibilityTree(
+        backend,
+        device,
+        this.sessionRegistry,
+        opts?.worktreeId,
+        (worktreeId) => this.getActiveForWorktree(worktreeId)
+      )
     })
   }
 
@@ -298,24 +283,7 @@ export class EmulatorBridge {
   }
 
   async destroyAllSessions(): Promise<void> {
-    const promises: Promise<unknown>[] = []
-    for (const session of this.sessionRegistry.listSessions()) {
-      if (!session.managed) {
-        continue
-      }
-      const backend = this.backendForKind(session.backend)
-      if (!backend) {
-        continue
-      }
-      promises.push(
-        backend
-          .stopHelperForDevice(session.deviceUdid, { helperPid: session.pid })
-          .catch(() => {})
-          .then(() => backend.shutdownDevice(session.deviceUdid).catch(() => {}))
-      )
-    }
-    await Promise.allSettled(promises)
-    this.sessionRegistry.clear()
+    await destroyManagedEmulatorSessions(this.sessionRegistry, (kind) => this.backendForKind(kind))
   }
 
   async onAppQuit(): Promise<void> {
@@ -368,23 +336,10 @@ export class EmulatorBridge {
   }
 
   private async backendForDevice(device: string): Promise<EmulatorBackend> {
-    // An ADB TCP address (host:port) is unambiguously Android, even when it is
-    // offline/unrecognized by any backend's ownsDevice — classify it before the
-    // ownership loop so it never falls through to the iOS/host-platform fallback.
-    if (isAdbNetworkSerial(device)) {
-      return this.androidBackend
-    }
-    for (const backend of this.backends) {
-      if (await backend.ownsDevice(device)) {
-        return backend
-      }
-    }
-    // Why: fall back to a host-supported backend, else the platform-primary one,
-    // so an unrecognized device (e.g. no SDK yet) surfaces the right setup error
-    // — Android on Windows/Linux, iOS/CoreSimulator on macOS — not iOS-on-Windows.
-    return (
-      this.backends.find((backend) => backend.isSupportedOnHost()) ??
-      (platform() === 'darwin' ? this.iosBackend : this.androidBackend)
-    )
+    return resolveEmulatorBackendForDevice(device, {
+      backends: this.backends,
+      androidBackend: this.androidBackend,
+      iosBackend: this.iosBackend
+    })
   }
 }
