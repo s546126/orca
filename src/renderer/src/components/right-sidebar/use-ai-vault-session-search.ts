@@ -103,7 +103,8 @@ export function useAiVaultSessionSearch(args: {
   runAiSearch: () => Promise<void>
 } {
   const { sessions, filters, repoId } = args
-  const indexRef = useRef(new AiVaultSessionSearchIndex())
+  const indexRef = useRef<AiVaultSessionSearchIndex>(undefined!)
+  indexRef.current ??= new AiVaultSessionSearchIndex()
   const requestIdRef = useRef(0)
   const rgRequestIdRef = useRef(0)
   const searchReset = takeAiVaultSearchReset(filters, sessions)
