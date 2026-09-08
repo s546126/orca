@@ -9,22 +9,8 @@ on:
       - 'mobile-android-v*'
   workflow_dispatch:
     inputs:
-      bump_patch_version:
-        description: 'Bump the mobile marketing version patch number before release'
-        required: false
-        default: false
-        type: boolean
       release_version:
-        description: 'Optional exact mobile marketing version override, e.g. 0.0.15'
-        required: false
-        type: string
-      bump_android_version_code:
-        description: 'Increment the Android versionCode before release'
-        required: false
-        default: false
-        type: boolean
-      android_version_code:
-        description: 'Optional exact Android versionCode override'
+        description: 'Optional exact mobile marketing version assertion, e.g. 0.0.22'
         required: false
         type: string
       publish_github_release:
@@ -58,9 +44,9 @@ jobs:
           node-version: 24
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/setup@v2
         with:
-          run_install: false
+          install: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -69,9 +55,6 @@ jobs:
         id: release
         env:
           MOBILE_ANDROID_RELEASE_VERSION: ${{ github.event.inputs.release_version }}
-          MOBILE_ANDROID_BUMP_PATCH_VERSION: ${{ github.event.inputs.bump_patch_version }}
-          MOBILE_ANDROID_VERSION_CODE: ${{ github.event.inputs.android_version_code }}
-          MOBILE_ANDROID_BUMP_VERSION_CODE: ${{ github.event.inputs.bump_android_version_code }}
           MOBILE_ANDROID_PUBLISH_RELEASE: ${{ github.event.inputs.publish_github_release }}
         run: node scripts/prepare-android-release.mjs
 
@@ -121,11 +104,47 @@ jobs:
               --clobber \
               android/app/build/outputs/apk/release/*.apk
           else
+            # Why: release tags live on side branches, so GitHub's automatic
+            # previous-tag detection reaches back several releases; that body
+            # already exceeds the 125000-character API limit and grows each
+            # release. Pin the comparison base and cap the size.
+            notes_file="$RUNNER_TEMP/android-release-notes.md"
+            previous_tag="$(
+              gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName --jq '.[].tagName' \
+                | grep '^mobile-android-v' | grep -Fxv "$tag" | sort -V | tail -1 || true
+            )"
+
+            if [ -n "$previous_tag" ]; then
+              # Why: gh writes the JSON error body to stdout on an HTTP error, so a
+              # non-empty file is not proof of success — gate on exit status.
+              if ! gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -X POST \
+                -f tag_name="$tag" \
+                -f target_commitish="$GITHUB_SHA" \
+                -f previous_tag_name="$previous_tag" \
+                --jq .body > "$notes_file"; then
+                : > "$notes_file"
+              fi
+            fi
+            if [ ! -s "$notes_file" ]; then
+              printf 'Orca Mobile Android %s\n' "$tag" > "$notes_file"
+            fi
+            # Why: reuse the desktop release path's character-safe truncation so a
+            # multi-byte character cannot be split at the cap.
+            NOTES_FILE="$notes_file" \
+            NOTES_MODULE="$GITHUB_WORKSPACE/config/scripts/create-draft-release.mjs" \
+            node --input-type=module -e '
+              const { readFileSync, writeFileSync } = await import("node:fs")
+              const { pathToFileURL } = await import("node:url")
+              const { truncateReleaseBody } = await import(pathToFileURL(process.env.NOTES_MODULE).href)
+              const file = process.env.NOTES_FILE
+              writeFileSync(file, truncateReleaseBody(readFileSync(file, "utf8")))
+            '
+
             gh release create "$tag" \
               --repo "$GITHUB_REPOSITORY" \
               --title "Orca Mobile Android $tag" \
               --prerelease \
               --latest=false \
-              --generate-notes \
+              --notes-file "$notes_file" \
               android/app/build/outputs/apk/release/*.apk
           fi

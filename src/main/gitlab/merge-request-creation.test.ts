@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- Why: MR creation tests share glab and SSH filesystem mocks across CLI, template, and duplicate-detection paths. */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
@@ -59,14 +58,18 @@ describe('createGitLabMergeRequest', () => {
     })
 
     await expect(
-      createGitLabMergeRequest('/repo-root', {
-        provider: 'gitlab',
-        base: 'origin/main',
-        head: 'refs/heads/feature/create-mr',
-        title: '  Create MR UI  ',
-        body: 'Body text',
-        draft: true
-      })
+      createGitLabMergeRequest(
+        '/repo-root',
+        {
+          provider: 'gitlab',
+          base: 'origin/main',
+          head: 'refs/heads/feature/create-mr',
+          title: '  Create MR UI  ',
+          body: 'Body text',
+          draft: true
+        },
+        'local'
+      )
     ).resolves.toEqual({
       ok: true,
       number: 42,
@@ -116,7 +119,7 @@ describe('createGitLabMergeRequest', () => {
           head: 'feature/wsl-create-mr',
           title: 'WSL Create MR'
         },
-        null,
+        'local',
         { localGitExecOptions: { wslDistro: 'Ubuntu' } }
       )
     ).resolves.toEqual({
@@ -152,7 +155,7 @@ describe('createGitLabMergeRequest', () => {
           head: 'feature/ssh-create-mr',
           title: 'SSH Create MR'
         },
-        'ssh-1'
+        'ssh:ssh-1'
       )
     ).resolves.toEqual({
       ok: true,
@@ -205,7 +208,7 @@ describe('createGitLabMergeRequest', () => {
           body: '',
           useTemplate: true
         },
-        'ssh-1'
+        'ssh:ssh-1'
       )
     ).resolves.toEqual({
       ok: true,
@@ -234,12 +237,16 @@ describe('createGitLabMergeRequest', () => {
       })
 
     await expect(
-      createGitLabMergeRequest('/repo-root', {
-        provider: 'gitlab',
-        base: 'main',
-        head: 'feature/existing',
-        title: 'Existing MR'
-      })
+      createGitLabMergeRequest(
+        '/repo-root',
+        {
+          provider: 'gitlab',
+          base: 'main',
+          head: 'feature/existing',
+          title: 'Existing MR'
+        },
+        'local'
+      )
     ).resolves.toEqual({
       ok: false,
       code: 'already_exists',

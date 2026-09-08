@@ -1,8 +1,9 @@
-import type { Repo, WorkspaceSessionState } from './types'
+import type { Repo } from './repo-types'
+import type { WorkspaceSessionState } from './workspace-session-state-types'
 import { FLOATING_TERMINAL_WORKTREE_ID } from './constants'
-import { getRepoIdFromWorktreeId } from './worktree-id'
+import { getRepoIdFromWorktreeId } from './worktree/id'
 import { TERMINAL_SCROLLBACK_SESSION_BUFFER_BYTE_LIMIT } from './terminal-scrollback-limits'
-import { clampUtf8TextTail, measureUtf8ByteLength } from './utf8-byte-limits'
+import { clampUtf8TextTail, isUtf8ByteLengthWithinLimit } from './utf8-byte-limits'
 import { parseExecutionHostId } from './execution-host'
 
 export type RepoConnection = Pick<Repo, 'id' | 'connectionId' | 'executionHostId'>
@@ -49,12 +50,7 @@ export function shouldPreserveTerminalScrollbackBuffers(
 }
 
 export function capTerminalScrollbackSessionBuffer(buffer: string): string {
-  if (
-    buffer.length <= TERMINAL_SCROLLBACK_SESSION_BUFFER_BYTE_LIMIT &&
-    !measureUtf8ByteLength(buffer, {
-      stopAfterBytes: TERMINAL_SCROLLBACK_SESSION_BUFFER_BYTE_LIMIT
-    }).exceededLimit
-  ) {
+  if (isUtf8ByteLengthWithinLimit(buffer, TERMINAL_SCROLLBACK_SESSION_BUFFER_BYTE_LIMIT)) {
     return buffer
   }
   return clampUtf8TextTail(buffer, TERMINAL_SCROLLBACK_SESSION_BUFFER_BYTE_LIMIT).text
@@ -83,14 +79,16 @@ export function pruneLocalTerminalScrollbackBuffers(
 ): WorkspaceSessionState {
   const repoById = new Map(repos.map((repo) => [repo.id, repo] as const))
   const worktreeIdByTabId = new Map<string, string>()
-  for (const [worktreeId, tabs] of Object.entries(session.tabsByWorktree)) {
+  const tabsByWorktree = session.tabsByWorktree ?? {}
+  const terminalLayoutsByTabIdForRead = session.terminalLayoutsByTabId ?? {}
+  for (const [worktreeId, tabs] of Object.entries(tabsByWorktree)) {
     for (const tab of tabs) {
       worktreeIdByTabId.set(tab.id, worktreeId)
     }
   }
 
   let terminalLayoutsByTabId: WorkspaceSessionState['terminalLayoutsByTabId'] | null = null
-  for (const [tabId, layout] of Object.entries(session.terminalLayoutsByTabId)) {
+  for (const [tabId, layout] of Object.entries(terminalLayoutsByTabIdForRead)) {
     if (!layout.buffersByLeafId && !layout.scrollbackRefsByLeafId) {
       continue
     }
@@ -98,13 +96,13 @@ export function pruneLocalTerminalScrollbackBuffers(
     if (shouldPreserveTerminalScrollbackBuffersForRepoMap(worktreeId, repoById)) {
       const capped = capTerminalScrollbackLeafBuffers(layout.buffersByLeafId)
       if (capped.changed) {
-        terminalLayoutsByTabId ??= { ...session.terminalLayoutsByTabId }
+        terminalLayoutsByTabId ??= { ...terminalLayoutsByTabIdForRead }
         terminalLayoutsByTabId[tabId] = { ...layout, buffersByLeafId: capped.buffers }
       }
       continue
     }
 
-    terminalLayoutsByTabId ??= { ...session.terminalLayoutsByTabId }
+    terminalLayoutsByTabId ??= { ...terminalLayoutsByTabIdForRead }
     const layoutWithoutBuffers = { ...layout }
     delete layoutWithoutBuffers.buffersByLeafId
     delete layoutWithoutBuffers.scrollbackRefsByLeafId

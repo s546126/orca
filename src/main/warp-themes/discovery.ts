@@ -1,7 +1,7 @@
-import { readdirSync } from 'fs'
-import type { Dirent } from 'fs'
-import { homedir, platform } from 'os'
-import path from 'path'
+import { readdirSync } from 'node:fs'
+import type { Dirent } from 'node:fs'
+import { homedir, platform } from 'node:os'
+import path from 'node:path'
 
 const WARP_CHANNELS = [
   { macName: '.warp', linuxName: 'warp-terminal', windowsName: 'Warp' },
@@ -142,7 +142,7 @@ export function getWarpThemeDirectories(): string[] {
 export function warpThemeSourceLabelForDirectory(directoryPath: string): string {
   const parts = directoryPath.split(/[\\/]+/).filter(Boolean)
   const themesIndex = parts.findLastIndex((part) => part.toLowerCase() === 'themes')
-  if (themesIndex < 0) {
+  if (themesIndex === -1) {
     return parts.at(-1) || 'Warp themes'
   }
 

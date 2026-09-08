@@ -1,5 +1,5 @@
-import { EventEmitter } from 'events'
-import { join } from 'path'
+import { EventEmitter } from 'node:events'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
@@ -277,6 +277,16 @@ describe('MacOSNativeProviderClient', () => {
     await expect(client.action('click', { app: 'TextEdit' })).rejects.toMatchObject({
       code: 'invalid_argument',
       message: expect.stringContaining('Click requires')
+    })
+    await expect(
+      client.action('click', {
+        app: 'TextEdit',
+        elementIndex: 0,
+        modifiers: 'CmdOrCtrl+A'
+      })
+    ).rejects.toMatchObject({
+      code: 'invalid_argument',
+      message: expect.stringContaining('Click modifiers accept modifier keys only')
     })
     await expect(client.action('typeText', { app: 'TextEdit', text: '' })).rejects.toMatchObject({
       code: 'invalid_argument',

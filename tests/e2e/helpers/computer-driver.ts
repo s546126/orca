@@ -1,8 +1,8 @@
-import { execFile, spawn, type ChildProcess } from 'child_process'
-import { mkdtemp, rm, writeFile } from 'fs/promises'
-import { tmpdir } from 'os'
-import { join } from 'path'
-import { promisify } from 'util'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { promisify } from 'node:util'
 import {
   ensureOrcaRuntimeLaunched,
   parseJsonOutput,
@@ -283,6 +283,8 @@ function safariDraftFixtureHtml(title: string): string {
     '<label>Body <textarea id="body" aria-label="Body"></textarea></label>',
     "<button id=\"save\" onclick=\"document.getElementById('status').textContent = 'Draft ready: ' + document.getElementById('recipient').value + ' / ' + document.getElementById('body').value\">Save draft</button>",
     '<p id="status" role="status">Draft empty</p>',
+    '<button id="middle-click-target" onauxclick="if (event.button === 1) document.getElementById(\'middle-click-status\').textContent = \'Middle click received\'">Middle click receiver</button>',
+    '<p id="middle-click-status" role="status">Middle click waiting</p>',
     '</main>',
     '</body>',
     '</html>'

@@ -1,8 +1,8 @@
-import { EventEmitter } from 'events'
+import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ChildProcessWithoutNullStreams } from 'child_process'
+import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
-const handlers = new Map<string, (_event: unknown, args: unknown) => Promise<unknown> | unknown>()
+const handlers = new Map<string, (_event: unknown, args: unknown) => unknown>()
 const { spawnMock, handleMock, resolveAuthorizedPathMock } = vi.hoisted(() => ({
   spawnMock: vi.fn(),
   handleMock: vi.fn((channel: string, handler: (event: unknown, args: unknown) => unknown) => {
