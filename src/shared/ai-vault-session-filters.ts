@@ -2,11 +2,6 @@
 // It lives in /shared (not renderer) so the mobile package can reuse it —
 // Metro only watches mobile/ + repo-root src/shared, never src/renderer.
 // INVARIANT: /shared is a leaf — this module must NOT import from src/renderer.
-import {
-  createNormalizedPathInsideOrEqualMatcher,
-  normalizeRuntimePathForComparison
-} from './cross-platform-path'
-import { parseWslUncPath } from './wsl-paths'
 import type {
   AiVaultAgent,
   AiVaultScope,
@@ -15,15 +10,7 @@ import type {
   AiVaultSort,
   AiVaultTimeRange
 } from './ai-vault-types'
-import {
-  isAiVaultSessionRecoverableEmpty,
-  isAiVaultSessionResumableContent
-} from './ai-vault-types'
-import {
-  AiVaultSessionSearchIndex,
-  type AiVaultIndexQueryMode,
-  type AiVaultIndexedSession
-} from './ai-vault-session-index'
+import type { AiVaultSessionSearchIndex, AiVaultIndexQueryMode } from './ai-vault-session-index'
 import {
   agentLabel,
   folderGroupKey,
@@ -33,11 +20,19 @@ import {
   type AiVaultSessionProject
 } from './ai-vault-session-groups'
 import {
+  createAiVaultWorkspaceMatcher,
+  indexedSessionHaystack,
+  matchesSearchScopeTerms,
+  matchesSessionDimensions,
+  sessionCardHaystack,
+  sessionRepoLabel,
+  sessionSortTime
+} from './ai-vault-session-filter-match'
+import {
   AI_VAULT_SESSION_FILTER_QUERY_MAX_BYTES,
   isAiVaultSessionFilterQueryTooLarge,
   parseVaultQuery,
-  timeRangeStartMs,
-  type ParsedVaultQuery
+  timeRangeStartMs
 } from './ai-vault-session-query'
 import {
   DEFAULT_AI_VAULT_SEARCH_SCOPE,
@@ -89,7 +84,6 @@ export function filterAiVaultSessions(
   }
 
   const parsedQuery = parseVaultQuery(filters.query)
-  const index = options.index ?? createEphemeralIndex(sessions, filters)
   const termMode = options.termMode ?? 'and'
   const queryTerms = options.queryTerms ?? parsedQuery.terms
   const explicitSearchScope = filters.searchScope
@@ -100,11 +94,13 @@ export function filterAiVaultSessions(
     options.forceCardTerms === true ||
     explicitSearchScope === undefined ||
     !isAiVaultRgSearchScope(explicitSearchScope)
-  const candidateIds = applyCardTerms ? index.query(queryTerms, termMode) : null
+  // Why: an ephemeral index always reads previews and re-parses timestamps.
+  // Empty / repo: / path: queries must stay on the hoisted session walk.
+  const index = options.index
+  const candidateIds = index && applyCardTerms ? index.query(queryTerms, termMode) : null
   const agentSet = new Set(filters.agents)
   const hostSet = new Set(filters.hosts ?? [])
   const rangeStartMs = timeRangeStartMs(filters.timeRange ?? 'all', options.nowMs ?? Date.now())
-  const byId = new Map(sessions.map((session) => [session.id, session]))
   const workspaceMatchers =
     filters.scope === 'workspace'
       ? filters.activeWorktreePaths.map(createAiVaultWorkspaceMatcher)
@@ -115,28 +111,39 @@ export function filterAiVaultSessions(
     if (candidateIds && !candidateIds.has(session.id)) {
       continue
     }
-    const document = index.get(session.id)
-    if (!document) {
+    const document = index?.get(session.id)
+    if (index && !document) {
       continue
     }
     if (
-      !matchesIndexedSession(
+      !matchesSessionDimensions(
         session,
-        document,
         filters,
         parsedQuery,
         agentSet,
         hostSet,
         rangeStartMs,
-        workspaceMatchers
+        workspaceMatchers,
+        document
       )
     ) {
       continue
     }
-    if (!matchesSearchScopeTerms(document, queryTerms, searchScope, termMode, applyCardTerms)) {
+    if (
+      queryTerms.length > 0 &&
+      applyCardTerms &&
+      !matchesSearchScopeTerms(
+        document
+          ? indexedSessionHaystack(document, searchScope)
+          : sessionCardHaystack(session, searchScope, sessionRepoLabel(session, filters)),
+        queryTerms,
+        termMode,
+        true
+      )
+    ) {
       continue
     }
-    matches.push(byId.get(session.id) ?? session)
+    matches.push(session)
   }
 
   if (matches.length < 2) {
@@ -146,124 +153,4 @@ export function filterAiVaultSessions(
     .map((session) => ({ session, time: sessionSortTime(session, filters.sort) }))
     .sort((left, right) => right.time - left.time)
     .map(({ session }) => session)
-}
-
-function createEphemeralIndex(
-  sessions: readonly AiVaultSession[],
-  filters: Pick<AiVaultSessionFilterState, 'sessionProjectById' | 'projectLabelByKey'>
-): AiVaultSessionSearchIndex {
-  const index = new AiVaultSessionSearchIndex()
-  index.sync(sessions, {
-    sessionProjectById: filters.sessionProjectById,
-    projectLabelByKey: filters.projectLabelByKey
-  })
-  return index
-}
-
-function matchesSearchScopeTerms(
-  document: AiVaultIndexedSession,
-  terms: readonly string[],
-  searchScope: AiVaultSearchScope,
-  termMode: AiVaultIndexQueryMode,
-  applyCardTerms: boolean
-): boolean {
-  if (terms.length === 0) {
-    return true
-  }
-  if (!applyCardTerms) {
-    return true
-  }
-  const haystack =
-    searchScope === 'title'
-      ? document.titleSearchable
-      : searchScope === 'summary'
-        ? document.summarySearchable
-        : document.searchable
-  if (termMode === 'or') {
-    return terms.some((term) => haystack.includes(term))
-  }
-  return terms.every((term) => haystack.includes(term))
-}
-
-function matchesIndexedSession(
-  session: AiVaultSession,
-  document: AiVaultIndexedSession,
-  filters: AiVaultSessionFilterState,
-  parsed: ParsedVaultQuery,
-  agentSet: ReadonlySet<AiVaultAgent>,
-  hostSet: ReadonlySet<AiVaultSessionHost>,
-  rangeStartMs: number | null,
-  workspaceMatchers: readonly ((normalizedCwd: string) => boolean)[]
-): boolean {
-  if (!agentSet.has(session.agent)) {
-    return false
-  }
-  // Hide plain empty sessions, but keep sessions with resumable content
-  // (some parsers only learn turns from previews, e.g. Grok) and zero-turn
-  // sessions that still carry recoverable content (queued prompts /
-  // subagent transcripts) so a lost conversation is surfaced distinctly.
-  if (
-    filters.hideEmptySessions &&
-    !isAiVaultSessionResumableContent(session) &&
-    !isAiVaultSessionRecoverableEmpty(session)
-  ) {
-    return false
-  }
-  if (hostSet.size > 0 && !hostSet.has(document.host)) {
-    return false
-  }
-  if (rangeStartMs !== null && document.updatedAtMs < rangeStartMs) {
-    return false
-  }
-  if (parsed.afterMs !== null && document.updatedAtMs < parsed.afterMs) {
-    return false
-  }
-  if (parsed.beforeMs !== null && document.updatedAtMs > parsed.beforeMs) {
-    return false
-  }
-  if (parsed.hostTerms.length > 0 && !parsed.hostTerms.includes(document.host)) {
-    return false
-  }
-  if (parsed.modelTerms.some((term) => !document.model.includes(term))) {
-    return false
-  }
-  if (parsed.branchTerms.some((term) => !document.branch.includes(term))) {
-    return false
-  }
-  if (filters.scope === 'workspace') {
-    const cwd = session.cwd
-    const normalizedCwd = cwd ? normalizeRuntimePathForComparison(cwd) : null
-    if (normalizedCwd === null || !workspaceMatchers.some((matches) => matches(normalizedCwd))) {
-      return false
-    }
-  }
-  if (filters.scope === 'project') {
-    if (!filters.activeProjectKey || document.projectKey !== filters.activeProjectKey) {
-      return false
-    }
-  }
-  if (parsed.repoTerms.some((term) => !document.repoLabel.includes(term))) {
-    return false
-  }
-  const pathSearch = `${document.cwd} ${document.filePath}`.toLowerCase()
-  if (parsed.pathTerms.some((term) => !pathSearch.includes(term))) {
-    return false
-  }
-  return true
-}
-
-function sessionSortTime(session: AiVaultSession, sort: AiVaultSort): number {
-  const value = sort === 'created' ? session.createdAt : session.updatedAt
-  return Date.parse(value ?? session.modifiedAt)
-}
-
-function createAiVaultWorkspaceMatcher(workspacePath: string): (normalizedCwd: string) => boolean {
-  const matches = createNormalizedPathInsideOrEqualMatcher(workspacePath)
-  const workspaceWslPath = parseWslUncPath(workspacePath)
-  if (!workspaceWslPath) {
-    return matches
-  }
-  // WSL transcripts record Linux cwd even when the workspace uses a UNC path.
-  const matchesLinux = createNormalizedPathInsideOrEqualMatcher(workspaceWslPath.linuxPath)
-  return (cwd) => matches(cwd) || matchesLinux(cwd)
 }
