@@ -1,6 +1,7 @@
 import { constants as fsConstants } from 'node:fs'
 import { access, stat } from 'node:fs/promises'
 import type { Database } from 'fts5-sql-bundle'
+import { sessionTranscriptIsRemoteOwned } from '../../shared/ai-vault-session-host'
 import { aiVaultSessionRgTargets } from '../../shared/ai-vault-session-rg-args'
 import type { AiVaultSession } from '../../shared/ai-vault-types'
 import { selectSqlJsAll } from './session-message-fts-select'
@@ -62,6 +63,11 @@ export async function readableAiVaultSessionTargets(session: {
 }
 
 export async function sessionHasLocalTranscript(session: AiVaultSession): Promise<boolean> {
+  // Why: SSH/runtime POSIX paths are not this machine's files. A local stat
+  // miss must not mark the session unindexed for desktop rg.
+  if (sessionTranscriptIsRemoteOwned(session)) {
+    return false
+  }
   const targets = aiVaultSessionRgTargets(session)
   if (targets.length === 0) {
     return true

@@ -104,6 +104,31 @@ describe('searchListedAiVaultSessions remote hosts', () => {
     expect(result).toEqual(emptyAiVaultSearchSessionsResult())
   })
 
+  it('does not send SSH ids to FTS or rg when local FTS is warm and the remote path is unindexed', async () => {
+    rememberListedAiVaultSessions([local, remote])
+    ftsSearchMock.mockReturnValue({
+      hits: [],
+      matchedIds: [],
+      degraded: false,
+      indexedSessionCount: 1,
+      indexedSessionIds: [local.id]
+    })
+
+    const result = await searchListedAiVaultSessions({
+      query: 'pairing',
+      searchScope: 'full',
+      sessionIds: [local.id, remote.id]
+    })
+
+    expect(ftsSearchMock).toHaveBeenCalledTimes(1)
+    expect(ftsSearchMock.mock.calls[0]?.[0]).toMatchObject({
+      sessionIds: [local.id]
+    })
+    expect(rgSearchMock).not.toHaveBeenCalled()
+    expect(result.usedFts).toBe(true)
+    expect(result.matchedIds).toEqual([remote.id])
+  })
+
   it('unions FTS local hits with remote card metadata instead of empty local rg', async () => {
     rememberListedAiVaultSessions([local, remote])
     ftsSearchMock.mockReturnValue({

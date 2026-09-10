@@ -277,6 +277,28 @@ describe('AiVaultSessionMessageFtsStore', () => {
     store.close()
   })
 
+  it('does not index an SSH transcript even when the POSIX path exists locally', async () => {
+    const filePath = await writeTranscript([
+      JSON.stringify({ type: 'user', message: { content: 'remote-only-pairing-token' } })
+    ])
+    const remote = createAiVaultTestSession({
+      id: 'claude:ssh',
+      executionHostId: 'ssh:dev-box',
+      filePath,
+      title: 'Remote pairing notes'
+    })
+    const store = await createStore()
+    expect(await store.sync([remote])).toEqual({ upserted: 0, deleted: 0 })
+    const result = store.search({
+      query: 'remote-only-pairing-token',
+      searchScope: 'full',
+      sessionIds: [remote.id]
+    })
+    expect(result.indexedSessionCount).toBe(0)
+    expect(result.matchedIds).toEqual([])
+    store.close()
+  })
+
   it('leaves a session unindexed when a local transcript cannot be read', async () => {
     const filePath = await writeTranscript([
       JSON.stringify({ type: 'user', message: { content: 'readable-then-dir' } })
