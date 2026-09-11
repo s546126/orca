@@ -23,6 +23,7 @@ import type {
   WorkspaceHostScope,
   WorktreeCardProperty
 } from './ui-chrome-types'
+import type { TuiAgent } from './tui-agent'
 import type { WorkspaceStatusDefinition } from './worktree/types'
 import type { PersistedAutomationHostFilter } from './automation-host-filter'
 
@@ -72,6 +73,15 @@ export type PersistedUIState = {
   hideWorkspacesFromOtherDevices?: boolean
   /** Keep each project's main workspace out of the "Hide sleeping" sweep. Absent means on (#8873). */
   alwaysShowDefaultBranchWorkspace?: boolean
+  /** Filter the workspace list/board to workspaces that currently have or last
+   *  used any of these catalog TuiAgents. `null` / omitted means all agents. */
+  filterAgentIds?: TuiAgent[] | null
+  /** Leftover singular agent filter. Hydrate maps a catalog id onto
+   *  `filterAgentIds` and new writes omit this field. */
+  filterAgentId?: TuiAgent | null
+  /** Leftover from a short-lived `cc`/`codex` harness filter. Hydrate maps it
+   *  onto `filterAgentIds` and new writes omit this field. */
+  filterHarnessId?: 'cc' | 'codex' | null
   /** Per-worktree Explorer dotfile visibility. Missing entries inherit the default: show. */
   showDotfilesByWorktree?: Record<string, boolean>
   filterRepoIds: string[]
@@ -125,6 +135,8 @@ export type PersistedUIState = {
   /** Client-side footer presentation; verbose preserves the pre-roster all-window default. */
   statusBarUsageMode?: StatusBarUsageMode
   dismissedUpdateVersion: string | null
+  /** App version that last dismissed the unexpected-sign-out card; null = never. Re-arms on each new version while still signed out. */
+  dismissedUnexpectedSignoutVersion?: string | null
   lastUpdateCheckAt: number | null
   /** Dev-only update channel override; absent means the build's own channel. */
   releaseChannelOverride?: ReleaseChannel | null
