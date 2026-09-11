@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { RpcContext } from '../core'
+import { eraseRpcMethods, type RpcContext } from '../core'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import { EMULATOR_METHODS } from './emulator'
 
@@ -8,9 +8,10 @@ import { EMULATOR_METHODS } from './emulator'
 // Electron binary at import time. This file only needs EMULATOR_METHODS'
 // schemas + handlers, so it drives them directly (safeParse + handler call)
 // instead of round-tripping through the dispatcher.
+// eraseRpcMethods: lookup-by-name would intersect every emulator handler's params.
 
 function method(name: string) {
-  const found = EMULATOR_METHODS.find((m) => m.name === name)
+  const found = eraseRpcMethods(EMULATOR_METHODS).find((m) => m.name === name)
   if (!found) {
     throw new Error(`method not registered: ${name}`)
   }
