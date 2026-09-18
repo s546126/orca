@@ -15,6 +15,8 @@ import {
 } from './session-message-fts-access'
 import { openAiVaultSqlJsDatabase, persistAiVaultSqlJsDatabase } from './session-message-fts-engine'
 import {
+  readSqlNumber,
+  readSqlString,
   searchMessageFtsLike,
   searchMessageFtsMatch,
   selectSqlJsAll,
@@ -165,23 +167,29 @@ export class AiVaultSessionMessageFtsStore {
   }
 
   private selectSessionRevisions(): Map<string, string> {
-    const rows = selectSqlJsAll(this.db, 'SELECT id, revision FROM sessions', []) as {
-      id: string
-      revision: string
-    }[]
-    return new Map(rows.map((row) => [row.id, row.revision]))
+    const revisions = new Map<string, string>()
+    for (const row of selectSqlJsAll(this.db, 'SELECT id, revision FROM sessions', [])) {
+      const id = readSqlString(row, 'id')
+      const revision = readSqlString(row, 'revision')
+      if (id && revision) {
+        revisions.set(id, revision)
+      }
+    }
+    return revisions
   }
 
   private selectIndexedIds(sessionIds: readonly string[]): string[] {
     if (sessionIds.length === 0) {
       return []
     }
-    const rows = selectSqlJsAll(
+    return selectSqlJsAll(
       this.db,
       `SELECT id FROM sessions WHERE id IN (${sessionIds.map(() => '?').join(', ')})`,
       [...sessionIds]
-    ) as { id: string }[]
-    return rows.map((row) => row.id)
+    ).flatMap((row) => {
+      const id = readSqlString(row, 'id')
+      return id ? [id] : []
+    })
   }
 
   private replaceSessionMessages(
@@ -210,21 +218,30 @@ export class AiVaultSessionMessageFtsStore {
           unit.text
         ]
       )
-      const row = selectSqlJsAll(this.db, 'SELECT last_insert_rowid() AS id', [])[0] as {
-        id: number
+      const rowId = readSqlNumber(
+        selectSqlJsAll(this.db, 'SELECT last_insert_rowid() AS id', [])[0] ?? {},
+        'id'
+      )
+      if (rowId === null) {
+        throw new Error('message insert did not produce a row id')
       }
-      this.db.run('INSERT INTO messages_fts (rowid, text) VALUES (?, ?)', [row.id, unit.text])
+      this.db.run('INSERT INTO messages_fts (rowid, text) VALUES (?, ?)', [rowId, unit.text])
     }
   }
 
   private deleteSession(sessionId: string): void {
     const rows = selectSqlJsAll(this.db, 'SELECT id, text FROM messages WHERE session_id = ?', [
       sessionId
-    ]) as { id: number; text: string }[]
+    ])
     for (const row of rows) {
+      const id = readSqlNumber(row, 'id')
+      const text = readSqlString(row, 'text')
+      if (id === null || text === null) {
+        continue
+      }
       this.db.run("INSERT INTO messages_fts (messages_fts, rowid, text) VALUES ('delete', ?, ?)", [
-        row.id,
-        row.text
+        id,
+        text
       ])
     }
     this.db.run('DELETE FROM messages WHERE session_id = ?', [sessionId])

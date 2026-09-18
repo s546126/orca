@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GlobalSettings } from '../../shared/global-settings-types'
+import type { SshGitProvider } from '../providers/ssh-git-provider'
 import {
   rankAiVaultSessionsWithModel,
   resolveAiVaultSessionSearchGenerationParams,
@@ -28,6 +29,29 @@ const resolveMock = vi.mocked(resolveBranchNameGenerationParams)
 const generateMock = vi.mocked(generateTextFromPrompt)
 const getSshGitProviderMock = vi.mocked(getSshGitProvider)
 const parseWslPathMock = vi.mocked(parseWslPath)
+
+function unusedSettings(): GlobalSettings {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: resolveBranchNameGenerationParams is mocked; this object is only forwarded.
+  return {} as GlobalSettings
+}
+
+function stubSshGitProvider(
+  execute: (plan: unknown, cwd: string, timeoutMs: number, operation?: string) => unknown
+): SshGitProvider {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: rank only calls executeCommitMessagePlan on the SSH provider.
+  return { executeCommitMessagePlan: execute } as SshGitProvider
+}
+
+function invokeRemoteExecute(target: unknown): void {
+  if (!target || typeof target !== 'object' || !('execute' in target)) {
+    throw new Error('expected a remote generation target')
+  }
+  const execute = target.execute
+  if (typeof execute !== 'function') {
+    throw new Error('expected execute on the remote generation target')
+  }
+  execute({ kind: 'probe' }, '/remote/repo', 1000, 'session-history-search')
+}
 
 const cards = [
   {
@@ -74,7 +98,7 @@ describe('rankAiVaultSessionsWithModel', () => {
     })
 
     await expect(
-      rankAiVaultSessionsWithModel({ query: 'onboarding wizard', cards }, {} as GlobalSettings, {
+      rankAiVaultSessionsWithModel({ query: 'onboarding wizard', cards }, unusedSettings(), {
         path: '/repo',
         connectionId: null,
         sourceControlAi: { customAgentCommand: 'repo-agent {prompt}' }
@@ -96,9 +120,7 @@ describe('rankAiVaultSessionsWithModel', () => {
 
   it('reranks through the SSH remote generation target', async () => {
     const execute = vi.fn()
-    getSshGitProviderMock.mockReturnValue({
-      executeCommitMessagePlan: execute
-    } as never)
+    getSshGitProviderMock.mockReturnValue(stubSshGitProvider(execute))
     resolveMock.mockReturnValue({
       ok: true,
       params: { agentId: 'claude', model: 'claude-sonnet-4-5' }
@@ -109,25 +131,18 @@ describe('rankAiVaultSessionsWithModel', () => {
       agentLabel: 'Claude'
     })
 
-    await rankAiVaultSessionsWithModel(
-      { query: 'onboarding wizard', cards },
-      {} as GlobalSettings,
-      {
-        path: '/remote/repo',
-        connectionId: 'ssh-1',
-        sourceControlAi: { customAgentCommand: 'repo-agent {prompt}' }
-      }
-    )
+    await rankAiVaultSessionsWithModel({ query: 'onboarding wizard', cards }, unusedSettings(), {
+      path: '/remote/repo',
+      connectionId: 'ssh-1',
+      sourceControlAi: { customAgentCommand: 'repo-agent {prompt}' }
+    })
 
     expect(generateMock.mock.calls[0]?.[2]).toMatchObject({
       kind: 'remote',
       cwd: '/remote/repo',
       missingBinaryLocation: 'remote PATH'
     })
-    const target = generateMock.mock.calls[0]?.[2] as {
-      execute?: (plan: unknown, cwd: string, timeoutMs: number, operation: string) => unknown
-    }
-    target.execute?.({ kind: 'probe' }, '/remote/repo', 1000, 'session-history-search')
+    invokeRemoteExecute(generateMock.mock.calls[0]?.[2])
     expect(execute).toHaveBeenCalledWith(
       { kind: 'probe' },
       '/remote/repo',
@@ -149,7 +164,7 @@ describe('rankAiVaultSessionsWithModel', () => {
 
     await rankAiVaultSessionsWithModel(
       { query: 'pairing', cards },
-      {} as GlobalSettings,
+      unusedSettings(),
       { path: 'C:\\repo', connectionId: null, sourceControlAi: {} },
       { wslDistro: 'Ubuntu' }
     )
@@ -169,7 +184,7 @@ describe('rankAiVaultSessionsWithModel', () => {
     })
 
     await expect(
-      rankAiVaultSessionsWithModel({ query: 'pairing', cards }, {} as GlobalSettings, {
+      rankAiVaultSessionsWithModel({ query: 'pairing', cards }, unusedSettings(), {
         path: '/remote/repo',
         connectionId: 'ssh-1',
         sourceControlAi: {}
@@ -186,7 +201,7 @@ describe('rankAiVaultSessionsWithModel', () => {
     resolveMock.mockReturnValue({ ok: false, error: 'Choose an agent' })
 
     await expect(
-      rankAiVaultSessionsWithModel({ query: 'pairing', cards }, {} as GlobalSettings)
+      rankAiVaultSessionsWithModel({ query: 'pairing', cards }, unusedSettings())
     ).resolves.toEqual({
       ok: true,
       rankedIds: ['claude:1', 'codex:2'],
@@ -236,7 +251,7 @@ describe('resolveAiVaultSessionSearchGenerationParams', () => {
       ok: true,
       params: { agentId: 'codex', model: 'gpt-5.4' }
     })
-    const settings = {} as GlobalSettings
+    const settings = unusedSettings()
     const repo = { connectionId: 'ssh-1', sourceControlAi: { enabled: true } }
 
     expect(resolveAiVaultSessionSearchGenerationParams(settings, repo)).toEqual({

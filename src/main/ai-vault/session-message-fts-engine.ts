@@ -31,12 +31,7 @@ export async function openAiVaultSqlJsDatabase(dbPath: string): Promise<Database
 }
 
 function isMissingIndexFile(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: unknown }).code === 'ENOENT'
-  )
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
 }
 
 export async function persistAiVaultSqlJsDatabase(db: Database, dbPath: string): Promise<void> {

@@ -7,6 +7,13 @@ type ReactElementLike = {
   props: Record<string, unknown>
 }
 
+function isReactElementLike(node: unknown): node is ReactElementLike {
+  if (typeof node !== 'object' || node === null || !('type' in node) || !('props' in node)) {
+    return false
+  }
+  return typeof node.props === 'object' && node.props !== null
+}
+
 function visit(node: unknown, cb: (node: ReactElementLike) => void): void {
   if (node == null || typeof node === 'string' || typeof node === 'number') {
     return
@@ -15,10 +22,12 @@ function visit(node: unknown, cb: (node: ReactElementLike) => void): void {
     node.forEach((entry) => visit(entry, cb))
     return
   }
-  const element = node as ReactElementLike
-  cb(element)
-  if (element.props?.children) {
-    visit(element.props.children, cb)
+  if (!isReactElementLike(node)) {
+    return
+  }
+  cb(node)
+  if (node.props.children) {
+    visit(node.props.children, cb)
   }
 }
 
@@ -47,6 +56,13 @@ function buttonByLabel(markup: string, label: string): string {
 
 function hasDisabledAttribute(markup: string): boolean {
   return markup.includes(' disabled=""') || markup.includes('aria-disabled="true"')
+}
+
+function invokeProp(value: unknown, ...args: unknown[]): void {
+  if (typeof value !== 'function') {
+    throw new Error('expected a function prop')
+  }
+  value(...args)
 }
 
 function fieldProps(
@@ -86,9 +102,7 @@ describe('AiVaultSearchField', () => {
 
     const input = findByAriaLabel(tree, 'Search sessions')
     expect(input.props.placeholder).toBe('Search sessions')
-    ;(input.props.onChange as (event: { target: { value: string } }) => void)({
-      target: { value: 'linux pairing' }
-    })
+    invokeProp(input.props.onChange, { target: { value: 'linux pairing' } })
 
     expect(onQueryChange).toHaveBeenCalledWith('linux pairing')
     expect(onAiSearch).not.toHaveBeenCalled()
@@ -105,7 +119,7 @@ describe('AiVaultSearchField', () => {
     expect(button).toContain('lucide-sparkles')
 
     const aiButton = findByAriaLabel(tree, 'Search sessions with AI')
-    ;(aiButton.props.onClick as () => void)()
+    invokeProp(aiButton.props.onClick)
     expect(onAiSearch).toHaveBeenCalledTimes(1)
   })
 
@@ -115,13 +129,7 @@ describe('AiVaultSearchField', () => {
 
     const input = findByAriaLabel(tree, 'Search sessions')
     const preventDefault = vi.fn()
-    ;(
-      input.props.onKeyDown as (event: {
-        key: string
-        preventDefault: () => void
-        nativeEvent: { isComposing: boolean }
-      }) => void
-    )({
+    invokeProp(input.props.onKeyDown, {
       key: 'Enter',
       preventDefault,
       nativeEvent: { isComposing: false }
@@ -150,13 +158,7 @@ describe('AiVaultSearchField', () => {
       })
     )
     const input = findByAriaLabel(tree, 'Search sessions')
-    ;(
-      input.props.onKeyDown as (event: {
-        key: string
-        preventDefault: () => void
-        nativeEvent: { isComposing: boolean }
-      }) => void
-    )({
+    invokeProp(input.props.onKeyDown, {
       key: 'Enter',
       preventDefault: vi.fn(),
       nativeEvent: { isComposing: false }
@@ -168,13 +170,7 @@ describe('AiVaultSearchField', () => {
     const onAiSearch = vi.fn()
     const tree = AiVaultSearchField(fieldProps({ onAiSearch }))
     const input = findByAriaLabel(tree, 'Search sessions')
-    ;(
-      input.props.onKeyDown as (event: {
-        key: string
-        preventDefault: () => void
-        nativeEvent: { isComposing: boolean }
-      }) => void
-    )({
+    invokeProp(input.props.onKeyDown, {
       key: 'Enter',
       preventDefault: vi.fn(),
       nativeEvent: { isComposing: true }

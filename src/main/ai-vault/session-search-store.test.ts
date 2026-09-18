@@ -14,6 +14,27 @@ afterEach(() => {
   tempDirs = []
 })
 
+type StoreDatabase = {
+  prepare: (sql: string) => { run: (...args: unknown[]) => unknown }
+}
+
+function storeDatabase(store: AiVaultSessionFtsStore): StoreDatabase {
+  const db = Reflect.get(store, 'db')
+  if (!isStoreDatabase(db)) {
+    throw new Error('expected FTS store database')
+  }
+  return db
+}
+
+function isStoreDatabase(value: unknown): value is StoreDatabase {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'prepare' in value &&
+    typeof value.prepare === 'function'
+  )
+}
+
 function createStore(): AiVaultSessionFtsStore {
   const dir = mkdtempSync(join(tmpdir(), 'orca-ai-vault-fts-'))
   tempDirs.push(dir)
@@ -56,13 +77,9 @@ describe('AiVaultSessionFtsStore', () => {
     })
     expect(store.sync([first])).toEqual({ upserted: 1, deleted: 0 })
 
-    const db = (
-      store as unknown as {
-        db: { prepare: (sql: string) => { run: (...args: unknown[]) => unknown } }
-      }
-    ).db
+    const db = storeDatabase(store)
     const originalPrepare = db.prepare.bind(db)
-    db.prepare = ((sql: string) => {
+    db.prepare = (sql: string) => {
       const statement = originalPrepare(sql)
       if (sql.includes('INSERT OR IGNORE INTO session_tokens')) {
         return {
@@ -72,7 +89,7 @@ describe('AiVaultSessionFtsStore', () => {
         }
       }
       return statement
-    }) as typeof db.prepare
+    }
 
     expect(() =>
       store.sync([
