@@ -21,11 +21,7 @@ function createFakeRgChild(options: {
   code?: number | null
   error?: Error
   stdout?: string
-}): EventEmitter & {
-  stdout: EventEmitter & { setEncoding: () => void }
-  stderr: { resume: () => void }
-  kill: () => void
-} {
+}): ReturnType<typeof wslAwareSpawn> {
   const stdout = Object.assign(new EventEmitter(), {
     setEncoding: (): void => undefined
   })
@@ -44,7 +40,8 @@ function createFakeRgChild(options: {
     }
     child.emit('close', options.code ?? 0)
   })
-  return child
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: EventEmitter stand-in implements the spawn surface session rg reads (stdout/stderr/kill/close/error).
+  return child as never
 }
 
 const filePath = '/tmp/ai-vault-session.jsonl'
@@ -68,7 +65,7 @@ describe('searchAiVaultSessionsWithRg spawn errors', () => {
   })
 
   it('treats rg exit 1 as no matches and still reports usedRg', async () => {
-    spawnMock.mockImplementation(() => createFakeRgChild({ code: 1 }) as never)
+    spawnMock.mockImplementation(() => createFakeRgChild({ code: 1 }))
 
     await expect(searchAiVaultSessionsWithRg(searchArgs, sessionsById)).resolves.toMatchObject({
       matchedIds: [],
@@ -79,7 +76,7 @@ describe('searchAiVaultSessionsWithRg spawn errors', () => {
   })
 
   it('does not claim usedRg when rg exits with an error code', async () => {
-    spawnMock.mockImplementation(() => createFakeRgChild({ code: 2 }) as never)
+    spawnMock.mockImplementation(() => createFakeRgChild({ code: 2 }))
 
     await expect(searchAiVaultSessionsWithRg(searchArgs, sessionsById)).resolves.toMatchObject({
       matchedIds: [],
@@ -90,7 +87,7 @@ describe('searchAiVaultSessionsWithRg spawn errors', () => {
   })
 
   it('does not claim usedRg when rg fails to spawn', async () => {
-    spawnMock.mockImplementation(() => createFakeRgChild({ error: new Error('ENOENT') }) as never)
+    spawnMock.mockImplementation(() => createFakeRgChild({ error: new Error('ENOENT') }))
 
     await expect(searchAiVaultSessionsWithRg(searchArgs, sessionsById)).resolves.toMatchObject({
       matchedIds: [],
@@ -101,9 +98,7 @@ describe('searchAiVaultSessionsWithRg spawn errors', () => {
   })
 
   it('returns matching session ids when rg exits 0', async () => {
-    spawnMock.mockImplementation(
-      () => createFakeRgChild({ code: 0, stdout: `${filePath}\n` }) as never
-    )
+    spawnMock.mockImplementation(() => createFakeRgChild({ code: 0, stdout: `${filePath}\n` }))
 
     await expect(searchAiVaultSessionsWithRg(searchArgs, sessionsById)).resolves.toMatchObject({
       matchedIds: ['claude:1'],

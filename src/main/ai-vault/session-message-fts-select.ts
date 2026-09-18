@@ -1,5 +1,8 @@
 import type { Database } from 'fts5-sql-bundle'
-import type { AiVaultSessionMessageRole } from '../../shared/ai-vault-session-message-hit'
+import {
+  isAiVaultSessionMessageRole,
+  type AiVaultSessionMessageRole
+} from '../../shared/ai-vault-session-message-hit'
 import type { AiVaultRgSearchScope } from '../../shared/ai-vault-session-search-scope'
 import {
   aiVaultFtsRolesForScope,
@@ -30,12 +33,22 @@ export function selectSqlJsAll(
     statement.bind([...params])
     const rows: Record<string, unknown>[] = []
     while (statement.step()) {
-      rows.push(statement.getAsObject())
+      rows.push(Object.fromEntries(Object.entries(statement.getAsObject())))
     }
     return rows
   } finally {
     statement.free()
   }
+}
+
+export function readSqlString(row: Record<string, unknown>, key: string): string | null {
+  const value = row[key]
+  return typeof value === 'string' ? value : null
+}
+
+export function readSqlNumber(row: Record<string, unknown>, key: string): number | null {
+  const value = row[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 export function searchMessageFtsMatch(
@@ -60,7 +73,10 @@ export function searchMessageFtsMatch(
      ORDER BY bm25(messages_fts)
      LIMIT ?`,
     [buildAiVaultFtsMatchExpression(segments), ...sessionIds, ...(roles ?? []), limit]
-  ) as MessageSearchRow[]
+  ).flatMap((row) => {
+    const parsed = parseMessageSearchRow(row)
+    return parsed ? [parsed] : []
+  })
 }
 
 export function searchMessageFtsLike(
@@ -89,5 +105,41 @@ export function searchMessageFtsLike(
       ...(roles ?? []),
       limit
     ]
-  ) as MessageSearchRow[]
+  ).flatMap((row) => {
+    const parsed = parseMessageSearchRow(row)
+    return parsed ? [parsed] : []
+  })
+}
+
+function parseMessageSearchRow(row: Record<string, unknown>): MessageSearchRow | null {
+  const id = readSqlNumber(row, 'id')
+  const sessionId = readSqlString(row, 'session_id')
+  const role = row.role
+  const byteOffset = readSqlNumber(row, 'byte_offset')
+  const lineNumber = readSqlNumber(row, 'line_number')
+  const text = readSqlString(row, 'text')
+  const snippet = readSqlString(row, 'snippet')
+  const filePath = readSqlString(row, 'file_path')
+  if (
+    id === null ||
+    sessionId === null ||
+    !isAiVaultSessionMessageRole(role) ||
+    byteOffset === null ||
+    lineNumber === null ||
+    text === null ||
+    snippet === null ||
+    filePath === null
+  ) {
+    return null
+  }
+  return {
+    id,
+    session_id: sessionId,
+    role,
+    byte_offset: byteOffset,
+    line_number: lineNumber,
+    text,
+    snippet,
+    file_path: filePath
+  }
 }
