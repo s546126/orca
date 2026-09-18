@@ -93,7 +93,6 @@ export function AiVaultSearchField({
             type="button"
             variant="ghost"
             size="icon-xs"
-            className="size-5 rounded-sm text-muted-foreground hover:text-foreground"
             onClick={() => onQueryChange('')}
             aria-label={translate(
               'auto.components.right.sidebar.AiVaultPanel.clearSearch',

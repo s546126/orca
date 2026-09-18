@@ -1,6 +1,7 @@
 import type React from 'react'
 import {
   AI_VAULT_SEARCH_SCOPES,
+  isAiVaultSearchScope,
   type AiVaultSearchScope
 } from '../../../../shared/ai-vault-session-search-scope'
 import { translate } from '@/i18n/i18n'
@@ -42,7 +43,9 @@ export function AiVaultSearchScopeControl({
       value={searchScope}
       aria-label={translate('auto.components.right.sidebar.AiVaultPanel.searchIn', 'Search in')}
       onChange={(event) => {
-        onSearchScopeChange(event.target.value as AiVaultSearchScope)
+        if (isAiVaultSearchScope(event.target.value)) {
+          onSearchScopeChange(event.target.value)
+        }
       }}
       className="h-7 w-full rounded-md border border-sidebar-border bg-input/50 px-2 text-[11px] text-foreground outline-none focus-visible:border-sidebar-ring focus-visible:ring-[2px] focus-visible:ring-sidebar-ring/30"
     >

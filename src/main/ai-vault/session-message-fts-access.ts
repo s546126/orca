@@ -4,7 +4,7 @@ import type { Database } from 'fts5-sql-bundle'
 import { sessionTranscriptIsRemoteOwned } from '../../shared/ai-vault-session-host'
 import { aiVaultSessionRgTargets } from '../../shared/ai-vault-session-rg-args'
 import type { AiVaultSession } from '../../shared/ai-vault-types'
-import { selectSqlJsAll } from './session-message-fts-select'
+import { readSqlString, selectSqlJsAll } from './session-message-fts-select'
 
 export const MESSAGE_FTS_DDL = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -33,8 +33,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
 `
 
 export function ensureMessageFtsSchema(db: Database): void {
-  const columns = selectSqlJsAll(db, 'PRAGMA table_info(messages)', []) as { name: string }[]
-  if (columns.length > 0 && !columns.some((column) => column.name === 'file_path')) {
+  const columns = selectSqlJsAll(db, 'PRAGMA table_info(messages)', [])
+  if (
+    columns.length > 0 &&
+    !columns.some((column) => readSqlString(column, 'name') === 'file_path')
+  ) {
     db.run('DROP TABLE IF EXISTS messages_fts')
     db.run('DROP TABLE IF EXISTS messages')
     db.run('DROP TABLE IF EXISTS sessions')

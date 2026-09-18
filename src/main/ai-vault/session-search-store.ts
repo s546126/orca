@@ -42,11 +42,13 @@ export class AiVaultSessionFtsStore {
   }
 
   sync(sessions: readonly AiVaultSession[]): AiVaultFtsSyncResult {
-    const existing = new Map(
-      (this.db.prepare('SELECT id, revision FROM session_meta').all() as SessionMetaRow[]).map(
-        (row) => [row.id, row.revision]
-      )
-    )
+    const existing = new Map<string, string>()
+    for (const row of this.db.prepare('SELECT id, revision FROM session_meta').all()) {
+      const parsed = parseSessionMetaRow(row)
+      if (parsed) {
+        existing.set(parsed.id, parsed.revision)
+      }
+    }
     let upserted = 0
     let deleted = 0
     const seen = new Set<string>()
@@ -88,8 +90,11 @@ export class AiVaultSessionFtsStore {
          ORDER BY hits DESC
          LIMIT ?`
       )
-      .all(...tokens, mode === 'and' ? tokens.length : 1, limit) as { id: string }[]
-    return rows.map((row) => row.id)
+      .all(...tokens, mode === 'and' ? tokens.length : 1, limit)
+    return rows.flatMap((row) => {
+      const id = Reflect.get(row, 'id')
+      return typeof id === 'string' ? [id] : []
+    })
   }
 
   private upsertSession(session: AiVaultSession, revision: string): void {
@@ -137,6 +142,15 @@ export function getAiVaultSessionFtsStore(dbPath: string): AiVaultSessionFtsStor
   const store = new AiVaultSessionFtsStore(dbPath)
   storesByPath.set(dbPath, store)
   return store
+}
+
+function parseSessionMetaRow(row: object): SessionMetaRow | null {
+  const id = Reflect.get(row, 'id')
+  const revision = Reflect.get(row, 'revision')
+  if (typeof id !== 'string' || typeof revision !== 'string') {
+    return null
+  }
+  return { id, revision }
 }
 
 function uniqueIndexTokens(terms: readonly string[]): string[] {

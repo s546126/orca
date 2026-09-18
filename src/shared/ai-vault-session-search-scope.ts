@@ -32,13 +32,11 @@ export type AiVaultRgSearchScope = (typeof AI_VAULT_RG_SEARCH_SCOPES)[number]
 export const AI_VAULT_SEARCH_SCOPE_STORAGE_KEY = 'orca:ai-vault-search-scope'
 
 export function isAiVaultSearchScope(value: unknown): value is AiVaultSearchScope {
-  return typeof value === 'string' && (AI_VAULT_SEARCH_SCOPES as readonly string[]).includes(value)
+  return typeof value === 'string' && AI_VAULT_SEARCH_SCOPES.some((scope) => scope === value)
 }
 
 export function isAiVaultRgSearchScope(value: unknown): value is AiVaultRgSearchScope {
-  return (
-    typeof value === 'string' && (AI_VAULT_RG_SEARCH_SCOPES as readonly string[]).includes(value)
-  )
+  return typeof value === 'string' && AI_VAULT_RG_SEARCH_SCOPES.some((scope) => scope === value)
 }
 
 export function normalizeAiVaultSearchScope(value: unknown): AiVaultSearchScope {
