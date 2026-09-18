@@ -1,3 +1,4 @@
+import type { SQLOutputValue } from 'node:sqlite'
 import type { AiVaultSession } from '../../shared/ai-vault-types'
 import { deriveAiVaultSessionHost } from '../../shared/ai-vault-session-host'
 import { sessionIndexRevision } from '../../shared/ai-vault-session-index'
@@ -13,6 +14,20 @@ export type AiVaultFtsSyncResult = {
 type SessionMetaRow = {
   id: string
   revision: string
+}
+
+type SessionMetaSqliteRow = {
+  id: SQLOutputValue
+  revision: SQLOutputValue
+}
+
+type SessionIdSqliteRow = {
+  id: SQLOutputValue
+}
+
+// Why: tests replace this to prove a mid-upsert token write rolls back.
+export const aiVaultSessionFtsTokenInsertGate = {
+  beforeInsert(): void {}
 }
 
 export class AiVaultSessionFtsStore {
@@ -44,7 +59,7 @@ export class AiVaultSessionFtsStore {
   sync(sessions: readonly AiVaultSession[]): AiVaultFtsSyncResult {
     const existing = new Map<string, string>()
     for (const row of this.db.prepare('SELECT id, revision FROM session_meta').all()) {
-      const parsed = parseSessionMetaRow(row)
+      const parsed = parseSessionMetaRow({ id: row.id, revision: row.revision })
       if (parsed) {
         existing.set(parsed.id, parsed.revision)
       }
@@ -92,8 +107,8 @@ export class AiVaultSessionFtsStore {
       )
       .all(...tokens, mode === 'and' ? tokens.length : 1, limit)
     return rows.flatMap((row) => {
-      const id = Reflect.get(row, 'id')
-      return typeof id === 'string' ? [id] : []
+      const id = parseSessionIdRow({ id: row.id })
+      return id ? [id] : []
     })
   }
 
@@ -117,6 +132,7 @@ export class AiVaultSessionFtsStore {
         session.filePath,
         sessionPreviewSearchText(session)
       ])) {
+        aiVaultSessionFtsTokenInsertGate.beforeInsert()
         insertToken.run(token, session.id)
       }
       this.db.exec('COMMIT')
@@ -144,13 +160,16 @@ export function getAiVaultSessionFtsStore(dbPath: string): AiVaultSessionFtsStor
   return store
 }
 
-function parseSessionMetaRow(row: object): SessionMetaRow | null {
-  const id = Reflect.get(row, 'id')
-  const revision = Reflect.get(row, 'revision')
+function parseSessionMetaRow(row: SessionMetaSqliteRow): SessionMetaRow | null {
+  const { id, revision } = row
   if (typeof id !== 'string' || typeof revision !== 'string') {
     return null
   }
   return { id, revision }
+}
+
+function parseSessionIdRow(row: SessionIdSqliteRow): string | null {
+  return typeof row.id === 'string' ? row.id : null
 }
 
 function uniqueIndexTokens(terms: readonly string[]): string[] {
