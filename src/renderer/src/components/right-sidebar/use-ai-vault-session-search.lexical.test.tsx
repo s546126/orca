@@ -8,7 +8,7 @@ import type { AiVaultSearchScope } from '../../../../shared/ai-vault-session-sea
 import { createAiVaultTestSession } from '../../../../shared/ai-vault-session-test-session'
 import { useAiVaultSessionSearch } from './use-ai-vault-session-search'
 
-;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 const rankSessions = vi.fn()
 const searchListedSessions = vi.fn()
@@ -106,6 +106,7 @@ describe('useAiVaultSessionSearch live filter', () => {
       degraded: false,
       hits: []
     })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: happy-dom has no preload; this stub supplies only the vault methods the hook calls.
     window.api = {
       ...originalApi,
       aiVault: {

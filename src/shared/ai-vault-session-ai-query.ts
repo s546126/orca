@@ -187,7 +187,7 @@ function extractJsonStringArray(output: string): string[] {
   const trimmed = output.trim()
   const jsonBlock = extractJsonBlock(trimmed)
   try {
-    const parsed = JSON.parse(jsonBlock) as unknown
+    const parsed: unknown = JSON.parse(jsonBlock)
     if (Array.isArray(parsed)) {
       return parsed.filter((value): value is string => typeof value === 'string')
     }

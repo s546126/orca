@@ -99,7 +99,8 @@ export function transcriptLineMatchesSearchScope(
     return false
   }
   try {
-    return transcriptRecordMatchesSearchScope(JSON.parse(trimmed) as unknown, query, searchScope)
+    const parsed: unknown = JSON.parse(trimmed)
+    return transcriptRecordMatchesSearchScope(parsed, query, searchScope)
   } catch {
     if (searchScope === 'full') {
       return trimmed.toLowerCase().includes(query.trim().toLowerCase())
@@ -268,7 +269,9 @@ function normalizedType(value: unknown): string | null {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null
+  return isPlainRecord(value) ? value : null
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

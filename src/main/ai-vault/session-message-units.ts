@@ -53,7 +53,7 @@ function appendUnitsFromTranscriptLine(
   }
   let record: unknown = trimmed
   try {
-    record = JSON.parse(trimmed) as unknown
+    record = JSON.parse(trimmed)
   } catch {
     pushUnit(units, 'user', trimmed, filePath, byteOffset, lineNumber)
     return
