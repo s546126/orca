@@ -1,18 +1,10 @@
-// Why: this is the pure filter/group/query core for Agent Session History.
+// Why: this is the pure filter/query core for Agent Session History.
 // It lives in /shared (not renderer) so the mobile package can reuse it —
 // Metro only watches mobile/ + repo-root src/shared, never src/renderer.
 // INVARIANT: /shared is a leaf — this module must NOT import from src/renderer.
-import {
-  createNormalizedPathInsideOrEqualMatcher,
-  normalizeRuntimePathForComparison,
-  normalizeRuntimePathSeparators
-} from './cross-platform-path'
-import { isClipboardTextByteLengthOverLimit } from './clipboard-text'
 import { splitAiVaultSearchQuery } from './ai-vault-search-query-operators'
-import { parseWslUncPath } from './wsl-paths'
 import type {
   AiVaultAgent,
-  AiVaultGroup,
   AiVaultScope,
   AiVaultSession,
   AiVaultSessionHost,
@@ -20,35 +12,37 @@ import type {
   AiVaultTimeRange
 } from './ai-vault-types'
 import {
-  aiVaultAgentLabel,
-  isAiVaultSessionRecoverableEmpty,
-  isAiVaultSessionResumableContent
-} from './ai-vault-types'
-import type { ExecutionHostId } from './execution-host'
-import { sessionPreviewSearchText } from './ai-vault-session-display'
-import { deriveAiVaultSessionHost } from './ai-vault-session-host'
-import {
+  isAiVaultSessionFilterQueryTooLarge,
   parseVaultQuery as parseExtendedVaultQuery,
   timeRangeStartMs
 } from './ai-vault-session-query'
+import {
+  createAiVaultWorkspaceMatcher,
+  matchesSearchScopeTerms,
+  matchesSessionDimensions,
+  sessionCardHaystack,
+  sessionRepoLabel,
+  sessionSortTime
+} from './ai-vault-session-filter-match'
 import {
   DEFAULT_AI_VAULT_SEARCH_SCOPE,
   isAiVaultRgSearchScope,
   type AiVaultSearchScope
 } from './ai-vault-session-search-scope'
 import type { AiVaultIndexQueryMode, AiVaultSessionSearchIndex } from './ai-vault-session-index'
+import { folderLabel, type AiVaultSessionProject } from './ai-vault-session-groups'
 
-// Why: the plain project descriptor is relocated here (no runtime dep) so the
-// filter-state type can reference it without dragging the renderer-located
-// ai-vault-session-projects runtime logic into /shared.
-export type AiVaultSessionProject = {
-  kind: 'repo' | 'folder' | 'unknown'
-  key: string
-  label: string
-  projectId?: string
-  repoId?: string
-  hostKey?: ExecutionHostId
-}
+export {
+  AI_VAULT_SESSION_FILTER_QUERY_MAX_BYTES,
+  isAiVaultSessionFilterQueryTooLarge
+} from './ai-vault-session-query'
+export type { AiVaultSessionGroup, AiVaultSessionProject } from './ai-vault-session-groups'
+export {
+  agentLabel,
+  folderGroupKey,
+  folderLabel,
+  groupAiVaultSessions
+} from './ai-vault-session-groups'
 
 export type AiVaultSessionFilterState = {
   query: string
@@ -73,26 +67,7 @@ export type AiVaultSessionFilterOptions = {
   forceCardTerms?: boolean
 }
 
-export type AiVaultSessionGroup = {
-  key: string
-  label: string
-  sessions: AiVaultSession[]
-}
-
-type ParsedQuery = {
-  terms: string[]
-  repoTerms: string[]
-  pathTerms: string[]
-}
-
-export const AI_VAULT_SESSION_FILTER_QUERY_MAX_BYTES = 2 * 1024
-
-export function isAiVaultSessionFilterQueryTooLarge(
-  query: string,
-  maxBytes = AI_VAULT_SESSION_FILTER_QUERY_MAX_BYTES
-): boolean {
-  return isClipboardTextByteLengthOverLimit(query, maxBytes)
-}
+const EXTRA_QUERY_OPERATOR = /^(model|branch|host|after|since|before|cwd):/i
 
 export function filterAiVaultSessions(
   sessions: readonly AiVaultSession[],
@@ -106,84 +81,40 @@ export function filterAiVaultSessions(
   const agentSet = new Set(filters.agents)
   const hostSet = new Set(filters.hosts ?? [])
   const parsedQuery = parseVaultQuery(filters.query)
-  const extendedQuery = parseExtendedVaultQuery(filters.query)
   const rangeStartMs = timeRangeStartMs(filters.timeRange ?? 'all', options.nowMs ?? Date.now())
   const explicitSearchScope = filters.searchScope
   const searchScope = explicitSearchScope ?? DEFAULT_AI_VAULT_SEARCH_SCOPE
   // Why: mobile and other card-only callers omit searchScope. An unset scope
   // must keep metadata terms; only an explicit rg scope defers them to rg/FTS.
-  const skipCardTerms =
-    options.forceCardTerms !== true &&
-    explicitSearchScope !== undefined &&
-    isAiVaultRgSearchScope(explicitSearchScope)
+  const applyCardTerms =
+    options.forceCardTerms === true ||
+    explicitSearchScope === undefined ||
+    !isAiVaultRgSearchScope(explicitSearchScope)
   const workspaceMatchers =
     filters.scope === 'workspace'
       ? filters.activeWorktreePaths.map(createAiVaultWorkspaceMatcher)
       : []
 
   const filtered = sessions.filter((session) => {
-    if (!agentSet.has(session.agent)) {
-      return false
-    }
-    if (hostSet.size > 0 && !hostSet.has(deriveAiVaultSessionHost(session))) {
-      return false
-    }
-    const updatedMs = Date.parse(session.updatedAt ?? session.modifiedAt)
-    if (rangeStartMs !== null && Number.isFinite(updatedMs) && updatedMs < rangeStartMs) {
-      return false
-    }
-    if (extendedQuery.afterMs !== null && Number.isFinite(updatedMs) && updatedMs < extendedQuery.afterMs) {
-      return false
-    }
-    if (extendedQuery.beforeMs !== null && Number.isFinite(updatedMs) && updatedMs > extendedQuery.beforeMs) {
-      return false
-    }
-    if (extendedQuery.hostTerms.length > 0 && !extendedQuery.hostTerms.includes(deriveAiVaultSessionHost(session))) {
-      return false
-    }
-    if (extendedQuery.modelTerms.some((term) => !(session.model ?? '').toLowerCase().includes(term))) {
-      return false
-    }
-    if (extendedQuery.branchTerms.some((term) => !(session.branch ?? '').toLowerCase().includes(term))) {
-      return false
-    }
-    // Hide plain empty sessions, but keep sessions with resumable content
-    // (some parsers only learn turns from previews, e.g. Grok) and zero-turn
-    // sessions that still carry recoverable content (queued prompts /
-    // subagent transcripts) so a lost conversation is surfaced distinctly.
     if (
-      filters.hideEmptySessions &&
-      !isAiVaultSessionResumableContent(session) &&
-      !isAiVaultSessionRecoverableEmpty(session)
+      !matchesSessionDimensions(
+        session,
+        filters,
+        parsedQuery,
+        agentSet,
+        hostSet,
+        rangeStartMs,
+        workspaceMatchers
+      )
     ) {
       return false
     }
-    if (filters.scope === 'workspace') {
-      const cwd = session.cwd
-      const normalizedCwd = cwd ? normalizeRuntimePathForComparison(cwd) : null
-      if (normalizedCwd === null || !workspaceMatchers.some((matches) => matches(normalizedCwd))) {
-        return false
-      }
-    }
-    if (filters.scope === 'project') {
-      if (!filters.activeProjectKey) {
-        return false
-      }
-      if (filters.sessionProjectById?.get(session.id)?.key !== filters.activeProjectKey) {
-        return false
-      }
-    }
-    if (skipCardTerms) {
-      return matchesAiVaultQueryOperators(
-        {
-          cwd: session.cwd,
-          filePath: session.filePath,
-          repoLabel: repoLabelForSession(session, filters)
-        },
-        parsedQuery
-      )
-    }
-    return matchesQuery(session, parsedQuery, filters, searchScope, options.forceCardTerms === true)
+    return matchesSearchScopeTerms(
+      sessionCardHaystack(session, searchScope, sessionRepoLabel(session, filters)),
+      parsedQuery.terms,
+      options.termMode ?? 'and',
+      applyCardTerms
+    )
   })
   if (filtered.length < 2) {
     return filtered
@@ -194,60 +125,6 @@ export function filterAiVaultSessions(
     .map(({ session }) => session)
 }
 
-export function groupAiVaultSessions(
-  sessions: readonly AiVaultSession[],
-  group: AiVaultGroup,
-  options: {
-    sessionProjectById?: ReadonlyMap<string, AiVaultSessionProject>
-    projectLabelByKey?: ReadonlyMap<string, string>
-  } = {}
-): AiVaultSessionGroup[] {
-  const groups = new Map<string, AiVaultSessionGroup>()
-
-  for (const session of sessions) {
-    const { key, label } = getGroupIdentity(session, group, options)
-    const existing = groups.get(key)
-    if (existing) {
-      existing.sessions.push(session)
-    } else {
-      groups.set(key, { key, label, sessions: [session] })
-    }
-  }
-
-  return [...groups.values()]
-}
-
-export function folderLabel(pathValue: string | null): string {
-  if (!pathValue) {
-    return 'Unknown location'
-  }
-  // NFC so one folder renders the same header whichever spelling (macOS NFD vs
-  // agent-recorded NFC) reaches the group first.
-  const parts = normalizeRuntimePathSeparators(pathValue.normalize('NFC'))
-    .split('/')
-    .filter(Boolean)
-  if (parts.length >= 2) {
-    return parts.slice(-2).join('/')
-  }
-  return parts[0] ?? pathValue
-}
-
-/**
- * Why comparison-normalized: cwd is copied verbatim out of agent transcripts, so
- * one folder arrives with and without a trailing slash and in both NFD/NFC — each
- * spelling otherwise became its own group under an identical `folderLabel`. Also
- * avoids blanket lowercasing, which merged distinct case-sensitive POSIX folders.
- * The `folder:` prefix matches the folder project key so project grouping and its
- * fallback agree.
- */
-export function folderGroupKey(pathValue: string | null): string {
-  return pathValue ? `folder:${normalizeRuntimePathForComparison(pathValue)}` : 'unknown'
-}
-
-export function agentLabel(agent: AiVaultAgent): string {
-  return aiVaultAgentLabel(agent)
-}
-
 /**
  * One reading of `repo:` / `path:` for the whole product.
  *
@@ -256,13 +133,19 @@ export function agentLabel(agent: AiVaultAgent): string {
  * The values come back folded because everything this file compares is folded;
  * the index keeps the unfolded form, which is why the split itself does not.
  */
-export function parseVaultQuery(query: string): ParsedQuery {
+export function parseVaultQuery(query: string): ReturnType<typeof parseExtendedVaultQuery> {
   const split = splitAiVaultSearchQuery(query)
   const fold = (values: readonly string[]): string[] => values.map((value) => value.toLowerCase())
+  const extras = parseExtendedVaultQuery(query)
   return {
-    terms: fold(split.terms),
+    terms: fold(split.terms).filter((term) => !EXTRA_QUERY_OPERATOR.test(term)),
     repoTerms: fold(split.repoTerms),
-    pathTerms: fold(split.pathTerms)
+    pathTerms: fold(split.pathTerms),
+    modelTerms: extras.modelTerms,
+    branchTerms: extras.branchTerms,
+    hostTerms: extras.hostTerms,
+    afterMs: extras.afterMs,
+    beforeMs: extras.beforeMs
   }
 }
 
@@ -303,97 +186,4 @@ export function matchesAiVaultQueryOperators(
     }
   }
   return true
-}
-
-function repoLabelForSession(
-  session: AiVaultSession,
-  filters: Pick<AiVaultSessionFilterState, 'sessionProjectById' | 'projectLabelByKey'>
-): string | undefined {
-  const sessionProject = filters.sessionProjectById?.get(session.id)
-  return sessionProject?.kind === 'repo'
-    ? (filters.projectLabelByKey?.get(sessionProject.key) ?? sessionProject.label)
-    : undefined
-}
-
-function matchesQuery(
-  session: AiVaultSession,
-  parsed: ParsedQuery,
-  filters: Pick<AiVaultSessionFilterState, 'sessionProjectById' | 'projectLabelByKey'>,
-  searchScope: AiVaultSearchScope = DEFAULT_AI_VAULT_SEARCH_SCOPE,
-  forceCardTerms = false
-): boolean {
-  if (parsed.terms.length > 0) {
-    const preview = sessionPreviewSearchText(session)
-    const searchable = (
-      !forceCardTerms && searchScope === 'title'
-        ? session.title
-        : !forceCardTerms && searchScope === 'summary'
-          ? preview
-          : [
-              session.title,
-              session.sessionId,
-              session.agent,
-              session.branch,
-              session.model,
-              session.cwd,
-              session.filePath,
-              preview
-            ]
-              .filter(Boolean)
-              .join(' ')
-    ).toLowerCase()
-    if (parsed.terms.some((term) => !searchable.includes(term))) {
-      return false
-    }
-  }
-  return matchesAiVaultQueryOperators(
-    {
-      cwd: session.cwd,
-      filePath: session.filePath,
-      repoLabel: repoLabelForSession(session, filters)
-    },
-    parsed
-  )
-}
-
-function sessionSortTime(session: AiVaultSession, sort: AiVaultSort): number {
-  const value = sort === 'created' ? session.createdAt : session.updatedAt
-  return Date.parse(value ?? session.modifiedAt)
-}
-
-function getGroupIdentity(
-  session: AiVaultSession,
-  group: AiVaultGroup,
-  options: {
-    sessionProjectById?: ReadonlyMap<string, AiVaultSessionProject>
-    projectLabelByKey?: ReadonlyMap<string, string>
-  }
-): Pick<AiVaultSessionGroup, 'key' | 'label'> {
-  if (group === 'agent') {
-    return { key: session.agent, label: agentLabel(session.agent) }
-  }
-  if (group === 'project') {
-    const sessionProject = options.sessionProjectById?.get(session.id)
-    if (sessionProject) {
-      return {
-        key: sessionProject.key,
-        label:
-          options.projectLabelByKey?.get(sessionProject.key) ||
-          sessionProject.label ||
-          folderLabel(session.cwd)
-      }
-    }
-  }
-  return { key: folderGroupKey(session.cwd), label: folderLabel(session.cwd) }
-}
-
-function createAiVaultWorkspaceMatcher(workspacePath: string): (normalizedCwd: string) => boolean {
-  const matches = createNormalizedPathInsideOrEqualMatcher(workspacePath)
-  const workspaceWslPath = parseWslUncPath(workspacePath)
-  if (!workspaceWslPath) {
-    return matches
-  }
-  // WSL transcripts record Linux cwd even when the workspace uses a UNC path.
-  const matchesLinux = createNormalizedPathInsideOrEqualMatcher(workspaceWslPath.linuxPath)
-  return (cwd) => matches(cwd) || matchesLinux(cwd)
 }
