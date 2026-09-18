@@ -109,11 +109,16 @@ export function filterAiVaultSessions(
     ) {
       return false
     }
+    // Why: repo:/path:-only queries already ran in matchesSessionDimensions.
+    // Building the card haystack would read every preview for no extra work.
+    if (!applyCardTerms || parsedQuery.terms.length === 0) {
+      return true
+    }
     return matchesSearchScopeTerms(
       sessionCardHaystack(session, searchScope, sessionRepoLabel(session, filters)),
       parsedQuery.terms,
       options.termMode ?? 'and',
-      applyCardTerms
+      true
     )
   })
   if (filtered.length < 2) {
