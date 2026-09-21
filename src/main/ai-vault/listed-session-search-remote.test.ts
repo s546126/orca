@@ -129,6 +129,34 @@ describe('searchListedAiVaultSessions remote hosts', () => {
     expect(result.matchedIds).toEqual([remote.id])
   })
 
+  it('does not send SSH ids to desktop rg when only the request host map is present', async () => {
+    rememberListedAiVaultSessions([local])
+    ftsSearchMock.mockReturnValue({
+      hits: [],
+      matchedIds: [local.id],
+      degraded: false,
+      indexedSessionCount: 1,
+      indexedSessionIds: [local.id]
+    })
+
+    const result = await searchListedAiVaultSessions({
+      query: 'pairing',
+      searchScope: 'full',
+      sessionIds: [local.id, remote.id],
+      executionHostBySessionId: {
+        [local.id]: 'local',
+        [remote.id]: 'ssh:dev-box'
+      }
+    })
+
+    expect(ftsSearchMock.mock.calls[0]?.[0]).toMatchObject({
+      sessionIds: [local.id]
+    })
+    expect(rgSearchMock).not.toHaveBeenCalled()
+    expect(result.usedFts).toBe(true)
+    expect(result.matchedIds).toEqual([local.id])
+  })
+
   it('unions FTS local hits with remote card metadata instead of empty local rg', async () => {
     rememberListedAiVaultSessions([local, remote])
     ftsSearchMock.mockReturnValue({

@@ -47,6 +47,8 @@ export type AiVaultSearchSessionsArgs = {
   query: string
   searchScope: AiVaultRgSearchScope
   sessionIds: readonly string[]
+  /** Owning host for each listed id. Desktop rg/FTS only search local transcripts. */
+  executionHostBySessionId?: Readonly<Record<string, string>>
 }
 
 export type AiVaultSearchSessionsResult = {

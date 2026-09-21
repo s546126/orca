@@ -19,6 +19,8 @@ describe('sessionTranscriptIsRemoteOwned', () => {
         createAiVaultTestSession({ id: 'local', executionHostId: 'local' })
       )
     ).toBe(false)
+    expect(sessionTranscriptIsRemoteOwned({ executionHostId: 'ssh:dev-box' })).toBe(true)
+    expect(sessionTranscriptIsRemoteOwned({ executionHostId: undefined })).toBe(false)
   })
 })
 

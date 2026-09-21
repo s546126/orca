@@ -30,6 +30,25 @@ describe('partitionListedSearchSessions', () => {
       remoteSessions: [ssh, runtime]
     })
   })
+
+  it('keeps SSH ids off desktop rg when only the request host map is present', () => {
+    const local = createAiVaultTestSession({ id: 'claude:local', executionHostId: 'local' })
+    const ssh = createAiVaultTestSession({
+      id: 'claude:ssh',
+      executionHostId: 'ssh:dev-box',
+      filePath: '/home/ada/.claude/projects/remote.jsonl'
+    })
+
+    expect(
+      partitionListedSearchSessions([local.id, ssh.id], new Map([[local.id, local]]), {
+        [local.id]: 'local',
+        [ssh.id]: 'ssh:dev-box'
+      })
+    ).toEqual({
+      localIds: [local.id],
+      remoteSessions: []
+    })
+  })
 })
 
 describe('matchListedSessionsByCardMetadata', () => {
