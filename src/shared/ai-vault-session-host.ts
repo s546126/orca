@@ -13,9 +13,9 @@ export function deriveAiVaultSessionHost(
 
 // Why: SSH/runtime transcripts live on the owning host. Desktop rg/FTS would
 // treat a missing remote POSIX path as an empty local miss.
-export function sessionTranscriptIsRemoteOwned(
-  session: { executionHostId?: string | null }
-): boolean {
+export function sessionTranscriptIsRemoteOwned(session: {
+  executionHostId?: string | null
+}): boolean {
   const parsed = parseExecutionHostId(session.executionHostId)
   return parsed?.kind === 'ssh' || parsed?.kind === 'runtime'
 }
