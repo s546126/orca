@@ -112,24 +112,40 @@ const BROWSER_COMMAND_NAMES = [
   'browserTabClose'
 ] as const satisfies readonly (keyof RuntimeBrowserCommands)[]
 
+const EMULATOR_COMMAND_NAMES = [
+  'emulatorTap',
+  'emulatorGesture',
+  'emulatorType',
+  'emulatorButton',
+  'emulatorRotate',
+  'emulatorExec',
+  'emulatorAttach',
+  'emulatorList',
+  'emulatorUnregisterActive',
+  'emulatorListSimulators',
+  'emulatorAvailability',
+  'emulatorListDevices',
+  'emulatorAdbConnect',
+  'emulatorAdbDisconnect',
+  'emulatorAdbConnectionStatus',
+  'emulatorInstall',
+  'emulatorLaunch',
+  'emulatorPermissions',
+  'emulatorAx',
+  'emulatorLogcat',
+  'emulatorKill',
+  'emulatorShutdown',
+  'emulatorExecRaw'
+] as const satisfies readonly (keyof RuntimeEmulatorCommands)[]
+
 function bindPrefixedMethods<T extends object>(
   instance: T,
   prefix: string
 ): Partial<PublicMethods<T>> {
   const bound: Record<string, unknown> = {}
-  // Why: include own properties so instance-field command arrows (used to
-  // keep RuntimeEmulatorCommands under max-lines) still reach the surface.
-  const names = new Set([
-    ...Object.getOwnPropertyNames(Object.getPrototypeOf(instance)),
-    ...Object.getOwnPropertyNames(instance)
-  ])
-  for (const name of names) {
-    if (!name.startsWith(prefix)) {
-      continue
-    }
-    const value = Reflect.get(instance, name)
-    if (typeof value === 'function') {
-      bound[name] = value.bind(instance)
+  for (const name of Object.getOwnPropertyNames(Object.getPrototypeOf(instance))) {
+    if (name.startsWith(prefix)) {
+      bound[name] = (instance[name as keyof T] as (...args: unknown[]) => unknown).bind(instance)
     }
   }
   return bound as Partial<PublicMethods<T>>
@@ -166,7 +182,7 @@ export class RuntimeEdgeCommandController {
     this.surface = {
       ...bindPrefixedMethods(this.jira, 'jira'),
       ...bindNamedMethods(this.browser, BROWSER_COMMAND_NAMES),
-      ...bindPrefixedMethods(this.emulator, 'emulator'),
+      ...bindNamedMethods(this.emulator, EMULATOR_COMMAND_NAMES),
       browserScreencast: (params, options) => this.screencasts.start(params, options)
     } as RuntimeEdgeCommandSurface
   }
