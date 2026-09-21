@@ -92,10 +92,7 @@ describe('listAndroidDevices', () => {
         return ''
       })
     )
-    const devices = await listAndroidDevices(
-      fake as unknown as AndroidCommandRunner,
-      SDK_NO_AVD_TOOLS
-    )
+    const devices = await listAndroidDevices(fake, SDK_NO_AVD_TOOLS)
     expect(devices).toEqual([
       {
         backend: 'android',

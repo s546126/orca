@@ -127,7 +127,7 @@ function bindPrefixedMethods<T extends object>(
     if (!name.startsWith(prefix)) {
       continue
     }
-    const value = instance[name as keyof T]
+    const value = Reflect.get(instance, name)
     if (typeof value === 'function') {
       bound[name] = value.bind(instance)
     }

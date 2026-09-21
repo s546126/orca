@@ -160,13 +160,7 @@ describe('RuntimeEmulatorCommands folder workspace routing', () => {
   })
 
   it('exposes ADB connection methods on the runtime edge surface', () => {
-    const runtime = new OrcaRuntimeService({
-      getFolderWorkspaces: () => [],
-      getAllWorktreeMeta: () => new Map(),
-      getRepo: () => null,
-      getRepos: () => [],
-      getSettings: () => ({ androidSdkPath: null })
-    } as never)
+    const runtime = new OrcaRuntimeService()
 
     expect(typeof runtime.emulatorAdbConnect).toBe('function')
     expect(typeof runtime.emulatorAdbDisconnect).toBe('function')

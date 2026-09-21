@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
-import { cn } from '@/lib/utils'
 import { callRuntimeRpc, RuntimeRpcCallError } from '@/runtime/runtime-rpc-client'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
@@ -75,9 +74,11 @@ function statusLabel(state: AdbConnectionState | 'unsupported'): string {
   }
 }
 
-function statusBadgeClassName(state: AdbConnectionState | 'unsupported'): string {
+function statusBadgeVariant(
+  state: AdbConnectionState | 'unsupported'
+): 'secondary' | 'destructive' | 'outline' {
   if (state === 'connected') {
-    return 'border-status-success-border bg-status-success-background text-status-success'
+    return 'secondary'
   }
   if (
     state === 'failed' ||
@@ -85,9 +86,9 @@ function statusBadgeClassName(state: AdbConnectionState | 'unsupported'): string
     state === 'offline' ||
     state === 'unsupported'
   ) {
-    return 'border-destructive/30 bg-destructive/10 text-destructive'
+    return 'destructive'
   }
-  return 'border-border/50 bg-muted/30 text-muted-foreground'
+  return 'outline'
 }
 
 function isMethodNotFound(error: unknown): boolean {
@@ -291,10 +292,7 @@ export function MobileEmulatorAdbConnection({
             )}
           </p>
         </div>
-        <Badge
-          variant="outline"
-          className={cn('shrink-0 text-[11px]', statusBadgeClassName(effectiveState))}
-        >
+        <Badge variant={statusBadgeVariant(effectiveState)}>
           {opInFlight ? <Loader2 className="size-3 animate-spin" /> : null}
           {statusLabel(effectiveState)}
         </Badge>
@@ -311,7 +309,7 @@ export function MobileEmulatorAdbConnection({
         <>
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <div className="min-w-0 flex-1 space-y-1">
-              <Label htmlFor={inputId} className="text-xs text-muted-foreground">
+              <Label htmlFor={inputId}>
                 {translate(
                   'auto.components.settings.MobileEmulatorAdbConnection.8c92f2f5f2',
                   'Device address'

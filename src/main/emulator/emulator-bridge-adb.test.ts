@@ -184,7 +184,7 @@ describe('EmulatorBridge ADB network devices', () => {
 
     expect(status).toEqual({ state: 'disconnected', address: ADDRESS, serial: null })
     expect(bridge.getActiveForWorktree('wt-1')).toBeNull()
-    const argLists = androidCommandRunnerMock.mock.calls.map((call) => call[1] as string[])
+    const argLists = androidCommandRunnerMock.mock.calls.map((call) => call[1])
     const forwardIndex = argLists.findIndex((args) => args.includes('forward'))
     const disconnectIndex = argLists.findIndex((args) => args[0] === 'disconnect')
     expect(forwardIndex).toBeGreaterThanOrEqual(0)
@@ -389,7 +389,7 @@ describe('RuntimeEmulatorCommands ADB device connection', () => {
 
     expect(firstStatus).toEqual(secondStatus)
     const connectCalls = androidCommandRunnerMock.mock.calls.filter(
-      (call) => (call[1] as string[])[0] === 'connect'
+      (call) => call[1][0] === 'connect'
     )
     expect(connectCalls).toHaveLength(1)
   })

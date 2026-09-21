@@ -74,7 +74,7 @@ describe('parseAdbNetworkEndpoint', () => {
   it('classifies bracketed IPv6 as unsupported, not invalid', () => {
     const result = parseAdbNetworkEndpoint('[::1]:5555')
     expect(result).toMatchObject({ error: 'unsupported_ipv6' })
-    expect((result as { message: string }).message).toMatch(/IPv6/)
+    expect('message' in result && result.message).toMatch(/IPv6/)
   })
 })
 
