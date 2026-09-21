@@ -351,7 +351,7 @@ describe('AndroidEmulatorBackend', () => {
         return ok('')
       })
       const android = new AndroidEmulatorBackend({
-        runner: emptyRunner as unknown as AndroidCommandRunner,
+        runner: emptyRunner,
         sdk: SDK_NO_AVD_TOOLS,
         sleep: async () => {}
       })
@@ -375,7 +375,7 @@ describe('AndroidEmulatorBackend', () => {
         return ok('')
       })
       const android = new AndroidEmulatorBackend({
-        runner: deviceRunner as unknown as AndroidCommandRunner,
+        runner: deviceRunner,
         sdk: SDK_NO_AVD_TOOLS,
         sleep: async () => {}
       })

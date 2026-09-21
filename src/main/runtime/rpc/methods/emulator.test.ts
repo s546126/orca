@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { eraseRpcMethods, type RpcContext } from '../core'
-import type { OrcaRuntimeService } from '../../orca-runtime'
+import { OrcaRuntimeService } from '../../orca-runtime'
 import { EMULATOR_METHODS } from './emulator'
 
 // Why: importing the RpcDispatcher (like sibling browser.test.ts) pulls in
@@ -19,7 +19,7 @@ function method(name: string) {
 }
 
 function ctx(runtime: Partial<OrcaRuntimeService>): RpcContext {
-  return { runtime: runtime as OrcaRuntimeService }
+  return { runtime: Object.assign(new OrcaRuntimeService(), runtime) }
 }
 
 const STATUS = { state: 'connected', address: '10.0.0.5:5555', serial: '10.0.0.5:5555' }
