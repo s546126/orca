@@ -338,10 +338,11 @@ describe('useAiVaultSessionSearch live filter', () => {
         [remote.id]: 'ssh:dev-box'
       }
     })
-    expect(hookState().filteredSessions.map((session) => session.id).sort()).toEqual([
-      local.id,
-      remote.id
-    ])
+    expect(
+      hookState()
+        .filteredSessions.map((session) => session.id)
+        .sort()
+    ).toEqual([local.id, remote.id])
     vi.useRealTimers()
   })
 })
