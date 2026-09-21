@@ -247,8 +247,8 @@ export class RuntimeEmulatorCommands {
     return worktree ? await this.host.resolveEmulatorCleanupWorkspaceId(worktree) : undefined
   }
 
-  // Instance-field arrows: bindPrefixedMethods copies own emulator* functions
-  // onto the runtime edge surface (prototype-only binding would drop these).
+  // Instance-field arrows: bindNamedMethods copies these onto the edge surface
+  // (prototype-only binding would drop them).
   emulatorAdbConnect: RuntimeEmulatorAdbCommands['emulatorAdbConnect'] = (params) =>
     this.adbCommands.emulatorAdbConnect(params)
   emulatorAdbDisconnect: RuntimeEmulatorAdbCommands['emulatorAdbDisconnect'] = (params) =>
