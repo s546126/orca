@@ -5,14 +5,22 @@ import type { AiVaultSession } from '../../shared/ai-vault-types'
 
 export function partitionListedSearchSessions(
   sessionIds: readonly string[],
-  sessionsById: ReadonlyMap<string, AiVaultSession>
+  sessionsById: ReadonlyMap<string, AiVaultSession>,
+  executionHostBySessionId?: Readonly<Record<string, string>>
 ): { localIds: string[]; remoteSessions: AiVaultSession[] } {
   const localIds: string[] = []
   const remoteSessions: AiVaultSession[] = []
   for (const sessionId of sessionIds) {
     const session = sessionsById.get(sessionId)
-    if (session && sessionTranscriptIsRemoteOwned(session)) {
-      remoteSessions.push(session)
+    if (
+      (session && sessionTranscriptIsRemoteOwned(session)) ||
+      sessionTranscriptIsRemoteOwned({
+        executionHostId: executionHostBySessionId?.[sessionId]
+      })
+    ) {
+      if (session) {
+        remoteSessions.push(session)
+      }
       continue
     }
     localIds.push(sessionId)
