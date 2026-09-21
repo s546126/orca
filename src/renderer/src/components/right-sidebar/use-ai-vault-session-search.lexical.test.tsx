@@ -33,11 +33,13 @@ const roots: Root[] = []
 function HookProbe({
   query,
   searchScope,
-  extraFilters
+  extraFilters,
+  listedSessions = sessions
 }: {
   query: string
   searchScope: AiVaultSearchScope
   extraFilters?: Partial<AiVaultSessionFilterState>
+  listedSessions?: readonly ReturnType<typeof createAiVaultTestSession>[]
 }): null {
   const filters: AiVaultSessionFilterState = {
     query,
@@ -50,7 +52,7 @@ function HookProbe({
     ...extraFilters
   }
   latestState = useAiVaultSessionSearch({
-    sessions,
+    sessions: listedSessions,
     filters,
     repoId: 'repo-1'
   })
@@ -154,7 +156,12 @@ describe('useAiVaultSessionSearch live filter', () => {
     expect(searchListedSessions).toHaveBeenCalledTimes(1)
     expect(searchListedSessions.mock.calls[0]?.[0]).toMatchObject({
       query: 'pairing',
-      searchScope: 'full'
+      searchScope: 'full',
+      sessionIds: ['claude:1', 'claude:2'],
+      executionHostBySessionId: {
+        'claude:1': 'local',
+        'claude:2': 'local'
+      }
     })
     expect(hookState().filteredSessions.map((session) => session.id)).toEqual(['claude:1'])
     expect(rankSessions).not.toHaveBeenCalled()
@@ -288,5 +295,53 @@ describe('useAiVaultSessionSearch live filter', () => {
       'claude:1',
       'claude:2'
     ])
+  })
+
+  it('keeps SSH sessions that match card metadata when local rg omits them', async () => {
+    vi.useFakeTimers()
+    const local = createAiVaultTestSession({
+      id: 'claude:local',
+      title: 'Local compile notes',
+      executionHostId: 'local'
+    })
+    const remote = createAiVaultTestSession({
+      id: 'claude:ssh',
+      title: 'Remote pairing notes',
+      executionHostId: 'ssh:dev-box',
+      filePath: '/home/ada/.claude/projects/remote.jsonl',
+      previewMessages: [{ role: 'user', text: 'pairing on the build box', timestamp: null }]
+    })
+    searchListedSessions.mockResolvedValue({
+      matchedIds: [local.id],
+      usedRg: true,
+      usedFts: false,
+      truncated: false,
+      degraded: false,
+      hits: []
+    })
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    roots.push(root)
+    await act(async () => {
+      root.render(<HookProbe query="pairing" searchScope="full" listedSessions={[local, remote]} />)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+
+    expect(searchListedSessions.mock.calls[0]?.[0]).toMatchObject({
+      sessionIds: [local.id, remote.id],
+      executionHostBySessionId: {
+        [local.id]: 'local',
+        [remote.id]: 'ssh:dev-box'
+      }
+    })
+    expect(hookState().filteredSessions.map((session) => session.id).sort()).toEqual([
+      local.id,
+      remote.id
+    ])
+    vi.useRealTimers()
   })
 })

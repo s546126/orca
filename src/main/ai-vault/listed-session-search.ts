@@ -110,7 +110,11 @@ export async function searchListedAiVaultSessions(
   const sessionsById = new Map<string, AiVaultSession>(
     lastListedSessions.map((session) => [session.id, session])
   )
-  const { localIds, remoteSessions } = partitionListedSearchSessions(sessionIds, sessionsById)
+  const { localIds, remoteSessions } = partitionListedSearchSessions(
+    sessionIds,
+    sessionsById,
+    args.executionHostBySessionId
+  )
   const remoteMatchedIds = matchListedSessionsByCardMetadata(remoteSessions, args.query)
   const fts =
     localIds.length === 0

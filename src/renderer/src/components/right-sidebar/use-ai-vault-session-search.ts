@@ -7,6 +7,7 @@ import {
   filterAiVaultSessions,
   type AiVaultSessionFilterState
 } from '../../../../shared/ai-vault-session-filters'
+import { sessionTranscriptIsRemoteOwned } from '../../../../shared/ai-vault-session-host'
 import { AiVaultSessionSearchIndex } from '../../../../shared/ai-vault-session-index'
 import { parseVaultQuery } from '../../../../shared/ai-vault-session-query'
 import { isAiVaultRgSearchScope } from '../../../../shared/ai-vault-session-search-scope'
@@ -153,7 +154,10 @@ export function useAiVaultSessionSearch(args: {
               filters.searchScope === 'title' || filters.searchScope === 'summary'
                 ? 'full'
                 : (filters.searchScope ?? 'full'),
-            sessionIds: candidateIdKey.split('\n').filter(Boolean)
+            sessionIds: lexicalSessions.map((session) => session.id),
+            executionHostBySessionId: Object.fromEntries(
+              lexicalSessions.map((session) => [session.id, session.executionHostId])
+            )
           })
           if (rgRequestIdRef.current !== requestId) {
             return
@@ -199,7 +203,7 @@ export function useAiVaultSessionSearch(args: {
     return () => {
       window.clearTimeout(timer)
     }
-  }, [candidateIdKey, filters.searchScope, rgKey, rgQueryActive, searchTerms])
+  }, [candidateIdKey, filters.searchScope, lexicalSessions, rgKey, rgQueryActive, searchTerms])
 
   const cardFallbackSessions = useMemo(() => {
     if (!rgQueryActive || !rg?.unavailable) {
@@ -223,8 +227,11 @@ export function useAiVaultSessionSearch(args: {
       return lexicalSessions
     }
     const allowed = new Set(rg.matchedIds)
-    return lexicalSessions.filter((session) => allowed.has(session.id))
-  }, [cardFallbackSessions, lexicalSessions, rg, rgQueryActive])
+    const remoteCardIds = remoteCardMatchedIds(lexicalSessions, filters, indexRef.current)
+    return lexicalSessions.filter(
+      (session) => allowed.has(session.id) || remoteCardIds.has(session.id)
+    )
+  }, [cardFallbackSessions, filters, lexicalSessions, rg, rgQueryActive])
 
   const runAiSearch = useCallback(async () => {
     const requestId = requestIdRef.current + 1
@@ -273,4 +280,20 @@ export function useAiVaultSessionSearch(args: {
     messageHitsBySessionId: new Map((rg?.messageHits ?? []).map((hit) => [hit.sessionId, hit])),
     runAiSearch
   }
+}
+
+function remoteCardMatchedIds(
+  sessions: readonly AiVaultSession[],
+  filters: AiVaultSessionFilterState,
+  index: AiVaultSessionSearchIndex
+): Set<string> {
+  const remotes = sessions.filter((session) => sessionTranscriptIsRemoteOwned(session))
+  if (remotes.length === 0) {
+    return new Set()
+  }
+  return new Set(
+    filterAiVaultSessions(remotes, filters, { index, forceCardTerms: true }).map(
+      (session) => session.id
+    )
+  )
 }
