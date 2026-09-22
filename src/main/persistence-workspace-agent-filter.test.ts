@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { rmSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import type { PersistedUIState } from '../shared/persisted-ui-state-types'
 import { testState, createStore, readDataFile, writeDataFile } from './persistence-test-harness'
 
 const { loadUserSshConfigMock, sshConfigHostsToTargetsMock } = vi.hoisted(() => ({
@@ -44,7 +45,7 @@ vi.mock('./telemetry/cohort-classifier', () => ({
   getCohortAtEmit: getCohortAtEmitMock
 }))
 
-function expectNoLeftoverAgentFilterKeys(ui: object): void {
+function expectNoLeftoverAgentFilterKeys(ui: PersistedUIState): void {
   expect(ui).not.toHaveProperty('filterAgentId')
   expect(ui).not.toHaveProperty('filterHarnessId')
 }
@@ -53,9 +54,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value != null
 }
 
-function readPersistedUI(): Record<string, unknown> {
+function isPersistedUI(value: unknown): value is PersistedUIState {
+  return typeof value === 'object' && value != null
+}
+
+function readPersistedUI(): PersistedUIState {
   const parsed = readDataFile()
-  if (!isRecord(parsed) || !isRecord(parsed.ui)) {
+  if (!isRecord(parsed) || !isPersistedUI(parsed.ui)) {
     throw new Error('expected persisted ui object')
   }
   return parsed.ui
