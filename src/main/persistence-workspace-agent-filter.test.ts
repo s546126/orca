@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { rmSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import type { PersistedUIState } from '../shared/persisted-ui-state-types'
 import { testState, createStore, readDataFile, writeDataFile } from './persistence-test-harness'
 
 const { loadUserSshConfigMock, sshConfigHostsToTargetsMock } = vi.hoisted(() => ({
@@ -44,7 +45,7 @@ vi.mock('./telemetry/cohort-classifier', () => ({
   getCohortAtEmit: getCohortAtEmitMock
 }))
 
-function expectNoLeftoverAgentFilterKeys(ui: object): void {
+function expectNoLeftoverAgentFilterKeys(ui: PersistedUIState): void {
   expect(ui).not.toHaveProperty('filterAgentId')
   expect(ui).not.toHaveProperty('filterHarnessId')
 }
@@ -76,7 +77,7 @@ describe('Store workspace agent filter', () => {
     expect(store.getUI().filterAgentIds).toEqual(['openclaude'])
     expectNoLeftoverAgentFilterKeys(store.getUI())
     store.flush()
-    expectNoLeftoverAgentFilterKeys((readDataFile() as { ui: Record<string, unknown> }).ui)
+    expectNoLeftoverAgentFilterKeys((readDataFile() as { ui: PersistedUIState }).ui)
   })
 
   it('loads leftover harness-only filterHarnessId from an on-disk profile', async () => {
@@ -94,7 +95,7 @@ describe('Store workspace agent filter', () => {
     expect(store.getUI().filterAgentIds).toEqual(['claude'])
     expectNoLeftoverAgentFilterKeys(store.getUI())
     store.flush()
-    expectNoLeftoverAgentFilterKeys((readDataFile() as { ui: Record<string, unknown> }).ui)
+    expectNoLeftoverAgentFilterKeys((readDataFile() as { ui: PersistedUIState }).ui)
   })
 
   it('updateUI hydrates leftover singular filterAgentId onto filterAgentIds', async () => {
@@ -105,7 +106,7 @@ describe('Store workspace agent filter', () => {
     expectNoLeftoverAgentFilterKeys(store.getUI())
 
     store.flush()
-    const persisted = readDataFile() as { ui: Record<string, unknown> }
+    const persisted = readDataFile() as { ui: PersistedUIState }
     expect(persisted.ui.filterAgentIds).toEqual(['openclaude'])
     expectNoLeftoverAgentFilterKeys(persisted.ui)
 
@@ -125,7 +126,7 @@ describe('Store workspace agent filter', () => {
     expectNoLeftoverAgentFilterKeys(store.getUI())
 
     store.flush()
-    const persisted = readDataFile() as { ui: Record<string, unknown> }
+    const persisted = readDataFile() as { ui: PersistedUIState }
     expect(persisted.ui.filterAgentIds).toEqual(['codex'])
     expectNoLeftoverAgentFilterKeys(persisted.ui)
   })
