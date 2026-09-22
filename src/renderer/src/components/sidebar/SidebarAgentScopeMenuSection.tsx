@@ -47,7 +47,7 @@ export function SidebarAgentScopeMenuSection({
       <DropdownMenuSubContent
         // Why: Host keeps checkbox items as direct SubContent children so
         // Radix does not dismiss the submenu. Scroll the menu itself.
-        className="w-56 max-h-64 overflow-y-auto scrollbar-sleek"
+        className="w-56"
         data-workspace-board-preserve-open={preserveWorkspaceBoardOpen ? '' : undefined}
       >
         <DropdownMenuCheckboxItem
@@ -56,7 +56,7 @@ export function SidebarAgentScopeMenuSection({
             setFilterAgentIds(toggleAllFilterAgents(filterAgentIds, catalogIds))
           }
           onSelect={(e) => e.preventDefault()}
-          className="min-h-11 items-start py-1.5"
+          className="min-h-11 items-start"
         >
           <span className="flex min-w-0 flex-col gap-0.5">
             <span className="truncate">
@@ -79,7 +79,7 @@ export function SidebarAgentScopeMenuSection({
               setFilterAgentIds(toggleFilterAgentId(filterAgentIds, agent.id, catalogIds))
             }
             onSelect={(e) => e.preventDefault()}
-            className="min-h-11 items-start py-1.5"
+            className="min-h-11 items-start"
           >
             <span className="flex min-w-0 items-center gap-2">
               <AgentIcon agent={agent.id} size={13} />

@@ -30,12 +30,7 @@ const SidebarAgentScopeStrip = React.memo(function SidebarAgentScopeStrip() {
             }
           )}
         </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-5 shrink-0 gap-1 rounded px-1.5 text-[11px] font-normal text-muted-foreground hover:text-foreground"
-          onClick={() => setFilterAgentIds(null)}
-        >
+        <Button variant="ghost" size="xs" onClick={() => setFilterAgentIds(null)}>
           <X className="size-3" />
           {translate('auto.components.sidebar.SidebarAgentScopeStrip.backToAll', 'All agents')}
         </Button>

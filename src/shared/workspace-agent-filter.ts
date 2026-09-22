@@ -4,7 +4,7 @@ import type { TuiAgent } from './tui-agent'
 export type FilterAgentIds = TuiAgent[] | null
 
 export function getCatalogTuiAgentIds(): TuiAgent[] {
-  return Object.keys(TUI_AGENT_CONFIG) as TuiAgent[]
+  return Object.keys(TUI_AGENT_CONFIG).filter(isTuiAgent)
 }
 
 export function normalizeFilterAgentId(value: unknown): TuiAgent | null {
