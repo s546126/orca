@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { rmSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import type { PersistedUIState } from '../shared/persisted-ui-state-types'
 import { testState, createStore, readDataFile, writeDataFile } from './persistence-test-harness'
 
 const { loadUserSshConfigMock, sshConfigHostsToTargetsMock } = vi.hoisted(() => ({
@@ -45,9 +44,21 @@ vi.mock('./telemetry/cohort-classifier', () => ({
   getCohortAtEmit: getCohortAtEmitMock
 }))
 
-function expectNoLeftoverAgentFilterKeys(ui: PersistedUIState): void {
+function expectNoLeftoverAgentFilterKeys(ui: object): void {
   expect(ui).not.toHaveProperty('filterAgentId')
   expect(ui).not.toHaveProperty('filterHarnessId')
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value != null
+}
+
+function readPersistedUI(): Record<string, unknown> {
+  const parsed = readDataFile()
+  if (!isRecord(parsed) || !isRecord(parsed.ui)) {
+    throw new Error('expected persisted ui object')
+  }
+  return parsed.ui
 }
 
 describe('Store workspace agent filter', () => {
@@ -77,7 +88,7 @@ describe('Store workspace agent filter', () => {
     expect(store.getUI().filterAgentIds).toEqual(['openclaude'])
     expectNoLeftoverAgentFilterKeys(store.getUI())
     store.flush()
-    expectNoLeftoverAgentFilterKeys((readDataFile() as { ui: PersistedUIState }).ui)
+    expectNoLeftoverAgentFilterKeys(readPersistedUI())
   })
 
   it('loads leftover harness-only filterHarnessId from an on-disk profile', async () => {
@@ -95,7 +106,7 @@ describe('Store workspace agent filter', () => {
     expect(store.getUI().filterAgentIds).toEqual(['claude'])
     expectNoLeftoverAgentFilterKeys(store.getUI())
     store.flush()
-    expectNoLeftoverAgentFilterKeys((readDataFile() as { ui: PersistedUIState }).ui)
+    expectNoLeftoverAgentFilterKeys(readPersistedUI())
   })
 
   it('updateUI hydrates leftover singular filterAgentId onto filterAgentIds', async () => {
@@ -106,9 +117,9 @@ describe('Store workspace agent filter', () => {
     expectNoLeftoverAgentFilterKeys(store.getUI())
 
     store.flush()
-    const persisted = readDataFile() as { ui: PersistedUIState }
-    expect(persisted.ui.filterAgentIds).toEqual(['openclaude'])
-    expectNoLeftoverAgentFilterKeys(persisted.ui)
+    const persisted = readPersistedUI()
+    expect(persisted.filterAgentIds).toEqual(['openclaude'])
+    expectNoLeftoverAgentFilterKeys(persisted)
 
     const reloaded = await createStore()
     expect(reloaded.getUI().filterAgentIds).toEqual(['openclaude'])
@@ -126,9 +137,9 @@ describe('Store workspace agent filter', () => {
     expectNoLeftoverAgentFilterKeys(store.getUI())
 
     store.flush()
-    const persisted = readDataFile() as { ui: PersistedUIState }
-    expect(persisted.ui.filterAgentIds).toEqual(['codex'])
-    expectNoLeftoverAgentFilterKeys(persisted.ui)
+    const persisted = readPersistedUI()
+    expect(persisted.filterAgentIds).toEqual(['codex'])
+    expectNoLeftoverAgentFilterKeys(persisted)
   })
 
   it('updateUI leftover singular payload replaces a stored filterAgentIds list', async () => {

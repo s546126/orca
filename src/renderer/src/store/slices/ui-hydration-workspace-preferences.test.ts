@@ -172,11 +172,9 @@ describe('createUISlice hydratePersistedUI', () => {
   it('ignores unknown persisted agent filter values', () => {
     const store = createUIStore()
 
-    store.getState().hydratePersistedUI(
-      makePersistedUI({
-        filterAgentIds: ['not-an-agent'] as never
-      })
-    )
+    const unknownFilterUi = makePersistedUI({})
+    Object.assign(unknownFilterUi, { filterAgentIds: ['not-an-agent'] })
+    store.getState().hydratePersistedUI(unknownFilterUi)
 
     expect(store.getState().filterAgentIds).toBeNull()
   })

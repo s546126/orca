@@ -103,12 +103,13 @@ function writeFieldEqual(field: keyof PersistedUIWriteBaseline, a: unknown, b: u
     return stringArrayEqual(a as readonly string[], b as readonly string[])
   }
   if (field === 'filterAgentIds') {
-    const left = a as FilterAgentIds
-    const right = b as FilterAgentIds
-    if (left == null || right == null) {
-      return left == null && right == null
+    if (a == null || b == null) {
+      return a == null && b == null
     }
-    return stringArrayEqual(left, right)
+    if (Array.isArray(a) && Array.isArray(b)) {
+      return stringArrayEqual(a, b)
+    }
+    return Object.is(a, b)
   }
   if (
     field === 'showDotfilesByWorktree' ||

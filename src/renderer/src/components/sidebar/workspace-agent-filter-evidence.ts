@@ -121,7 +121,7 @@ export function filterWorktreesBySelectedAgents<
   }
 ): T[] {
   if (!selectedAgentIds) {
-    return worktrees as T[]
+    return [...worktrees]
   }
   return worktrees.filter((worktree) =>
     worktreeMatchesAgentFilter(worktree, selectedAgentIds, lookup)

@@ -30,7 +30,7 @@ const SidebarAgentFilterSection = React.memo(function SidebarAgentFilterSection(
         checked={allVisible}
         onCheckedChange={() => setFilterAgentIds(toggleAllFilterAgents(filterAgentIds, catalogIds))}
         onSelect={(e) => e.preventDefault()}
-        className="min-h-11 items-start py-1.5"
+        className="min-h-11 items-start"
       >
         <span className="flex min-w-0 flex-col gap-0.5">
           <span className="truncate">
@@ -54,7 +54,7 @@ const SidebarAgentFilterSection = React.memo(function SidebarAgentFilterSection(
               setFilterAgentIds(toggleFilterAgentId(filterAgentIds, agent.id, catalogIds))
             }
             onSelect={(e) => e.preventDefault()}
-            className="min-h-11 items-start py-1.5"
+            className="min-h-11 items-start"
           >
             <span className="flex min-w-0 items-center gap-2">
               <AgentIcon agent={agent.id} size={13} />
