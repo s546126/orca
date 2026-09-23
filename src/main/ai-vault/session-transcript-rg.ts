@@ -41,7 +41,15 @@ export async function searchAiVaultSessionsWithRg(
       break
     }
     const session = sessionsById.get(sessionId)
-    if (!session || sessionTranscriptIsRemoteOwned(session)) {
+    // Why: the listed row can omit executionHostId; the request host map is
+    // the search IPC's authority for not spawning desktop rg on SSH paths.
+    if (
+      !session ||
+      sessionTranscriptIsRemoteOwned(session) ||
+      sessionTranscriptIsRemoteOwned({
+        executionHostId: args.executionHostBySessionId?.[sessionId]
+      })
+    ) {
       continue
     }
     const sessionTargets = aiVaultSessionRgTargets(session)
