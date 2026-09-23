@@ -131,7 +131,12 @@ export async function searchListedAiVaultSessions(
       return emptyAiVaultSearchSessionsResult()
     }
     const rg = await searchAiVaultSessionsWithRg(
-      { query: args.query, searchScope: args.searchScope, sessionIds: localIds },
+      {
+        query: args.query,
+        searchScope: args.searchScope,
+        sessionIds: localIds,
+        executionHostBySessionId: args.executionHostBySessionId
+      },
       sessionsById
     )
     return withRemoteCardMatches(rg, remoteMatchedIds)
@@ -144,7 +149,12 @@ export async function searchListedAiVaultSessions(
   // Why: only locally readable unindexed transcripts go to desktop rg.
   // SSH/runtime stay on card metadata so a missing remote path is not a miss.
   const rg = await searchAiVaultSessionsWithRg(
-    { query: args.query, searchScope: args.searchScope, sessionIds: unindexedLocalIds },
+    {
+      query: args.query,
+      searchScope: args.searchScope,
+      sessionIds: unindexedLocalIds,
+      executionHostBySessionId: args.executionHostBySessionId
+    },
     sessionsById
   )
   return withRemoteCardMatches(

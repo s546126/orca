@@ -79,12 +79,20 @@ describe('searchListedAiVaultSessions remote hosts', () => {
     const result = await searchListedAiVaultSessions({
       query: 'pairing',
       searchScope: 'full',
-      sessionIds: [local.id, remote.id]
+      sessionIds: [local.id, remote.id],
+      executionHostBySessionId: {
+        [local.id]: 'local',
+        [remote.id]: 'ssh:dev-box'
+      }
     })
 
     expect(rgSearchMock).toHaveBeenCalledTimes(1)
     expect(rgSearchMock.mock.calls[0]?.[0]).toMatchObject({
-      sessionIds: [local.id]
+      sessionIds: [local.id],
+      executionHostBySessionId: {
+        [local.id]: 'local',
+        [remote.id]: 'ssh:dev-box'
+      }
     })
     expect(result.matchedIds.sort()).toEqual([local.id, remote.id])
     expect(result.usedRg).toBe(true)
@@ -127,6 +135,41 @@ describe('searchListedAiVaultSessions remote hosts', () => {
     expect(rgSearchMock).not.toHaveBeenCalled()
     expect(result.usedFts).toBe(true)
     expect(result.matchedIds).toEqual([remote.id])
+  })
+
+  it('does not send a stale local row to desktop rg when the request host map says SSH', async () => {
+    const staleRemote = createAiVaultTestSession({
+      id: 'claude:ssh',
+      title: 'Remote pairing notes',
+      executionHostId: 'local',
+      filePath: '/home/ada/.claude/projects/remote.jsonl',
+      previewMessages: [{ role: 'user', text: 'pairing on the build box', timestamp: null }]
+    })
+    rememberListedAiVaultSessions([local, staleRemote])
+    ftsSearchMock.mockReturnValue({
+      hits: [],
+      matchedIds: [local.id],
+      degraded: false,
+      indexedSessionCount: 1,
+      indexedSessionIds: [local.id]
+    })
+
+    const result = await searchListedAiVaultSessions({
+      query: 'pairing',
+      searchScope: 'full',
+      sessionIds: [local.id, staleRemote.id],
+      executionHostBySessionId: {
+        [local.id]: 'local',
+        [staleRemote.id]: 'ssh:dev-box'
+      }
+    })
+
+    expect(ftsSearchMock.mock.calls[0]?.[0]).toMatchObject({
+      sessionIds: [local.id]
+    })
+    expect(rgSearchMock).not.toHaveBeenCalled()
+    expect(result.usedFts).toBe(true)
+    expect(result.matchedIds.sort()).toEqual([local.id, staleRemote.id])
   })
 
   it('does not send SSH ids to desktop rg when only the request host map is present', async () => {

@@ -49,6 +49,24 @@ describe('partitionListedSearchSessions', () => {
       remoteSessions: []
     })
   })
+
+  it('treats a listed local row as remote when the request host map says SSH', () => {
+    const staleLocal = createAiVaultTestSession({
+      id: 'claude:ssh',
+      executionHostId: 'local',
+      filePath: '/home/ada/.claude/projects/remote.jsonl',
+      title: 'Remote pairing notes'
+    })
+
+    expect(
+      partitionListedSearchSessions([staleLocal.id], new Map([[staleLocal.id, staleLocal]]), {
+        [staleLocal.id]: 'ssh:dev-box'
+      })
+    ).toEqual({
+      localIds: [],
+      remoteSessions: [staleLocal]
+    })
+  })
 })
 
 describe('matchListedSessionsByCardMetadata', () => {
