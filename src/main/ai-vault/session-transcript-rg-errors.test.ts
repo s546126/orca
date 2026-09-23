@@ -107,4 +107,30 @@ describe('searchAiVaultSessionsWithRg spawn errors', () => {
       truncated: false
     })
   })
+
+  it('does not spawn desktop rg when only the request host map marks the path remote', async () => {
+    const listedAsLocal = createAiVaultTestSession({
+      id: 'claude:ssh',
+      executionHostId: 'local',
+      filePath: '/home/ada/.claude/projects/remote.jsonl',
+      title: 'Remote pairing notes'
+    })
+
+    await expect(
+      searchAiVaultSessionsWithRg(
+        {
+          query: 'pairing',
+          searchScope: 'full',
+          sessionIds: [listedAsLocal.id],
+          executionHostBySessionId: { [listedAsLocal.id]: 'ssh:dev-box' }
+        },
+        new Map([[listedAsLocal.id, listedAsLocal]])
+      )
+    ).resolves.toMatchObject({
+      matchedIds: [],
+      usedRg: false
+    })
+    expect(spawnMock).not.toHaveBeenCalled()
+    expect(rgAvailableMock).not.toHaveBeenCalled()
+  })
 })
