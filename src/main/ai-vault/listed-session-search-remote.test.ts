@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAiVaultTestSession } from '../../shared/ai-vault-session-test-session'
-import { emptyAiVaultSearchSessionsResult } from '../../shared/ai-vault-session-search-scope'
+import {
+  AI_VAULT_RG_SEARCH_SCOPES,
+  emptyAiVaultSearchSessionsResult
+} from '../../shared/ai-vault-session-search-scope'
 
 const { syncMock, ftsSearchMock, rgSearchMock, userData } = vi.hoisted(() => ({
   syncMock: vi.fn(),
@@ -199,6 +202,38 @@ describe('searchListedAiVaultSessions remote hosts', () => {
     expect(result.usedFts).toBe(true)
     expect(result.matchedIds).toEqual([local.id])
   })
+
+  it.each([...AI_VAULT_RG_SEARCH_SCOPES])(
+    'does not send SSH ids to desktop rg for %s when FTS is warm and the remote path is unindexed',
+    async (searchScope) => {
+      rememberListedAiVaultSessions([local, remote])
+      ftsSearchMock.mockReturnValue({
+        hits: [],
+        matchedIds: [],
+        degraded: false,
+        indexedSessionCount: 1,
+        indexedSessionIds: [local.id]
+      })
+
+      const result = await searchListedAiVaultSessions({
+        query: 'pairing',
+        searchScope,
+        sessionIds: [local.id, remote.id],
+        executionHostBySessionId: {
+          [local.id]: 'local',
+          [remote.id]: 'ssh:dev-box'
+        }
+      })
+
+      expect(ftsSearchMock.mock.calls[0]?.[0]).toMatchObject({
+        sessionIds: [local.id],
+        searchScope
+      })
+      expect(rgSearchMock).not.toHaveBeenCalled()
+      expect(result.usedFts).toBe(true)
+      expect(result.matchedIds).toEqual([remote.id])
+    }
+  )
 
   it('unions FTS local hits with remote card metadata instead of empty local rg', async () => {
     rememberListedAiVaultSessions([local, remote])
