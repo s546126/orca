@@ -4,7 +4,7 @@ export const AI_VAULT_SESSION_RG_MAX_TARGETS = 500
 
 /**
  * Build the complete rg argv for Session History transcript search.
- * Callers spawn `rg` with this array as-is via the existing wsl-aware helper.
+ * Callers spawn this array as-is through `spawnBundledRipgrep`.
  */
 export function buildAiVaultSessionRgArgs(query: string, targets: readonly string[]): string[] {
   return [
