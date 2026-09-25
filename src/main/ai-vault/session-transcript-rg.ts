@@ -17,9 +17,8 @@ import {
 import { sessionTranscriptIsRemoteOwned } from '../../shared/ai-vault-session-host'
 import { transcriptLineMatchesSearchScope } from '../../shared/ai-vault-session-transcript-scope'
 import type { AiVaultSession } from '../../shared/ai-vault-types'
-import { wslAwareSpawn } from '../git/runner'
-import { checkRgAvailable } from '../ipc/rg-availability'
-import { parseWslPath } from '../wsl'
+import { spawnBundledRipgrep } from '../ripgrep/bundled-ripgrep-spawn'
+import { parseWslPath, toWindowsWslPath } from '../wsl'
 import { AI_VAULT_SESSION_TRANSCRIPT_MAX_BYTES } from './session-message-transcript-lines'
 
 export async function searchAiVaultSessionsWithRg(
@@ -70,11 +69,6 @@ export async function searchAiVaultSessionsWithRg(
   }
 
   if (targets.length === 0) {
-    return emptyAiVaultSearchSessionsResult()
-  }
-
-  const rgAvailable = await checkRgAvailable(parentTranscriptDirectory(targets[0] ?? '.'))
-  if (!rgAvailable) {
     return emptyAiVaultSearchSessionsResult()
   }
 
@@ -204,10 +198,18 @@ function emptyRgResult(): Promise<SessionRgSpawnResult> {
 function spawnSessionRg(query: string, targets: readonly string[]): Promise<SessionRgSpawnResult> {
   return new Promise((resolve) => {
     const cwd = parentTranscriptDirectory(targets[0] ?? '.')
-    const child = wslAwareSpawn('rg', buildAiVaultSessionRgArgs(query, targets), {
-      cwd,
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
+    const wsl = parseWslPath(cwd) ?? parseWslPath(targets[0] ?? '')
+    let child: ReturnType<typeof spawnBundledRipgrep>
+    try {
+      child = spawnBundledRipgrep(buildAiVaultSessionRgArgs(query, targets), {
+        cwd,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        ...(wsl ? { wslDistro: wsl.distro, wslDistroForOutput: wsl.distro } : {})
+      })
+    } catch {
+      resolve({ paths: [], truncated: false, failed: true })
+      return
+    }
     let stdout = ''
     let settled = false
     const timeout = setTimeout(() => {
@@ -226,7 +228,13 @@ function spawnSessionRg(query: string, targets: readonly string[]): Promise<Sess
       child.off('close', onCloseCode)
       const paths = stdout
         .split(/\r?\n/)
-        .map((line) => line.trim())
+        .map((line) => {
+          const trimmed = line.trim()
+          if (!trimmed) {
+            return ''
+          }
+          return wsl && trimmed.startsWith('/') ? toWindowsWslPath(trimmed, wsl.distro) : trimmed
+        })
         .filter(Boolean)
       resolve({ paths, truncated, failed })
     }

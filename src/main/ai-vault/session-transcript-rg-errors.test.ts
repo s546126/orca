@@ -2,26 +2,23 @@ import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createAiVaultTestSession } from '../../shared/ai-vault-session-test-session'
 
-vi.mock('../git/runner', () => ({
-  wslAwareSpawn: vi.fn()
+const { spawnBundledRipgrep } = vi.hoisted(() => ({
+  spawnBundledRipgrep: vi.fn()
 }))
 
-vi.mock('../ipc/rg-availability', () => ({
-  checkRgAvailable: vi.fn()
+vi.mock('../ripgrep/bundled-ripgrep-spawn', () => ({
+  spawnBundledRipgrep
 }))
 
-const { wslAwareSpawn } = await import('../git/runner')
-const { checkRgAvailable } = await import('../ipc/rg-availability')
 const { searchAiVaultSessionsWithRg } = await import('./session-transcript-rg')
 
-const spawnMock = vi.mocked(wslAwareSpawn)
-const rgAvailableMock = vi.mocked(checkRgAvailable)
+const spawnMock = vi.mocked(spawnBundledRipgrep)
 
 function createFakeRgChild(options: {
   code?: number | null
   error?: Error
   stdout?: string
-}): ReturnType<typeof wslAwareSpawn> {
+}): ReturnType<typeof spawnBundledRipgrep> {
   const stdout = Object.assign(new EventEmitter(), {
     setEncoding: (): void => undefined
   })
@@ -60,8 +57,6 @@ const searchArgs = {
 describe('searchAiVaultSessionsWithRg spawn errors', () => {
   beforeEach(() => {
     spawnMock.mockReset()
-    rgAvailableMock.mockReset()
-    rgAvailableMock.mockResolvedValue(true)
   })
 
   it('treats rg exit 1 as no matches and still reports usedRg', async () => {
@@ -88,6 +83,19 @@ describe('searchAiVaultSessionsWithRg spawn errors', () => {
 
   it('does not claim usedRg when rg fails to spawn', async () => {
     spawnMock.mockImplementation(() => createFakeRgChild({ error: new Error('ENOENT') }))
+
+    await expect(searchAiVaultSessionsWithRg(searchArgs, sessionsById)).resolves.toMatchObject({
+      matchedIds: [],
+      usedRg: false,
+      usedFts: false,
+      truncated: false
+    })
+  })
+
+  it('does not claim usedRg when bundled rg throws before a child exists', async () => {
+    spawnMock.mockImplementation(() => {
+      throw new Error('ENOENT')
+    })
 
     await expect(searchAiVaultSessionsWithRg(searchArgs, sessionsById)).resolves.toMatchObject({
       matchedIds: [],
@@ -131,6 +139,5 @@ describe('searchAiVaultSessionsWithRg spawn errors', () => {
       usedRg: false
     })
     expect(spawnMock).not.toHaveBeenCalled()
-    expect(rgAvailableMock).not.toHaveBeenCalled()
   })
 })
