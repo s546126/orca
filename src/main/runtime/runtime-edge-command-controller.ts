@@ -179,6 +179,7 @@ export class RuntimeEdgeCommandController {
       getCommands: () => args.getBrowserCommands?.() ?? this.browser
     })
     this.emulator = new RuntimeEmulatorCommands(args.emulatorHost)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: bind helpers return Partial maps; the name lists above are the complete public command surface.
     this.surface = {
       ...bindPrefixedMethods(this.jira, 'jira'),
       ...bindNamedMethods(this.browser, BROWSER_COMMAND_NAMES),
