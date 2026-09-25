@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,8 +10,13 @@ import {
   siblingTranscriptPath
 } from '../../shared/ai-vault-session-rg-args'
 import { createAiVaultTestSession } from '../../shared/ai-vault-session-test-session'
-import { checkRgAvailable } from '../ipc/rg-availability'
+import { bundledRipgrepCommand } from '../ripgrep/bundled-ripgrep-path'
 import { searchAiVaultSessionsWithRg } from './session-transcript-rg'
+
+function bundledSessionRgExists(): boolean {
+  const command = bundledRipgrepCommand()
+  return command !== 'rg' && existsSync(command)
+}
 
 const USER_TOKEN = 'rg-scope-user-prompt'
 const ASSISTANT_TOKEN = 'rg-scope-assistant-prose'
@@ -54,7 +60,7 @@ describe('buildAiVaultSessionRgArgs', () => {
 
 describe('searchAiVaultSessionsWithRg', () => {
   it('isolates full text, without-tools, user, assistant, and error scopes', async () => {
-    if (!(await checkRgAvailable())) {
+    if (!bundledSessionRgExists()) {
       return
     }
 
