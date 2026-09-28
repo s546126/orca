@@ -3,7 +3,13 @@ import { rmSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { PersistedUIState } from '../shared/persisted-ui-state-types'
-import { testState, createStore, readDataFile, writeDataFile } from './persistence-test-harness'
+import {
+  closeTestStores,
+  testState,
+  createStore,
+  readDataFile,
+  writeDataFile
+} from './persistence-test-harness'
 
 const { loadUserSshConfigMock, sshConfigHostsToTargetsMock } = vi.hoisted(() => ({
   loadUserSshConfigMock: vi.fn(),
@@ -74,7 +80,8 @@ describe('Store workspace agent filter', () => {
     getCohortAtEmitMock.mockReturnValue({ nth_repo_added: 2 })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await closeTestStores()
     rmSync(testState.dir, { recursive: true, force: true })
   })
 
