@@ -5488,6 +5488,17 @@
           "3e102f111c": "Tous les hôtes",
           "visibleHostsCount": "{{value0}} hôtes"
         },
+        "sidebarAgentOptions": {
+          "allAgents": "Tous les agents",
+          "visibleAgentsCount": "{{value0}} agents"
+        },
+        "SidebarAgentFilterSection": {
+          "agent": "Agent"
+        },
+        "SidebarAgentScopeStrip": {
+          "scopedTo": "{{value0}} visible(s)",
+          "backToAll": "Tous les agents"
+        },
         "SidebarHostScopeStrip": {
           "scopedTo": "{{value0}} visible(s)",
           "backToAll": "Tous les hôtes"
