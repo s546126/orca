@@ -149,6 +149,19 @@ export type AiVaultSession = {
     sessionId: string
     workspaceId: string
   }
+  /**
+   * A frozen copy of one log. Search and preview read `archivePath`.
+   * `sourceRemoved` means the original log is gone, so the row must not resume.
+   */
+  historySnapshot?: AiVaultHistorySnapshot
+}
+
+export type AiVaultHistorySnapshot = {
+  archiveId: string
+  archivePath: string
+  savedAt: string
+  sourceRemoved: boolean
+  capture: 'current-log'
 }
 
 export type AiVaultSubagentListArgs = {

@@ -63,6 +63,8 @@ export const aiVaultApi = {
     ipcRenderer.invoke('aiVault:getFirstUserPrompt', args),
   deleteSession: (args: AiVaultDeleteSessionArgs): Promise<AiVaultDeleteSessionResult> =>
     ipcRenderer.invoke('aiVault:deleteSession', args),
+  saveSessionSnapshot: (args) => ipcRenderer.invoke('aiVault:saveSessionSnapshot', args),
+  deleteSessionSnapshot: (args) => ipcRenderer.invoke('aiVault:deleteSessionSnapshot', args),
   onWindowFocused: (callback: () => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent) => callback()
     ipcRenderer.on('aiVault:windowFocused', listener)

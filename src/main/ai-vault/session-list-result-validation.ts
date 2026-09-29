@@ -67,6 +67,15 @@ const aiVaultSessionSchema = z.object({
   queuedMessageCount: z.number().default(0),
   subagentTranscriptCount: z.number().default(0),
   resumeCommand: z.string(),
+  historySnapshot: z
+    .object({
+      archiveId: z.string(),
+      archivePath: z.string(),
+      savedAt: z.string(),
+      sourceRemoved: z.boolean(),
+      capture: z.literal('current-log')
+    })
+    .optional(),
   structuredSession: z
     .object({
       sessionId: z.string().min(1).max(512),

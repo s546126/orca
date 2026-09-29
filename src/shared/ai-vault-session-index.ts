@@ -158,9 +158,14 @@ export class AiVaultSessionSearchIndex {
 export function sessionIndexRevision(session: AiVaultSession): string {
   // Why: node:sqlite TEXT is C-string based, so a NUL separator would truncate
   // the durable revision and force a rewrite on every sync.
-  return [session.modifiedAt, session.updatedAt ?? '', session.messageCount, session.title].join(
-    '\t'
-  )
+  return [
+    session.modifiedAt,
+    session.updatedAt ?? '',
+    session.messageCount,
+    session.title,
+    session.historySnapshot?.archiveId ?? '',
+    session.historySnapshot?.savedAt ?? ''
+  ].join('\t')
 }
 
 function buildIndexedSession(

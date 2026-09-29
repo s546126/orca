@@ -1,4 +1,7 @@
 import { app, ipcMain } from 'electron'
+import { mergeAiVaultHistorySnapshots } from '../ai-vault/session-log-snapshot-merge'
+import { historyArchiveRoot } from './ai-vault-history-archive-root'
+import { registerAiVaultSnapshotHandlers } from './ai-vault-snapshot'
 import {
   configureAiVaultSessionSources,
   listAiVaultSessions as listCachedLocalAiVaultSessions,
@@ -178,14 +181,28 @@ async function scanLocalAiVaultSessions(
     },
     { signal }
   )
+  const withSnapshots = await attachHistorySnapshots(result)
   // Why: FTS/rg indexing is best-effort. A userData/Electron miss must not
   // replace a completed local scan with an issue row (SSH use case too).
   try {
-    syncDurableSessionIndex(result)
+    syncDurableSessionIndex(withSnapshots)
   } catch (error) {
     console.warn('[ai-vault] Failed to update session search index:', error)
   }
-  return result
+  return withSnapshots
+}
+
+async function attachHistorySnapshots(result: AiVaultListResult): Promise<AiVaultListResult> {
+  const archiveRoot = historyArchiveRoot()
+  if (!archiveRoot) {
+    return result
+  }
+  try {
+    return await mergeAiVaultHistorySnapshots(result, archiveRoot)
+  } catch (error) {
+    console.warn('[ai-vault] Failed to read saved history snapshots:', error)
+    return result
+  }
 }
 
 export function registerAiVaultHandlers(options: AiVaultHandlerOptions = {}): void {
@@ -239,6 +256,7 @@ export function registerAiVaultHandlers(options: AiVaultHandlerOptions = {}): vo
     handleAiVaultGetFirstUserPrompt(args)
   )
   registerAiVaultDeleteHandler(aiVaultDeleteDeps)
+  registerAiVaultSnapshotHandlers()
   registerAiVaultListedSearchHandlers(options)
   // macOS app activation skips DOM focus events, so emit the refresh signal here.
   app.on('browser-window-focus', (_event, window) => {

@@ -93,6 +93,18 @@ export function createWebAiVaultApi(): NonNullable<Partial<PreloadApi>['aiVault'
         agent: args.agent,
         reason: 'non-local-host' as const
       }),
+    saveSessionSnapshot: () =>
+      Promise.resolve({
+        outcome: 'failed' as const,
+        code: 'non-local-host' as const,
+        message: 'Snapshots can only be saved for logs on this computer.'
+      }),
+    deleteSessionSnapshot: () =>
+      Promise.resolve({
+        outcome: 'failed' as const,
+        code: 'non-local-host' as const,
+        message: 'Snapshots can only be saved for logs on this computer.'
+      }),
     onWindowFocused: () => noopUnsubscribe,
     rankSessions: ({ cards }) =>
       Promise.resolve({

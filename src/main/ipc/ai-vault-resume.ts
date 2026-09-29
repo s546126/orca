@@ -5,6 +5,7 @@ import type {
   AiVaultSessionResumePreparation
 } from '../../shared/ai-vault-resume-preparation'
 import { parseExecutionHostId } from '../../shared/execution-host'
+import { isAiVaultHistorySnapshotPath } from '../../shared/ai-vault-session-snapshot'
 import { assertLegacyAiVaultResumeAllowed } from '../ai-vault/structured-session-ownership'
 
 export type AiVaultResumeHandlerOptions = {
@@ -26,6 +27,9 @@ export async function prepareAiVaultSessionResume(
   args: AiVaultPrepareSessionResumeArgs,
   options: AiVaultResumeHandlerOptions
 ): Promise<AiVaultPrepareSessionResumeResult> {
+  if (isAiVaultHistorySnapshotPath(args.filePath)) {
+    throw new Error('Saved history snapshots cannot be resumed.')
+  }
   await options.ensureStructuredSessionOwnership?.()
   assertLegacyAiVaultResumeAllowed(args)
   const executionHost = parseExecutionHostId(args.executionHostId)

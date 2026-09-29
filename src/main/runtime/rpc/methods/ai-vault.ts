@@ -10,6 +10,7 @@ import {
 import { defineMethod } from '../core'
 import { restampAiVaultListResult } from '../../../ai-vault/session-list-results'
 import type { AiVaultPrepareSessionResumeArgs } from '../../../../shared/ai-vault-resume-preparation'
+import { isAiVaultHistorySnapshotPath } from '../../../../shared/ai-vault-session-snapshot'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
 import { describeAiVaultScanError } from '../../../../shared/ai-vault-scan-error-message'
 import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
@@ -98,6 +99,9 @@ export const AI_VAULT_METHODS = [
     name: 'aiVault.prepareSessionResume',
     params: AiVaultPrepareSessionResumeParams,
     handler: async (params, { runtime }) => {
+      if (isAiVaultHistorySnapshotPath(params.filePath)) {
+        throw new Error('Saved history snapshots cannot be resumed.')
+      }
       const args: AiVaultPrepareSessionResumeArgs = {
         agent: params.agent,
         ...(params.sessionId ? { sessionId: params.sessionId } : {}),
