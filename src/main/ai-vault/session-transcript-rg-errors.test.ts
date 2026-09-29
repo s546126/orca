@@ -2,13 +2,22 @@ import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createAiVaultTestSession } from '../../shared/ai-vault-session-test-session'
 
-const { spawnBundledRipgrep } = vi.hoisted(() => ({
-  spawnBundledRipgrep: vi.fn()
+const { spawnBundledRipgrep, parseWslPath } = vi.hoisted(() => ({
+  spawnBundledRipgrep: vi.fn(),
+  parseWslPath: vi.fn(() => null)
 }))
 
 vi.mock('../ripgrep/bundled-ripgrep-spawn', () => ({
   spawnBundledRipgrep
 }))
+
+vi.mock('../wsl', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    parseWslPath
+  }
+})
 
 const { searchAiVaultSessionsWithRg } = await import('./session-transcript-rg')
 
@@ -57,6 +66,8 @@ const searchArgs = {
 describe('searchAiVaultSessionsWithRg spawn errors', () => {
   beforeEach(() => {
     spawnMock.mockReset()
+    parseWslPath.mockReset()
+    parseWslPath.mockReturnValue(null)
   })
 
   it('treats rg exit 1 as no matches and still reports usedRg', async () => {
@@ -139,5 +150,35 @@ describe('searchAiVaultSessionsWithRg spawn errors', () => {
       usedRg: false
     })
     expect(spawnMock).not.toHaveBeenCalled()
+  })
+
+  it('matches a WSL UNC session when rg reports the /mnt drive path', async () => {
+    const uncPath = String.raw`\\wsl.localhost\Ubuntu\mnt\c\Users\ada\.claude\projects\session.jsonl`
+    const wslSession = createAiVaultTestSession({
+      id: 'claude:wsl-drvfs',
+      title: 'WSL pairing notes',
+      filePath: uncPath
+    })
+    parseWslPath.mockImplementation((windowsPath: string) =>
+      windowsPath.includes('wsl.localhost')
+        ? { distro: 'Ubuntu', linuxPath: '/mnt/c/Users/ada/.claude/projects/session.jsonl' }
+        : null
+    )
+    spawnMock.mockImplementation(() =>
+      createFakeRgChild({
+        code: 0,
+        stdout: '/mnt/c/Users/ada/.claude/projects/session.jsonl\n'
+      })
+    )
+
+    await expect(
+      searchAiVaultSessionsWithRg(
+        { query: 'pairing', searchScope: 'full', sessionIds: [wslSession.id] },
+        new Map([[wslSession.id, wslSession]])
+      )
+    ).resolves.toMatchObject({
+      matchedIds: [wslSession.id],
+      usedRg: true
+    })
   })
 })
