@@ -54,6 +54,11 @@ export function SessionMetadata({
             would mark most rows; only live attention states earn a dot. */}
         {liveState && liveState !== 'done' ? <AgentStateDot state={liveState} /> : null}
         <span className="min-w-0 shrink-[2] truncate">{agentLabel(session.agent)}</span>
+        {session.historySnapshot ? (
+          <span className="shrink-0">
+            {translate('auto.components.right.sidebar.AiVaultSessionRow.snapshotSaved', 'Saved')}
+          </span>
+        ) : null}
         <span className="shrink-0 tabular-nums">
           {translate(
             'auto.components.right.sidebar.AiVaultSessionRow.messageCount',

@@ -26,6 +26,8 @@ import {
 import type { AgentStatusState } from '../../../../shared/agent-status-types'
 import type { AiVaultSearchHit } from '../../../../shared/ai-vault-search-types'
 import { AiVaultSearchEvidence } from './AiVaultSearchEvidence'
+import { isAiVaultHistoryOnlySession } from '../../../../shared/ai-vault-session-snapshot'
+import { useSessionWithVisibleSnapshot } from './ai-vault-history-snapshot-overlay'
 
 export function VaultSessionRow({
   session,
@@ -88,7 +90,9 @@ export function VaultSessionRow({
   onRequestDelete?: (session: AiVaultSession) => void
   searchHit?: AiVaultSearchHit
 }) {
-  const updatedAt = session.updatedAt ?? session.modifiedAt
+  const shownSession = useSessionWithVisibleSnapshot(session)
+  const historyOnly = isAiVaultHistoryOnlySession(shownSession)
+  const updatedAt = shownSession.updatedAt ?? shownSession.modifiedAt
   const detailsId = getSessionDetailsId(session.id)
   const latestTurn = latestSessionConversationTurn(session)
   // Computed once so the dropdown menu and the context menu never disagree.
@@ -107,7 +111,7 @@ export function VaultSessionRow({
   const startResumeDrag = useCallback(
     (event: React.DragEvent<HTMLElement>): void => {
       event.stopPropagation()
-      if (resumeDisabled) {
+      if (resumeDisabled || historyOnly) {
         event.preventDefault()
         return
       }
@@ -130,7 +134,7 @@ export function VaultSessionRow({
       })
       window.dispatchEvent(new Event(AI_VAULT_SESSION_DRAG_START_EVENT))
     },
-    [realHomeResumeStartup, resumeDisabled, session, resumeStartup]
+    [historyOnly, realHomeResumeStartup, resumeDisabled, session, resumeStartup]
   )
 
   return (
@@ -158,12 +162,12 @@ export function VaultSessionRow({
                 'min-w-0 text-[13px] font-medium leading-5 text-foreground',
                 // Why: only the title is the resume drag handle — expanded
                 // details/preview need text selection and a normal pointer.
-                !resumeDisabled && 'cursor-grab active:cursor-grabbing',
+                !resumeDisabled && !historyOnly && 'cursor-grab active:cursor-grabbing',
                 detailsExpanded ? 'line-clamp-2 [overflow-wrap:anywhere]' : 'line-clamp-1'
               )}
-              draggable={!resumeDisabled}
+              draggable={!resumeDisabled && !historyOnly}
               title={
-                resumeDisabled
+                resumeDisabled || historyOnly
                   ? undefined
                   : translate(
                       'auto.components.right.sidebar.AiVaultSessionRow.dragToResume',
@@ -178,12 +182,12 @@ export function VaultSessionRow({
               {session.title}
             </div>
             <SessionRowTrailingActions
-              session={session}
+              session={shownSession}
               detailsExpanded={detailsExpanded}
               detailsId={detailsId}
               detailsTooltip={detailsTooltip}
               resumeDisabled={resumeDisabled}
-              resumeHidden={resumeHidden}
+              resumeHidden={resumeHidden || historyOnly}
               resumeLabel={resumeLabel}
               worktreeInfo={worktreeInfo}
               onToggleDetails={onToggleDetails}
@@ -222,7 +226,7 @@ export function VaultSessionRow({
             </div>
           ) : null}
           <SessionMetadata
-            session={session}
+            session={shownSession}
             liveState={liveState}
             updatedAt={updatedAt}
             worktreeInfo={worktreeInfo}
@@ -231,15 +235,22 @@ export function VaultSessionRow({
           {detailsExpanded ? (
             <SessionInlineDetails
               id={detailsId}
-              session={session}
+              session={shownSession}
               worktreeInfo={worktreeInfo}
               vaultScope={vaultScope}
-              resumeActions={resumeActions}
+              resumeActions={
+                historyOnly
+                  ? {
+                      worktree: { worktreeId: null, disabled: true },
+                      newTab: { worktreeId: null, disabled: true }
+                    }
+                  : resumeActions
+              }
               onResumeInWorktree={onResumeInWorktree}
               onResumeInNewTab={onResumeInNewTab}
-              subagentResume={subagentResume}
-              onContinueInNewSession={onContinueInNewSession}
-              onResumeInNewChat={onResumeInNewChat}
+              subagentResume={historyOnly ? undefined : subagentResume}
+              onContinueInNewSession={historyOnly ? undefined : onContinueInNewSession}
+              onResumeInNewChat={historyOnly ? undefined : onResumeInNewChat}
               onOpenLog={onOpenLog}
             />
           ) : null}
@@ -249,7 +260,7 @@ export function VaultSessionRow({
         <SessionActionMenuItems
           menuKind="context"
           resumeDisabled={resumeDisabled}
-          resumeHidden={resumeHidden}
+          resumeHidden={resumeHidden || historyOnly}
           resumeLabel={resumeLabel}
           onJumpToOriginalPane={onJumpToOriginalPane}
           showJumpToWorktree={showJumpToWorktree}

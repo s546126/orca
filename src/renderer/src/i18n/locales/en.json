@@ -13562,7 +13562,13 @@
             "copied": "Copied",
             "copy": "Copy",
             "noFirstPromptAvailable": "No first prompt available",
-            "loadingFirstPrompt": "Loading first prompt…"
+            "loadingFirstPrompt": "Loading first prompt…",
+            "snapshotSaveFailed": "Couldn't save snapshot: {{value0}}",
+            "snapshotDeleteFailed": "Couldn't delete snapshot: {{value0}}",
+            "deleteSnapshot": "Delete copy",
+            "saveSnapshot": "Save snapshot",
+            "snapshotSaved": "Saved · {{value0}} · {{value1}}. This is the log as of that save, including tool output.",
+            "snapshotHint": "Saves this log only. Tool output is kept. It does not resume or back up subagent transcripts."
           },
           "AiVaultSessionRow": {
             "noPreviewAvailable": "No conversation preview available",
@@ -13596,7 +13602,9 @@
             "deleteReasonNonLocalHost": "Only sessions on this device can be deleted.",
             "deleteReasonSyntheticPath": "This session can't be deleted from Orca.",
             "deleteReasonUnsupportedAgent": "{{value0}} sessions can't be deleted from Orca.",
-            "resumeInNewChat": "Resume in New Chat"
+            "resumeInNewChat": "Resume in New Chat",
+            "snapshotSaved": "Saved",
+            "errorRole": "Error"
           },
           "AiVaultSessionDeleteDialog": {
             "title": "Delete this session?",

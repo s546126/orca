@@ -17,7 +17,9 @@ import {
   type AiVaultSession
 } from '../../../../shared/ai-vault-types'
 import { translate } from '@/i18n/i18n'
+import { canSaveAiVaultSessionLog } from '../../../../shared/ai-vault-session-snapshot'
 import { FirstPromptCard } from './ai-vault-first-prompt-card'
+import { SessionSnapshotButton } from './AiVaultSessionSnapshotButton'
 import { sessionDetailConversationTurns, sessionPromptPreview } from './ai-vault-session-display'
 import { SessionSubagentsSection } from './AiVaultSessionSubagents'
 import { SessionUnsavedConversationNotice } from './AiVaultSessionUnsavedNotice'
@@ -64,6 +66,7 @@ export function SessionInlineDetails({
   const showResumeInNewTab =
     hasResumableContent &&
     (!resumeActions.worktree.worktreeId || Boolean(resumeActions.newTab.worktreeId))
+  const showSnapshotAction = canSaveAiVaultSessionLog(session) || Boolean(session.historySnapshot)
   const promptPreview = sessionPromptPreview(session)
   const detailTurns = sessionDetailConversationTurns(session, 3)
   const worktreeDisplay = worktreeInfo
@@ -84,7 +87,8 @@ export function SessionInlineDetails({
       showResumeInNewTab ||
       onContinueInNewSession ||
       onResumeInNewChat ||
-      onOpenLog ? (
+      onOpenLog ||
+      showSnapshotAction ? (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-sidebar-border/80 bg-sidebar-accent/15 px-3 py-2">
           {showResumeInWorktree ? (
             <Button
@@ -180,6 +184,7 @@ export function SessionInlineDetails({
               {translate('auto.components.right.sidebar.AiVaultSessionDetails.viewLog', 'View Log')}
             </Button>
           ) : null}
+          <SessionSnapshotButton session={session} />
         </div>
       ) : null}
 

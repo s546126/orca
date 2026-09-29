@@ -10,6 +10,7 @@ import type {
 import type {
   AiVaultFirstUserPromptArgs,
   AiVaultFirstUserPromptResult,
+  AiVaultHistorySnapshot,
   AiVaultListArgs,
   AiVaultListResult,
   AiVaultSubagentListArgs,
@@ -32,6 +33,7 @@ import type {
   AiVaultSearchSessionsArgs,
   AiVaultSearchSessionsResult
 } from '../../shared/ai-vault-session-search-scope'
+import type { AiVaultSnapshotFailure } from '../../shared/ai-vault-session-snapshot'
 
 export type AiVaultApi = {
   /** Omitted host means this host; `all` is merged by this desktop across every enumerated host. */
@@ -64,6 +66,24 @@ export type AiVaultApi = {
   getFirstUserPrompt: (args: AiVaultFirstUserPromptArgs) => Promise<AiVaultFirstUserPromptResult>
   /** Moves a deletable session's transcript to the OS trash; local sessions only. */
   deleteSession: (args: AiVaultDeleteSessionArgs) => Promise<AiVaultDeleteSessionResult>
+  /** Copies one local Codex or Claude log into Orca. A repeat returns the existing copy. */
+  saveSessionSnapshot: (args: {
+    agent: string
+    sessionId: string
+    executionHostId?: string
+    filePath: string
+  }) => Promise<
+    | { outcome: 'saved' | 'already-saved'; snapshot: AiVaultHistorySnapshot }
+    | AiVaultSnapshotFailure
+  >
+  /** Deletes one saved log copy. The original log is left in place. */
+  deleteSessionSnapshot: (args: {
+    archiveId: string
+    agent?: string
+    sessionId?: string
+    executionHostId?: string
+    filePath?: string
+  }) => Promise<{ outcome: 'deleted' | 'missing' } | AiVaultSnapshotFailure>
   /** Fires when any app window regains OS focus; returns an unsubscribe. */
   onWindowFocused: (callback: () => void) => () => void
   /** Rank currently shown Session History cards with the auto-rename branchName agent. */

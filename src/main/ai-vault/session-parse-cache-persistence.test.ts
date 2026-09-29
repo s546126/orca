@@ -168,7 +168,8 @@ const CACHED_SESSION_FIELDS = {
   subagentTranscriptCount: true,
   resumeCommand: true,
   subagent: true,
-  structuredSession: true
+  structuredSession: true,
+  historySnapshot: true
 } satisfies Record<keyof AiVaultSession, true>
 
 describe('cached session compatibility', () => {

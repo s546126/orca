@@ -48,7 +48,14 @@ export function isSqliteSessionPath(filePath: string): boolean {
   return lower.endsWith('.db') || lower.endsWith('.sqlite') || lower.endsWith('.sqlite3')
 }
 
-export function aiVaultSessionRgTargets(session: { agent: string; filePath: string }): string[] {
+export function aiVaultSessionRgTargets(session: {
+  agent: string
+  filePath: string
+  historySnapshot?: { archivePath: string } | null
+}): string[] {
+  if (session.historySnapshot?.archivePath) {
+    return [session.historySnapshot.archivePath]
+  }
   if (!session.filePath || isSqliteSessionPath(session.filePath)) {
     return []
   }

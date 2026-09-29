@@ -42,6 +42,35 @@ export function clearListedAiVaultSessions(): void {
   lastListedSessions = []
 }
 
+export function listedAiVaultSessions(): readonly AiVaultSession[] {
+  return lastListedSessions
+}
+
+export function replaceListedSessionSnapshot(
+  match: Pick<AiVaultSession, 'agent' | 'sessionId' | 'executionHostId' | 'filePath'>,
+  snapshot: AiVaultSession['historySnapshot'] | null
+): readonly AiVaultSession[] {
+  lastListedSessions = lastListedSessions.flatMap((session) => {
+    const same =
+      session.agent === match.agent &&
+      session.sessionId === match.sessionId &&
+      session.executionHostId === match.executionHostId &&
+      session.filePath === match.filePath
+    if (!same) {
+      return [session]
+    }
+    if (!snapshot) {
+      if (session.historySnapshot?.sourceRemoved) {
+        return []
+      }
+      const { historySnapshot: _removed, ...rest } = session
+      return [rest]
+    }
+    return [{ ...session, historySnapshot: snapshot }]
+  })
+  return lastListedSessions
+}
+
 type ListedSessionMessageIndexQueue = {
   pending: readonly AiVaultSession[] | null
   inflight: Promise<void> | null
