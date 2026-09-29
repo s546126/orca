@@ -1,6 +1,7 @@
 import { createReadStream } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { createInterface } from 'node:readline'
+import { areLocalWindowsWslPathAliases } from '../../shared/cross-platform-path'
 import {
   AI_VAULT_SESSION_RG_MAX_TARGETS,
   AI_VAULT_SESSION_RG_TIMEOUT_MS,
@@ -17,8 +18,9 @@ import {
 import { sessionTranscriptIsRemoteOwned } from '../../shared/ai-vault-session-host'
 import { transcriptLineMatchesSearchScope } from '../../shared/ai-vault-session-transcript-scope'
 import type { AiVaultSession } from '../../shared/ai-vault-types'
+import { toWindowsWslUncPath } from '../../shared/wsl-paths'
 import { spawnBundledRipgrep } from '../ripgrep/bundled-ripgrep-spawn'
-import { parseWslPath, toWindowsWslPath } from '../wsl'
+import { parseWslPath } from '../wsl'
 import { AI_VAULT_SESSION_TRANSCRIPT_MAX_BYTES } from './session-message-transcript-lines'
 
 export async function searchAiVaultSessionsWithRg(
@@ -233,7 +235,9 @@ function spawnSessionRg(query: string, targets: readonly string[]): Promise<Sess
           if (!trimmed) {
             return ''
           }
-          return wsl && trimmed.startsWith('/') ? toWindowsWslPath(trimmed, wsl.distro) : trimmed
+          // Why UNC, not toWindowsWslPath: /mnt/<drive> would become C:\...
+          // and miss the session's \\wsl.localhost\<distro>\mnt\<drive>\... row.
+          return wsl && trimmed.startsWith('/') ? toWindowsWslUncPath(trimmed, wsl.distro) : trimmed
         })
         .filter(Boolean)
       resolve({ paths, truncated, failed })
@@ -263,5 +267,9 @@ function normalizePath(value: string): string {
 }
 
 function pathsReferToSameFile(left: string, right: string): boolean {
-  return normalizePath(left) === normalizePath(right) || left === right
+  return (
+    left === right ||
+    normalizePath(left) === normalizePath(right) ||
+    areLocalWindowsWslPathAliases(left, right)
+  )
 }
