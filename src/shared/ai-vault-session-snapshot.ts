@@ -1,6 +1,6 @@
-import type { AiVaultAgent, AiVaultSession } from './ai-vault-types'
+import type { AiVaultSession } from './ai-vault-types'
 import { deriveAiVaultSessionHost } from './ai-vault-session-host'
-import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from './execution-host'
+import { LOCAL_EXECUTION_HOST_ID } from './execution-host'
 
 export const AI_VAULT_ARCHIVE_DIR_NAME = 'ai-vault-archive'
 export const AI_VAULT_ARCHIVE_PUBLISHED_DIR = 'published'
@@ -42,9 +42,7 @@ export type AiVaultSnapshotFailure = {
   message: string
 }
 
-export function isAiVaultSnapshotAgent(
-  agent: AiVaultAgent | string
-): agent is AiVaultSnapshotAgent {
+export function isAiVaultSnapshotAgent(agent: string): agent is AiVaultSnapshotAgent {
   return agent === 'claude' || agent === 'codex'
 }
 
@@ -150,8 +148,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export function isLocalSnapshotHost(
-  executionHostId: ExecutionHostId | string | null | undefined
-): boolean {
+export function isLocalSnapshotHost(executionHostId: string | null | undefined): boolean {
   return executionHostId === LOCAL_EXECUTION_HOST_ID
 }

@@ -5,7 +5,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const openedPaths = vi.hoisted(() => ({ paths: [] as string[] }))
+const openedPaths = vi.hoisted(() => {
+  const paths: string[] = []
+  return { paths }
+})
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof FsPromises>()
