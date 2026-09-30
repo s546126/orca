@@ -34,6 +34,25 @@ afterEach(() => {
 })
 
 describe('indexListedSessionMessages', () => {
+  it('does not send SSH/runtime transcripts to the local message index', async () => {
+    const local = createAiVaultTestSession({ id: 'claude:local' })
+    const remote = createAiVaultTestSession({
+      id: 'claude:ssh',
+      executionHostId: 'ssh:dev-box',
+      filePath: '/home/ada/.claude/projects/remote.jsonl'
+    })
+    const runtime = createAiVaultTestSession({
+      id: 'claude:runtime',
+      executionHostId: 'runtime:env-1',
+      filePath: '/home/ada/.claude/projects/runtime.jsonl'
+    })
+
+    await indexListedSessionMessages([local, remote, runtime])
+
+    expect(syncMock).toHaveBeenCalledTimes(1)
+    expect(syncMock.mock.calls[0]?.[0]).toEqual([local])
+  })
+
   it('serializes overlapping list syncs so the latest list wins', async () => {
     const first = createAiVaultTestSession({ id: 'claude:first' })
     const second = createAiVaultTestSession({ id: 'claude:second' })

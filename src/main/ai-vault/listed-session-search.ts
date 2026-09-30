@@ -4,6 +4,7 @@ import type {
   AiVaultRankSessionsArgs,
   AiVaultRankSessionsResult
 } from '../../shared/ai-vault-session-ai-query'
+import { sessionTranscriptIsRemoteOwned } from '../../shared/ai-vault-session-host'
 import {
   emptyAiVaultSearchSessionsResult,
   isAiVaultRgSearchScope,
@@ -14,6 +15,7 @@ import type { AiVaultListResult, AiVaultSession } from '../../shared/ai-vault-ty
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { Repo } from '../../shared/repo-types'
 import {
+  localListedSearchIds,
   matchListedSessionsByCardMetadata,
   partitionListedSearchSessions
 } from './listed-session-remote-search'
@@ -93,7 +95,9 @@ async function drainListedSessionMessageIndex(
     queue.pending = null
     try {
       const store = await getAiVaultSessionMessageFtsStore(dbPath)
-      await store.sync(batch)
+      // Why: remote POSIX paths are not this machine's files. Indexing them
+      // would mark the session unindexed and send it to desktop rg.
+      await store.sync(batch.filter((session) => !sessionTranscriptIsRemoteOwned(session)))
     } catch (error) {
       console.warn('[ai-vault] Failed to update message FTS index:', error)
     }
@@ -134,7 +138,7 @@ export async function searchListedAiVaultSessions(
       {
         query: args.query,
         searchScope: args.searchScope,
-        sessionIds: localIds,
+        sessionIds: localListedSearchIds(localIds, sessionsById, args.executionHostBySessionId),
         executionHostBySessionId: args.executionHostBySessionId
       },
       sessionsById
@@ -142,7 +146,13 @@ export async function searchListedAiVaultSessions(
     return withRemoteCardMatches(rg, remoteMatchedIds)
   }
   const indexed = new Set(fts.indexedSessionIds)
-  const unindexedLocalIds = localIds.filter((id) => !indexed.has(id))
+  // Why: FTS reports any session it did not index as unindexed. Re-check
+  // executionHostId here so a leaked SSH POSIX path never reaches desktop rg.
+  const unindexedLocalIds = localListedSearchIds(
+    localIds.filter((id) => !indexed.has(id)),
+    sessionsById,
+    args.executionHostBySessionId
+  )
   if (unindexedLocalIds.length === 0) {
     return withRemoteCardMatches(toFtsSearchResult(fts), remoteMatchedIds)
   }

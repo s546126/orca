@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createAiVaultTestSession } from '../../shared/ai-vault-session-test-session'
 import {
+  listedSessionSearchIsRemoteOwned,
+  localListedSearchIds,
   matchListedSessionsByCardMetadata,
   partitionListedSearchSessions
 } from './listed-session-remote-search'
@@ -66,6 +68,31 @@ describe('partitionListedSearchSessions', () => {
       localIds: [],
       remoteSessions: [staleLocal]
     })
+  })
+
+  it('drops leaked SSH ids from an unindexed local set before desktop rg', () => {
+    const local = createAiVaultTestSession({ id: 'claude:local', executionHostId: 'local' })
+    const staleRemote = createAiVaultTestSession({
+      id: 'claude:ssh',
+      executionHostId: 'local',
+      filePath: '/home/ada/.claude/projects/remote.jsonl'
+    })
+    const sessionsById = new Map([
+      [local.id, local],
+      [staleRemote.id, staleRemote]
+    ])
+
+    expect(
+      localListedSearchIds([local.id, staleRemote.id], sessionsById, {
+        [local.id]: 'local',
+        [staleRemote.id]: 'ssh:dev-box'
+      })
+    ).toEqual([local.id])
+    expect(
+      listedSessionSearchIsRemoteOwned(staleRemote.id, sessionsById, {
+        [staleRemote.id]: 'ssh:dev-box'
+      })
+    ).toBe(true)
   })
 })
 

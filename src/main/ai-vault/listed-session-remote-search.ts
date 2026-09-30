@@ -3,6 +3,33 @@ import { sessionTranscriptIsRemoteOwned } from '../../shared/ai-vault-session-ho
 import { parseVaultQuery } from '../../shared/ai-vault-session-query'
 import type { AiVaultSession } from '../../shared/ai-vault-types'
 
+// Why: the listed row can omit executionHostId; the search IPC host map is
+// the other authority for not treating an SSH POSIX path as a local file.
+export function listedSessionSearchIsRemoteOwned(
+  sessionId: string,
+  sessionsById: ReadonlyMap<string, AiVaultSession>,
+  executionHostBySessionId?: Readonly<Record<string, string>>
+): boolean {
+  const session = sessionsById.get(sessionId)
+  return (
+    (session != null && sessionTranscriptIsRemoteOwned(session)) ||
+    sessionTranscriptIsRemoteOwned({
+      executionHostId: executionHostBySessionId?.[sessionId]
+    })
+  )
+}
+
+export function localListedSearchIds(
+  sessionIds: readonly string[],
+  sessionsById: ReadonlyMap<string, AiVaultSession>,
+  executionHostBySessionId?: Readonly<Record<string, string>>
+): string[] {
+  return sessionIds.filter(
+    (sessionId) =>
+      !listedSessionSearchIsRemoteOwned(sessionId, sessionsById, executionHostBySessionId)
+  )
+}
+
 export function partitionListedSearchSessions(
   sessionIds: readonly string[],
   sessionsById: ReadonlyMap<string, AiVaultSession>,
@@ -12,12 +39,7 @@ export function partitionListedSearchSessions(
   const remoteSessions: AiVaultSession[] = []
   for (const sessionId of sessionIds) {
     const session = sessionsById.get(sessionId)
-    if (
-      (session && sessionTranscriptIsRemoteOwned(session)) ||
-      sessionTranscriptIsRemoteOwned({
-        executionHostId: executionHostBySessionId?.[sessionId]
-      })
-    ) {
+    if (listedSessionSearchIsRemoteOwned(sessionId, sessionsById, executionHostBySessionId)) {
       if (session) {
         remoteSessions.push(session)
       }
