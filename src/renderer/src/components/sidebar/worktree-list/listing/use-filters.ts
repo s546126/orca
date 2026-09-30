@@ -163,8 +163,7 @@ export function useSidebarWorktreeFilters() {
         collectWorktreeAgentIds({
           createdWithAgent: worktree.createdWithAgent,
           tabs: state.tabsByWorktree[worktree.id],
-          extraAgentTypes:
-            extra[getWorktreeHostIdentity(worktree)] ?? extra[worktree.id],
+          extraAgentTypes: extra[getWorktreeHostIdentity(worktree)] ?? extra[worktree.id],
           runtimePaneTitlesByTabId: state.runtimePaneTitlesByTabId
         })
       )

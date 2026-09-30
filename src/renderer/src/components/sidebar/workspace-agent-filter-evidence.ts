@@ -51,15 +51,11 @@ export function collectWorktreeAgentIds(args: {
   const agents: (string | null | undefined)[] = [args.createdWithAgent]
   for (const tab of args.tabs ?? []) {
     const paneTitles =
-      tab.paneTitles ??
-      (tab.id ? Object.values(args.runtimePaneTitlesByTabId?.[tab.id] ?? {}) : [])
+      tab.paneTitles ?? (tab.id ? Object.values(args.runtimePaneTitlesByTabId?.[tab.id] ?? {}) : [])
     const split = paneTitles.length > 1
     const owner = split ? null : tab.launchAgent
     const ownerOpts = owner ? { ownerIsLaunch: true } : undefined
-    agents.push(
-      tab.launchAgent,
-      resolveAgentTypeFromTerminalTitle(tab.title, owner, ownerOpts)
-    )
+    agents.push(tab.launchAgent, resolveAgentTypeFromTerminalTitle(tab.title, owner, ownerOpts))
     for (const paneTitle of paneTitles) {
       agents.push(resolveAgentTypeFromTerminalTitle(paneTitle, owner, ownerOpts))
     }
@@ -70,9 +66,7 @@ export function collectWorktreeAgentIds(args: {
   return collectWorkspaceAgentIds(agents)
 }
 
-export function collidingWorktreeIds(
-  worktrees: readonly AgentFilterWorktree[]
-): Set<string> {
+export function collidingWorktreeIds(worktrees: readonly AgentFilterWorktree[]): Set<string> {
   const hosts = new Map<string, Set<string>>()
   for (const worktree of worktrees) {
     const host = worktree.hostId ?? ''
@@ -98,8 +92,7 @@ export function worktreeMatchesAgentFilter(
   lookup: AgentFilterLookup
 ): boolean {
   const colliding = lookup.collidingWorktreeIds?.has(worktree.id) ?? false
-  const extraKey =
-    colliding && worktree.hostId ? getWorktreeHostIdentity(worktree) : worktree.id
+  const extraKey = colliding && worktree.hostId ? getWorktreeHostIdentity(worktree) : worktree.id
   return workspaceMatchesAgentFilter(
     collectWorktreeAgentIds({
       createdWithAgent: worktree.createdWithAgent,
