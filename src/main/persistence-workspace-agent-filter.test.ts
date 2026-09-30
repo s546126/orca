@@ -154,6 +154,30 @@ describe('Store workspace agent filter', () => {
     expectNoLeftoverAgentFilterKeys(persisted)
   })
 
+  it('strips leftover keys on load even when filterAgentIds is already present', async () => {
+    writeDataFile({
+      schemaVersion: 1,
+      repos: [],
+      worktreeMeta: {},
+      settings: {},
+      ui: {
+        filterAgentIds: ['codex'],
+        filterAgentId: 'openclaude',
+        filterHarnessId: 'cc'
+      },
+      githubCache: { pr: {}, issue: {} },
+      workspaceSession: {}
+    })
+
+    const store = await createStore()
+    expect(store.getUI().filterAgentIds).toEqual(['codex'])
+    expectNoLeftoverAgentFilterKeys(store.getUI())
+    store.flush()
+    const persisted = readPersistedUI()
+    expect(persisted.filterAgentIds).toEqual(['codex'])
+    expectNoLeftoverAgentFilterKeys(persisted)
+  })
+
   it('updateUI leftover singular payload replaces a stored filterAgentIds list', async () => {
     const store = await createStore()
     store.updateUI({ filterAgentIds: ['claude', 'codex'] })

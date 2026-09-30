@@ -15,6 +15,8 @@ import {
   getWorktreeExecutionHostId,
   getSettingsFocusedExecutionHostId
 } from '../../../../../../shared/execution-host'
+import { nextFilterAgentIdsForReveal } from '../../../../../../shared/workspace-agent-filter'
+import { getWorktreeHostIdentity } from '../../../../../../shared/worktree/host-qualified-identity'
 import { isDefaultBranchWorkspace } from '../../default-branch-workspace'
 import { getFolderWorkspaceExecutionHostIdForRows } from './host-filtering'
 import {
@@ -23,6 +25,11 @@ import {
 } from '../../workspace-creator-visibility'
 import { getAgentStatusEpochNow } from '@/lib/agent-status-epoch-clock'
 import { getWorktreeIdsWithLiveAgent, isInactiveWorkspace } from '@/lib/worktree-activity-state'
+import { getAllWorktreesFromState } from '@/store/selectors'
+import {
+  collectAgentTypesByWorktree,
+  collectWorktreeAgentIds
+} from '../../workspace-agent-filter-evidence'
 import {
   getVisibleWorktreeBrowserActivityTabs,
   getVisibleWorktreeTerminalActivityTabs,
@@ -141,6 +148,28 @@ export function useSidebarWorktreeFilters() {
         )
       ) {
         state.setShowSleepingWorkspaces(true)
+      }
+    }
+    if (state.filterAgentIds) {
+      const extra = collectAgentTypesByWorktree({
+        agentStatusByPaneKey: state.agentStatusByPaneKey,
+        retainedAgentsByPaneKey: state.retainedAgentsByPaneKey,
+        sleepingAgentSessionsByPaneKey: state.sleepingAgentSessionsByPaneKey,
+        tabsByWorktree: state.tabsByWorktree,
+        worktrees: getAllWorktreesFromState(state)
+      })
+      const next = nextFilterAgentIdsForReveal(
+        state.filterAgentIds,
+        collectWorktreeAgentIds({
+          createdWithAgent: worktree.createdWithAgent,
+          tabs: state.tabsByWorktree[worktree.id],
+          extraAgentTypes:
+            extra[getWorktreeHostIdentity(worktree)] ?? extra[worktree.id],
+          runtimePaneTitlesByTabId: state.runtimePaneTitlesByTabId
+        })
+      )
+      if (next !== state.filterAgentIds) {
+        state.setFilterAgentIds(next)
       }
     }
   }, [])

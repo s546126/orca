@@ -152,3 +152,20 @@ export function toggleFilterAgentId(
   }
   return next.size === catalogIds.length ? null : [...next]
 }
+
+/**
+ * Host-shaped reveal: if the workspace already matches, leave the selection.
+ * Otherwise add its catalog agents, or reset to All when it has none.
+ */
+export function nextFilterAgentIdsForReveal(
+  current: FilterAgentIds,
+  workspaceAgentIds: ReadonlySet<TuiAgent>
+): FilterAgentIds {
+  if (current == null || current.some((id) => workspaceAgentIds.has(id))) {
+    return current
+  }
+  if (workspaceAgentIds.size === 0) {
+    return null
+  }
+  return normalizeFilterAgentIds([...current, ...workspaceAgentIds])
+}

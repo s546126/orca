@@ -7,6 +7,7 @@ import {
 import { isDefaultBranchWorkspace } from '@/components/sidebar/default-branch-workspace'
 import {
   collectAgentTypesByWorktree,
+  collidingWorktreeIds,
   worktreeMatchesAgentFilter
 } from '@/components/sidebar/workspace-agent-filter-evidence'
 import { isInactiveWorkspace } from '@/lib/worktree-activity-state'
@@ -30,6 +31,7 @@ type EmptyQueryVisibilityArgs = Pick<
   | 'retainedAgentsByPaneKey'
   | 'sleepingAgentSessionsByPaneKey'
   | 'tabsByWorktree'
+  | 'runtimePaneTitlesByTabId'
   | 'ptyIdsByTabId'
   | 'browserTabsByWorktree'
 > &
@@ -47,9 +49,11 @@ export function filterEmptyQueryVisibleWorktrees(args: EmptyQueryVisibilityArgs)
         agentStatusByPaneKey: args.agentStatusByPaneKey,
         retainedAgentsByPaneKey: args.retainedAgentsByPaneKey,
         sleepingAgentSessionsByPaneKey: args.sleepingAgentSessionsByPaneKey,
-        tabsByWorktree: args.tabsByWorktree
+        tabsByWorktree: args.tabsByWorktree,
+        worktrees: args.allWorktrees
       })
     : null
+  const collidingIds = collidingWorktreeIds(args.allWorktrees)
   return args.allWorktrees.filter((worktree) => {
     if (worktree.isArchived) {
       return false
@@ -94,7 +98,9 @@ export function filterEmptyQueryVisibleWorktrees(args: EmptyQueryVisibilityArgs)
     }
     return worktreeMatchesAgentFilter(worktree, args.filterAgentIds, {
       tabsByWorktree: args.tabsByWorktree,
-      agentTypesByWorktree
+      agentTypesByWorktree,
+      runtimePaneTitlesByTabId: args.runtimePaneTitlesByTabId,
+      collidingWorktreeIds: collidingIds
     })
   })
 }

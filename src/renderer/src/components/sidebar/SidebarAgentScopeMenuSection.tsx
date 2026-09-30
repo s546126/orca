@@ -46,8 +46,9 @@ export function SidebarAgentScopeMenuSection({
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent
         // Why: Host keeps checkbox items as direct SubContent children so
-        // Radix does not dismiss the submenu. Scroll the menu itself.
-        className="w-56"
+        // Radix does not dismiss the submenu. The catalog is ~44 rows; scroll
+        // the submenu itself to the Radix available height.
+        className="w-56 max-h-(--radix-dropdown-menu-content-available-height) overflow-y-auto"
         data-workspace-board-preserve-open={preserveWorkspaceBoardOpen ? '' : undefined}
       >
         <DropdownMenuCheckboxItem

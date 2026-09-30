@@ -69,16 +69,21 @@ export function useVisibleWorkspaceKanbanWorktreeIds({
             agentStatusByPaneKey,
             retainedAgentsByPaneKey,
             sleepingAgentSessionsByPaneKey,
-            tabsByWorktree
+            tabsByWorktree,
+            worktrees: allWorktrees
           })
         : null,
     [
       agentStatusByPaneKey,
+      allWorktrees,
       needsAgentFilterMaps,
       retainedAgentsByPaneKey,
       sleepingAgentSessionsByPaneKey,
       tabsByWorktree
     ]
+  )
+  const runtimePaneTitlesByTabId = useAppStore((s) =>
+    needsAgentFilterMaps ? s.runtimePaneTitlesByTabId : null
   )
   const ptyIdsByTabId = useAppStore((s) => (!showSleepingWorkspaces ? s.ptyIdsByTabId : null))
   const browserTabsByWorktree = useAppStore((s) =>
@@ -130,6 +135,7 @@ export function useVisibleWorkspaceKanbanWorktreeIds({
         alwaysShowDefaultBranchWorkspace,
         filterAgentIds,
         agentTypesByWorktree,
+        runtimePaneTitlesByTabId,
         repoMap,
         workspaceHostScope,
         visibleWorkspaceHostIds,
@@ -152,6 +158,7 @@ export function useVisibleWorkspaceKanbanWorktreeIds({
     alwaysShowDefaultBranchWorkspace,
     filterAgentIds,
     agentTypesByWorktree,
+    runtimePaneTitlesByTabId,
     workspaceHostScope,
     visibleWorkspaceHostIds,
     settings,

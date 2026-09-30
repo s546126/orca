@@ -21,6 +21,7 @@ export type VisibleWorktreeOptions = {
   alwaysShowDefaultBranchWorkspace?: boolean
   filterAgentIds: FilterAgentIds
   agentTypesByWorktree?: Record<string, readonly (string | null | undefined)[]> | null
+  runtimePaneTitlesByTabId?: Record<string, Record<number, string>> | null
   repoMap: Map<string, Repo>
   workspaceHostScope: ExecutionHostScope
   visibleWorkspaceHostIds?: readonly ExecutionHostId[] | null

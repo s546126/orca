@@ -4,6 +4,7 @@ import {
   getCatalogTuiAgentIds,
   migrateLegacyFilterHarnessId,
   normalizeFilterAgentId,
+  nextFilterAgentIdsForReveal,
   normalizeFilterAgentIds,
   resolveIncomingFilterAgentIds,
   resolvePersistedFilterAgentIds,
@@ -169,5 +170,18 @@ describe('normalizeFilterAgentId', () => {
   it('keeps catalog TuiAgent ids and drops everything else', () => {
     expect(normalizeFilterAgentId('claude')).toBe('claude')
     expect(normalizeFilterAgentId('cc')).toBeNull()
+  })
+})
+
+describe('nextFilterAgentIdsForReveal', () => {
+  it('leaves All and already-matching selections unchanged', () => {
+    const current = ['claude'] as const
+    expect(nextFilterAgentIdsForReveal(null, new Set(['codex']))).toBeNull()
+    expect(nextFilterAgentIdsForReveal(current, new Set(['claude']))).toBe(current)
+  })
+
+  it('adds the workspace agents, or resets to All when it has none', () => {
+    expect(nextFilterAgentIdsForReveal(['claude'], new Set(['codex']))).toEqual(['claude', 'codex'])
+    expect(nextFilterAgentIdsForReveal(['claude'], new Set())).toBeNull()
   })
 })

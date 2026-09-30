@@ -41,6 +41,23 @@ describe('collectWorktreeAgentIds', () => {
     ).toEqual(new Set(['claude']))
   })
 
+  it('does not treat a Claude mention in a Codex-owned task title as Claude', () => {
+    expect(
+      collectWorktreeAgentIds({
+        tabs: [{ launchAgent: 'codex', title: '⠋ add claude.md' }]
+      })
+    ).toEqual(new Set(['codex']))
+  })
+
+  it('uses a live pane title when the tab title is generic', () => {
+    expect(
+      collectWorktreeAgentIds({
+        tabs: [{ id: 'tab-1', title: 'Terminal 1' }],
+        runtimePaneTitlesByTabId: { 'tab-1': { 1: 'codex [working]' } }
+      })
+    ).toEqual(new Set(['codex']))
+  })
+
   it('unions live/retained/sleeping agent types with created-with and tabs', () => {
     expect(
       collectWorktreeAgentIds({
@@ -174,5 +191,38 @@ describe('collectAgentTypesByWorktree', () => {
     ).toEqual({
       'wt-1': ['codex']
     })
+  })
+
+  it('keys colliding same-id workspaces by host so evidence cannot cross', () => {
+    const sharedId = 'repo::/app'
+    const paneKey = makePaneKey('tab-local', leafId)
+    const extra = collectAgentTypesByWorktree({
+      worktrees: [
+        { id: sharedId, hostId: 'local' },
+        { id: sharedId, hostId: 'ssh:box' }
+      ],
+      agentStatusByPaneKey: {
+        [paneKey]: {
+          paneKey,
+          worktreeId: sharedId,
+          agentType: 'claude',
+          connectionId: null
+        }
+      }
+    })
+    expect(extra).toEqual({ 'local|repo::/app': ['claude'] })
+    expect(
+      worktreeMatchesAgentFilter({ id: sharedId, hostId: 'local' }, ['claude'], {
+        agentTypesByWorktree: extra,
+        collidingWorktreeIds: new Set([sharedId])
+      })
+    ).toBe(true)
+    expect(
+      worktreeMatchesAgentFilter({ id: sharedId, hostId: 'ssh:box' }, ['claude'], {
+        agentTypesByWorktree: extra,
+        tabsByWorktree: { [sharedId]: [{ launchAgent: 'claude', title: 'claude [working]' }] },
+        collidingWorktreeIds: new Set([sharedId])
+      })
+    ).toBe(false)
   })
 })

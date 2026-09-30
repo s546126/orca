@@ -91,7 +91,8 @@ export function useVisibleSidebarWorktrees(args: {
             agentStatusByPaneKey: agentFilterStatusByPaneKey,
             retainedAgentsByPaneKey: agentFilterRetainedByPaneKey,
             sleepingAgentSessionsByPaneKey: agentFilterSleepingByPaneKey,
-            tabsByWorktree
+            tabsByWorktree,
+            worktrees: Object.values(worktreesByRepo).flat()
           })
         : null,
     [
@@ -99,8 +100,12 @@ export function useVisibleSidebarWorktrees(args: {
       agentFilterStatusByPaneKey,
       agentFilterRetainedByPaneKey,
       agentFilterSleepingByPaneKey,
-      tabsByWorktree
+      tabsByWorktree,
+      worktreesByRepo
     ]
+  )
+  const runtimePaneTitlesByTabId = useAppStore((s) =>
+    needsAgentFilterMaps ? s.runtimePaneTitlesByTabId : null
   )
   const ptyIdsByTabId = useAppStore((s) => (needsActivityMaps ? s.ptyIdsByTabId : null))
   const browserTabsByWorktree = useAppStore((s) =>
@@ -138,6 +143,7 @@ export function useVisibleSidebarWorktrees(args: {
       alwaysShowDefaultBranchWorkspace,
       filterAgentIds: filterAgentIds ?? null,
       agentTypesByWorktree,
+      runtimePaneTitlesByTabId,
       repoMap,
       workspaceHostScope,
       visibleWorkspaceHostIds,
@@ -161,6 +167,7 @@ export function useVisibleSidebarWorktrees(args: {
     alwaysShowDefaultBranchWorkspace,
     filterAgentIds,
     agentTypesByWorktree,
+    runtimePaneTitlesByTabId,
     workspaceHostScope,
     visibleWorkspaceHostIds,
     defaultHostId,

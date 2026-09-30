@@ -102,7 +102,8 @@ export function computeVisibleWorktrees(
 
   all = filterWorktreesBySelectedAgents(all, opts.filterAgentIds, {
     tabsByWorktree: opts.tabsByWorktree,
-    agentTypesByWorktree: opts.agentTypesByWorktree
+    agentTypesByWorktree: opts.agentTypesByWorktree,
+    runtimePaneTitlesByTabId: opts.runtimePaneTitlesByTabId
   })
 
   const visibleHostIds =

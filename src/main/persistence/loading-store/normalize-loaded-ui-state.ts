@@ -188,10 +188,7 @@ export function normalizeLoadedUiState(
   delete rawUi.filterAgentId
   delete rawUi.filterHarnessId
   const filterAgentIds = resolvePersistedFilterAgentIds(parsed.ui ?? {})
-  if (
-    parsed.ui?.filterAgentIds === undefined &&
-    (parsed.ui?.filterAgentId !== undefined || parsed.ui?.filterHarnessId !== undefined)
-  ) {
+  if (parsed.ui?.filterAgentId !== undefined || parsed.ui?.filterHarnessId !== undefined) {
     markNeedsSave()
   }
   return {

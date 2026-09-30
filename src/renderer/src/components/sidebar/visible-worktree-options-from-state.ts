@@ -51,8 +51,10 @@ export function buildVisibleWorktreeOptionsFromState(
       agentStatusByPaneKey: state.agentStatusByPaneKey,
       retainedAgentsByPaneKey: state.retainedAgentsByPaneKey,
       sleepingAgentSessionsByPaneKey: state.sleepingAgentSessionsByPaneKey,
-      tabsByWorktree: state.tabsByWorktree
+      tabsByWorktree: state.tabsByWorktree,
+      worktrees: Object.values(state.worktreesByRepo).flat()
     }),
+    runtimePaneTitlesByTabId: state.filterAgentIds ? state.runtimePaneTitlesByTabId : null,
     repoMap,
     workspaceHostScope: state.workspaceHostScope,
     visibleWorkspaceHostIds: state.visibleWorkspaceHostIds,
