@@ -45,49 +45,50 @@ export function SidebarAgentScopeMenuSection({
         </span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent
-        // Why: Host keeps checkbox items as direct SubContent children so
-        // Radix does not dismiss the submenu. The catalog is ~44 rows; scroll
-        // the submenu itself to the Radix available height.
-        className="w-56 max-h-(--radix-dropdown-menu-content-available-height) overflow-y-auto"
+        // Why: Host keeps checkbox items in this submenu so Radix does not
+        // dismiss it. Scroll an inner pane — SubContent forbids overflow classes.
+        className="w-56 max-h-(--radix-dropdown-menu-content-available-height)"
         data-workspace-board-preserve-open={preserveWorkspaceBoardOpen ? '' : undefined}
       >
-        <DropdownMenuCheckboxItem
-          checked={allVisible}
-          onCheckedChange={() =>
-            setFilterAgentIds(toggleAllFilterAgents(filterAgentIds, catalogIds))
-          }
-          onSelect={(e) => e.preventDefault()}
-          className="min-h-11 items-start"
-        >
-          <span className="flex min-w-0 flex-col gap-0.5">
-            <span className="truncate">
-              {translate('auto.components.sidebar.sidebarAgentOptions.allAgents', 'All agents')}
-            </span>
-            <span className="truncate text-[11px] font-normal text-muted-foreground">
-              {translate(
-                'auto.components.sidebar.SidebarWorkspaceOptionsMenu.allAgentsDetail',
-                'Show every agent'
-              )}
-            </span>
-          </span>
-        </DropdownMenuCheckboxItem>
-        {agents.map((agent) => (
+        <div className="max-h-(--radix-dropdown-menu-content-available-height) overflow-y-auto scrollbar-sleek">
           <DropdownMenuCheckboxItem
-            key={agent.id}
-            checked={selectedIds.has(agent.id)}
-            disabled={!allVisible && selectedIds.has(agent.id) && selectedIds.size <= 1}
+            checked={allVisible}
             onCheckedChange={() =>
-              setFilterAgentIds(toggleFilterAgentId(filterAgentIds, agent.id, catalogIds))
+              setFilterAgentIds(toggleAllFilterAgents(filterAgentIds, catalogIds))
             }
             onSelect={(e) => e.preventDefault()}
             className="min-h-11 items-start"
           >
-            <span className="flex min-w-0 items-center gap-2">
-              <AgentIcon agent={agent.id} size={13} />
-              <span className="truncate">{agent.label}</span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="truncate">
+                {translate('auto.components.sidebar.sidebarAgentOptions.allAgents', 'All agents')}
+              </span>
+              <span className="truncate text-[11px] font-normal text-muted-foreground">
+                {translate(
+                  'auto.components.sidebar.SidebarWorkspaceOptionsMenu.allAgentsDetail',
+                  'Show every agent'
+                )}
+              </span>
             </span>
           </DropdownMenuCheckboxItem>
-        ))}
+          {agents.map((agent) => (
+            <DropdownMenuCheckboxItem
+              key={agent.id}
+              checked={selectedIds.has(agent.id)}
+              disabled={!allVisible && selectedIds.has(agent.id) && selectedIds.size <= 1}
+              onCheckedChange={() =>
+                setFilterAgentIds(toggleFilterAgentId(filterAgentIds, agent.id, catalogIds))
+              }
+              onSelect={(e) => e.preventDefault()}
+              className="min-h-11 items-start"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <AgentIcon agent={agent.id} size={13} />
+                <span className="truncate">{agent.label}</span>
+              </span>
+            </DropdownMenuCheckboxItem>
+          ))}
+        </div>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   )
