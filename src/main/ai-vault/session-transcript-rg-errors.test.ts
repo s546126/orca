@@ -1,23 +1,22 @@
 import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createAiVaultTestSession } from '../../shared/ai-vault-session-test-session'
+import type { WslPathInfo } from '../wsl'
+import type * as WslModule from '../wsl'
 
 const { spawnBundledRipgrep, parseWslPath } = vi.hoisted(() => ({
   spawnBundledRipgrep: vi.fn(),
-  parseWslPath: vi.fn(() => null)
+  parseWslPath: vi.fn((_windowsPath: string): WslPathInfo | null => null)
 }))
 
 vi.mock('../ripgrep/bundled-ripgrep-spawn', () => ({
   spawnBundledRipgrep
 }))
 
-vi.mock('../wsl', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    parseWslPath
-  }
-})
+vi.mock('../wsl', async (importOriginal) => ({
+  ...(await importOriginal<typeof WslModule>()),
+  parseWslPath
+}))
 
 const { searchAiVaultSessionsWithRg } = await import('./session-transcript-rg')
 
