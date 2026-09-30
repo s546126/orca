@@ -10,7 +10,8 @@ import {
   resolvePersistedFilterAgentIds,
   toggleAllFilterAgents,
   toggleFilterAgentId,
-  workspaceMatchesAgentFilter
+  workspaceMatchesAgentFilter,
+  type FilterAgentIds
 } from './workspace-agent-filter'
 
 const catalogIds = getCatalogTuiAgentIds()
@@ -175,7 +176,7 @@ describe('normalizeFilterAgentId', () => {
 
 describe('nextFilterAgentIdsForReveal', () => {
   it('leaves All and already-matching selections unchanged', () => {
-    const current = ['claude'] as const
+    const current: FilterAgentIds = ['claude']
     expect(nextFilterAgentIdsForReveal(null, new Set(['codex']))).toBeNull()
     expect(nextFilterAgentIdsForReveal(current, new Set(['claude']))).toBe(current)
   })
