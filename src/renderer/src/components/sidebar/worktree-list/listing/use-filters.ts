@@ -171,9 +171,7 @@ export function useSidebarWorktreeFilters() {
           collectWorktreeFilterAgentIds(worktree, lookup)
         )
         // Why: host-shaped add can still leave it hidden (empty/mismatched evidence).
-        state.setFilterAgentIds(
-          worktreeMatchesAgentFilter(worktree, next, lookup) ? next : null
-        )
+        state.setFilterAgentIds(worktreeMatchesAgentFilter(worktree, next, lookup) ? next : null)
       }
     }
   }, [])
