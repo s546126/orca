@@ -16,7 +16,6 @@ import {
   getSettingsFocusedExecutionHostId
 } from '../../../../../../shared/execution-host'
 import { nextFilterAgentIdsForReveal } from '../../../../../../shared/workspace-agent-filter'
-import { getWorktreeHostIdentity } from '../../../../../../shared/worktree/host-qualified-identity'
 import { isDefaultBranchWorkspace } from '../../default-branch-workspace'
 import { getFolderWorkspaceExecutionHostIdForRows } from './host-filtering'
 import {
@@ -28,7 +27,9 @@ import { getWorktreeIdsWithLiveAgent, isInactiveWorkspace } from '@/lib/worktree
 import { getAllWorktreesFromState } from '@/store/selectors'
 import {
   collectAgentTypesByWorktree,
-  collectWorktreeAgentIds
+  collectWorktreeFilterAgentIds,
+  collidingWorktreeIds,
+  worktreeMatchesAgentFilter
 } from '../../workspace-agent-filter-evidence'
 import {
   getVisibleWorktreeBrowserActivityTabs,
@@ -151,24 +152,28 @@ export function useSidebarWorktreeFilters() {
       }
     }
     if (state.filterAgentIds) {
-      const extra = collectAgentTypesByWorktree({
-        agentStatusByPaneKey: state.agentStatusByPaneKey,
-        retainedAgentsByPaneKey: state.retainedAgentsByPaneKey,
-        sleepingAgentSessionsByPaneKey: state.sleepingAgentSessionsByPaneKey,
+      const worktrees = getAllWorktreesFromState(state)
+      const lookup = {
         tabsByWorktree: state.tabsByWorktree,
-        worktrees: getAllWorktreesFromState(state)
-      })
-      const next = nextFilterAgentIdsForReveal(
-        state.filterAgentIds,
-        collectWorktreeAgentIds({
-          createdWithAgent: worktree.createdWithAgent,
-          tabs: state.tabsByWorktree[worktree.id],
-          extraAgentTypes: extra[getWorktreeHostIdentity(worktree)] ?? extra[worktree.id],
-          runtimePaneTitlesByTabId: state.runtimePaneTitlesByTabId
-        })
-      )
-      if (next !== state.filterAgentIds) {
-        state.setFilterAgentIds(next)
+        agentTypesByWorktree: collectAgentTypesByWorktree({
+          agentStatusByPaneKey: state.agentStatusByPaneKey,
+          retainedAgentsByPaneKey: state.retainedAgentsByPaneKey,
+          sleepingAgentSessionsByPaneKey: state.sleepingAgentSessionsByPaneKey,
+          tabsByWorktree: state.tabsByWorktree,
+          worktrees
+        }),
+        runtimePaneTitlesByTabId: state.runtimePaneTitlesByTabId,
+        collidingWorktreeIds: collidingWorktreeIds(worktrees)
+      }
+      if (!worktreeMatchesAgentFilter(worktree, state.filterAgentIds, lookup)) {
+        const next = nextFilterAgentIdsForReveal(
+          state.filterAgentIds,
+          collectWorktreeFilterAgentIds(worktree, lookup)
+        )
+        // Why: host-shaped add can still leave it hidden (empty/mismatched evidence).
+        state.setFilterAgentIds(
+          worktreeMatchesAgentFilter(worktree, next, lookup) ? next : null
+        )
       }
     }
   }, [])

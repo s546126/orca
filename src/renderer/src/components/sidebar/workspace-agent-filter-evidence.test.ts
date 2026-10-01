@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
+import { nextFilterAgentIdsForReveal } from '../../../../shared/workspace-agent-filter'
 import {
   collectAgentTypesByWorktree,
   collectWorktreeAgentIds,
+  collectWorktreeFilterAgentIds,
   worktreeMatchesAgentFilter
 } from './workspace-agent-filter-evidence'
 
@@ -58,6 +60,39 @@ describe('collectWorktreeAgentIds', () => {
     ).toEqual(new Set(['codex']))
   })
 
+  it('uses a split pane title when the tab title is generic', () => {
+    expect(
+      collectWorktreeAgentIds({
+        tabs: [{ id: 'tab-split', title: 'Terminal 1' }],
+        runtimePaneTitlesByTabId: {
+          'tab-split': { 1: 'codex [working]', 2: 'Terminal 2' }
+        }
+      })
+    ).toEqual(new Set(['codex']))
+  })
+
+  it('keeps launch-agent ownership when a single pane has live and parked titles', () => {
+    expect(
+      collectWorktreeAgentIds({
+        tabs: [{ id: 'tab-omp', launchAgent: 'omp', title: 'OMP' }],
+        runtimePaneTitlesByTabId: {
+          'tab-omp': { 1: '\u280b π: tmp', [-1]: '\u280b π: parked' }
+        }
+      })
+    ).toEqual(new Set(['omp']))
+  })
+
+  it('treats parked-only multi-pane titles as a split', () => {
+    expect(
+      collectWorktreeAgentIds({
+        tabs: [{ id: 'tab-parked', launchAgent: 'omp', title: 'Terminal 1' }],
+        runtimePaneTitlesByTabId: {
+          'tab-parked': { [-1]: 'codex [working]', [-2]: 'Terminal 2' }
+        }
+      })
+    ).toEqual(new Set(['omp', 'codex']))
+  })
+
   it('unions live/retained/sleeping agent types with created-with and tabs', () => {
     expect(
       collectWorktreeAgentIds({
@@ -111,6 +146,24 @@ describe('worktreeMatchesAgentFilter', () => {
         agentTypesByWorktree: {}
       })
     ).toBe(true)
+    expect(
+      worktreeMatchesAgentFilter({ id: 'wt-split' }, ['codex'], {
+        tabsByWorktree: { 'wt-split': [{ id: 'tab-split', title: 'Terminal 1' }] },
+        runtimePaneTitlesByTabId: {
+          'tab-split': { 1: 'codex [working]', 2: 'Terminal 2' }
+        },
+        agentTypesByWorktree: {}
+      })
+    ).toBe(true)
+    expect(
+      worktreeMatchesAgentFilter({ id: 'wt-omp' }, ['pi'], {
+        tabsByWorktree: { 'wt-omp': [{ id: 'tab-omp', launchAgent: 'omp', title: 'OMP' }] },
+        runtimePaneTitlesByTabId: {
+          'tab-omp': { 1: '\u280b π: tmp', [-1]: '\u280b π: parked' }
+        },
+        agentTypesByWorktree: {}
+      })
+    ).toBe(false)
     expect(
       worktreeMatchesAgentFilter({ id: 'wt-live' }, ['openclaude'], {
         tabsByWorktree: {},
@@ -193,6 +246,29 @@ describe('collectAgentTypesByWorktree', () => {
     })
   })
 
+  it('reveals by adding the hidden workspace agents, or All when evidence is empty', () => {
+    const hidden = { id: 'wt-hidden', createdWithAgent: 'codex' as const }
+    const empty = { id: 'wt-empty' }
+    expect(
+      nextFilterAgentIdsForReveal(
+        ['claude'],
+        collectWorktreeFilterAgentIds(hidden, { tabsByWorktree: {}, agentTypesByWorktree: {} })
+      )
+    ).toEqual(['claude', 'codex'])
+    expect(
+      worktreeMatchesAgentFilter(hidden, ['claude'], {
+        tabsByWorktree: {},
+        agentTypesByWorktree: {}
+      })
+    ).toBe(false)
+    expect(
+      nextFilterAgentIdsForReveal(
+        ['claude'],
+        collectWorktreeFilterAgentIds(empty, { tabsByWorktree: {}, agentTypesByWorktree: {} })
+      )
+    ).toBeNull()
+  })
+
   it('keys colliding same-id workspaces by host so evidence cannot cross', () => {
     const sharedId = 'repo::/app'
     const paneKey = makePaneKey('tab-local', leafId)
@@ -224,5 +300,15 @@ describe('collectAgentTypesByWorktree', () => {
         collidingWorktreeIds: new Set([sharedId])
       })
     ).toBe(false)
+    expect(
+      collectWorktreeFilterAgentIds(
+        { id: sharedId, hostId: 'ssh:box' },
+        {
+          agentTypesByWorktree: extra,
+          tabsByWorktree: { [sharedId]: [{ launchAgent: 'claude', title: 'claude [working]' }] },
+          collidingWorktreeIds: new Set([sharedId])
+        }
+      )
+    ).toEqual(new Set())
   })
 })

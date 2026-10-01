@@ -5,6 +5,7 @@ import {
   parseExecutionHostId,
   type ExecutionHostId
 } from '../../../../shared/execution-host'
+import { FIRST_PANE_ID } from '../../../../shared/pane-key'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
@@ -42,6 +43,33 @@ type AgentFilterLookup = {
   collidingWorktreeIds?: ReadonlySet<string>
 }
 
+function paneTitlesForAgentFilter(
+  tab: AgentFilterTabEvidence,
+  runtimePaneTitlesByTabId?: Record<string, Record<number, string>> | null
+): { titles: readonly (string | null | undefined)[]; split: boolean } {
+  if (tab.paneTitles) {
+    return { titles: tab.paneTitles, split: tab.paneTitles.length > 1 }
+  }
+  const byPane = tab.id ? runtimePaneTitlesByTabId?.[tab.id] : undefined
+  if (!byPane) {
+    return { titles: [], split: false }
+  }
+  const live: string[] = []
+  const parked: string[] = []
+  for (const [paneId, title] of Object.entries(byPane)) {
+    if (Number(paneId) >= FIRST_PANE_ID) {
+      live.push(title)
+    } else {
+      parked.push(title)
+    }
+  }
+  // Why: live and parked ids are disjoint spaces; a single-pane tab can have both.
+  return {
+    titles: [...live, ...parked],
+    split: (live.length > 0 ? live : parked).length > 1
+  }
+}
+
 export function collectWorktreeAgentIds(args: {
   createdWithAgent?: string | null
   tabs?: readonly AgentFilterTabEvidence[] | null
@@ -50,13 +78,11 @@ export function collectWorktreeAgentIds(args: {
 }): Set<TuiAgent> {
   const agents: (string | null | undefined)[] = [args.createdWithAgent]
   for (const tab of args.tabs ?? []) {
-    const paneTitles =
-      tab.paneTitles ?? (tab.id ? Object.values(args.runtimePaneTitlesByTabId?.[tab.id] ?? {}) : [])
-    const split = paneTitles.length > 1
+    const { titles, split } = paneTitlesForAgentFilter(tab, args.runtimePaneTitlesByTabId)
     const owner = split ? null : tab.launchAgent
     const ownerOpts = owner ? { ownerIsLaunch: true } : undefined
     agents.push(tab.launchAgent, resolveAgentTypeFromTerminalTitle(tab.title, owner, ownerOpts))
-    for (const paneTitle of paneTitles) {
+    for (const paneTitle of titles) {
       agents.push(resolveAgentTypeFromTerminalTitle(paneTitle, owner, ownerOpts))
     }
   }
@@ -86,20 +112,27 @@ export function collidingWorktreeIds(worktrees: readonly AgentFilterWorktree[]):
   return colliding
 }
 
+export function collectWorktreeFilterAgentIds(
+  worktree: { id: string; createdWithAgent?: string | null; hostId?: Worktree['hostId'] },
+  lookup: AgentFilterLookup
+): Set<TuiAgent> {
+  const colliding = lookup.collidingWorktreeIds?.has(worktree.id) ?? false
+  const extraKey = colliding && worktree.hostId ? getWorktreeHostIdentity(worktree) : worktree.id
+  return collectWorktreeAgentIds({
+    createdWithAgent: worktree.createdWithAgent,
+    tabs: colliding ? undefined : lookup.tabsByWorktree?.[worktree.id],
+    extraAgentTypes: lookup.agentTypesByWorktree?.[extraKey],
+    runtimePaneTitlesByTabId: colliding ? undefined : lookup.runtimePaneTitlesByTabId
+  })
+}
+
 export function worktreeMatchesAgentFilter(
   worktree: { id: string; createdWithAgent?: string | null; hostId?: Worktree['hostId'] },
   selectedAgentIds: FilterAgentIds,
   lookup: AgentFilterLookup
 ): boolean {
-  const colliding = lookup.collidingWorktreeIds?.has(worktree.id) ?? false
-  const extraKey = colliding && worktree.hostId ? getWorktreeHostIdentity(worktree) : worktree.id
   return workspaceMatchesAgentFilter(
-    collectWorktreeAgentIds({
-      createdWithAgent: worktree.createdWithAgent,
-      tabs: colliding ? undefined : lookup.tabsByWorktree?.[worktree.id],
-      extraAgentTypes: lookup.agentTypesByWorktree?.[extraKey],
-      runtimePaneTitlesByTabId: colliding ? undefined : lookup.runtimePaneTitlesByTabId
-    }),
+    collectWorktreeFilterAgentIds(worktree, lookup),
     selectedAgentIds
   )
 }
