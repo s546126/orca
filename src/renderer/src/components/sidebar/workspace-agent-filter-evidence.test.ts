@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import type { TerminalLayoutSnapshot } from '../../../../shared/terminal-tab-types'
-import { nextFilterAgentIdsForReveal } from '../../../../shared/workspace-agent-filter'
+import {
+  nextFilterAgentIdsForReveal,
+  type FilterAgentIds
+} from '../../../../shared/workspace-agent-filter'
 import {
   collectAgentTypesByWorktree,
   collectWorktreeAgentIds,
@@ -345,7 +348,7 @@ describe('resolveRevealFilterAgentIds', () => {
   })
 
   it('leaves the selection when the workspace is already visible', () => {
-    const current = ['claude']
+    const current: FilterAgentIds = ['claude']
     expect(resolveRevealFilterAgentIds(current, hidden, lookup, false)).toBe(current)
   })
 })
