@@ -32,6 +32,7 @@ type EmptyQueryVisibilityArgs = Pick<
   | 'sleepingAgentSessionsByPaneKey'
   | 'tabsByWorktree'
   | 'runtimePaneTitlesByTabId'
+  | 'terminalLayoutsByTabId'
   | 'ptyIdsByTabId'
   | 'browserTabsByWorktree'
 > &
@@ -100,6 +101,7 @@ export function filterEmptyQueryVisibleWorktrees(args: EmptyQueryVisibilityArgs)
       tabsByWorktree: args.tabsByWorktree,
       agentTypesByWorktree,
       runtimePaneTitlesByTabId: args.runtimePaneTitlesByTabId,
+      terminalLayoutsByTabId: args.terminalLayoutsByTabId,
       collidingWorktreeIds: collidingIds
     })
   })

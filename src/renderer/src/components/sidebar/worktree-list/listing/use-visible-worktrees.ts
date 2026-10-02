@@ -107,6 +107,9 @@ export function useVisibleSidebarWorktrees(args: {
   const runtimePaneTitlesByTabId = useAppStore((s) =>
     needsAgentFilterMaps ? s.runtimePaneTitlesByTabId : null
   )
+  const terminalLayoutsByTabId = useAppStore((s) =>
+    needsAgentFilterMaps ? s.terminalLayoutsByTabId : null
+  )
   const ptyIdsByTabId = useAppStore((s) => (needsActivityMaps ? s.ptyIdsByTabId : null))
   const browserTabsByWorktree = useAppStore((s) =>
     !showSleepingWorkspaces ? getVisibleWorktreeBrowserActivityTabs(s.browserTabsByWorktree) : null
@@ -144,6 +147,7 @@ export function useVisibleSidebarWorktrees(args: {
       filterAgentIds: filterAgentIds ?? null,
       agentTypesByWorktree,
       runtimePaneTitlesByTabId,
+      terminalLayoutsByTabId,
       repoMap,
       workspaceHostScope,
       visibleWorkspaceHostIds,
@@ -168,6 +172,7 @@ export function useVisibleSidebarWorktrees(args: {
     filterAgentIds,
     agentTypesByWorktree,
     runtimePaneTitlesByTabId,
+    terminalLayoutsByTabId,
     workspaceHostScope,
     visibleWorkspaceHostIds,
     defaultHostId,

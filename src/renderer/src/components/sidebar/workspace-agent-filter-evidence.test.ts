@@ -1,14 +1,33 @@
 import { describe, expect, it } from 'vitest'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
+import type { TerminalLayoutSnapshot } from '../../../../shared/terminal-tab-types'
 import { nextFilterAgentIdsForReveal } from '../../../../shared/workspace-agent-filter'
 import {
   collectAgentTypesByWorktree,
   collectWorktreeAgentIds,
   collectWorktreeFilterAgentIds,
+  resolveRevealFilterAgentIds,
   worktreeMatchesAgentFilter
 } from './workspace-agent-filter-evidence'
 
 const leafId = '11111111-1111-4111-8111-111111111111'
+
+function oneLeafLayout(id = 'leaf-1'): TerminalLayoutSnapshot {
+  return { root: { type: 'leaf', leafId: id }, activeLeafId: id, expandedLeafId: null }
+}
+
+function splitLayout(first = 'leaf-a', second = 'leaf-b'): TerminalLayoutSnapshot {
+  return {
+    root: {
+      type: 'split',
+      direction: 'vertical',
+      first: { type: 'leaf', leafId: first },
+      second: { type: 'leaf', leafId: second }
+    },
+    activeLeafId: first,
+    expandedLeafId: null
+  }
+}
 
 describe('collectWorktreeAgentIds', () => {
   it('uses createdWithAgent as last-used agent evidence', () => {
@@ -77,9 +96,26 @@ describe('collectWorktreeAgentIds', () => {
         tabs: [{ id: 'tab-omp', launchAgent: 'omp', title: 'OMP' }],
         runtimePaneTitlesByTabId: {
           'tab-omp': { 1: '\u280b π: tmp', [-1]: '\u280b π: parked' }
-        }
+        },
+        terminalLayoutsByTabId: { 'tab-omp': oneLeafLayout() }
       })
     ).toEqual(new Set(['omp']))
+  })
+
+  it('does not apply launch-agent ownership to parked titles on a split tab', () => {
+    expect(
+      collectWorktreeAgentIds({
+        tabs: [{ id: 'tab-split', launchAgent: 'omp', title: 'Terminal 1' }],
+        runtimePaneTitlesByTabId: {
+          'tab-split': {
+            1: 'codex [working]',
+            [-1]: '\u280b π: parked',
+            [-2]: 'Terminal 2'
+          }
+        },
+        terminalLayoutsByTabId: { 'tab-split': splitLayout() }
+      })
+    ).toEqual(new Set(['omp', 'codex', 'pi']))
   })
 
   it('treats parked-only multi-pane titles as a split', () => {
@@ -161,9 +197,26 @@ describe('worktreeMatchesAgentFilter', () => {
         runtimePaneTitlesByTabId: {
           'tab-omp': { 1: '\u280b π: tmp', [-1]: '\u280b π: parked' }
         },
+        terminalLayoutsByTabId: { 'tab-omp': oneLeafLayout() },
         agentTypesByWorktree: {}
       })
     ).toBe(false)
+    expect(
+      worktreeMatchesAgentFilter({ id: 'wt-split-parked' }, ['pi'], {
+        tabsByWorktree: {
+          'wt-split-parked': [{ id: 'tab-split', launchAgent: 'omp', title: 'Terminal 1' }]
+        },
+        runtimePaneTitlesByTabId: {
+          'tab-split': {
+            1: 'codex [working]',
+            [-1]: '\u280b π: parked',
+            [-2]: 'Terminal 2'
+          }
+        },
+        terminalLayoutsByTabId: { 'tab-split': splitLayout() },
+        agentTypesByWorktree: {}
+      })
+    ).toBe(true)
     expect(
       worktreeMatchesAgentFilter({ id: 'wt-live' }, ['openclaude'], {
         tabsByWorktree: {},
@@ -268,7 +321,36 @@ describe('collectAgentTypesByWorktree', () => {
       )
     ).toBeNull()
   })
+})
 
+describe('resolveRevealFilterAgentIds', () => {
+  const hidden = { id: 'wt-hidden', createdWithAgent: 'codex' as const }
+  const empty = { id: 'wt-empty' }
+  const alreadyMatching = { id: 'wt-claude', createdWithAgent: 'claude' as const }
+  const lookup = { tabsByWorktree: {}, agentTypesByWorktree: {} }
+
+  it('adds the hidden workspace agents when listing still hides it', () => {
+    expect(resolveRevealFilterAgentIds(['claude'], hidden, lookup, true)).toEqual([
+      'claude',
+      'codex'
+    ])
+  })
+
+  it('clears to All when the hidden workspace has no agent evidence', () => {
+    expect(resolveRevealFilterAgentIds(['claude'], empty, lookup, true)).toBeNull()
+  })
+
+  it('clears to All when listing hid it but adding agents would be a no-op', () => {
+    expect(resolveRevealFilterAgentIds(['claude'], alreadyMatching, lookup, true)).toBeNull()
+  })
+
+  it('leaves the selection when the workspace is already visible', () => {
+    const current = ['claude']
+    expect(resolveRevealFilterAgentIds(current, hidden, lookup, false)).toBe(current)
+  })
+})
+
+describe('collectAgentTypesByWorktree host isolation', () => {
   it('keys colliding same-id workspaces by host so evidence cannot cross', () => {
     const sharedId = 'repo::/app'
     const paneKey = makePaneKey('tab-local', leafId)

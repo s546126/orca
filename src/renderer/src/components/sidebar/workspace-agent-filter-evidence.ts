@@ -5,7 +5,6 @@ import {
   parseExecutionHostId,
   type ExecutionHostId
 } from '../../../../shared/execution-host'
-import { FIRST_PANE_ID } from '../../../../shared/pane-key'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
@@ -16,58 +15,31 @@ import {
 import type { Worktree } from '../../../../shared/worktree/types'
 import {
   collectWorkspaceAgentIds,
+  nextFilterAgentIdsForReveal,
   workspaceMatchesAgentFilter,
   type FilterAgentIds
 } from '../../../../shared/workspace-agent-filter'
 import type { RetainedAgentEntry } from '@/store/slices/agent-status'
 import { resolveAgentTypeFromTerminalTitle } from './worktree-title-derived-agent-rows'
+import {
+  paneTitlesAndLaunchOwnerForAgentFilter,
+  type AgentFilterLayoutsByTabId,
+  type AgentFilterTabEvidence
+} from './workspace-agent-filter-pane-ownership'
 
 /**
  * Why: workspace cards already derive agent identity from created-with,
  * launchAgent, live/retained hook rows, sleeping sessions, and title fallback.
  * The filter must read those same records instead of persisting a parallel field.
  */
-type AgentFilterTabEvidence = {
-  id?: string
-  launchAgent?: TerminalTab['launchAgent']
-  title?: string | null
-  paneTitles?: readonly (string | null | undefined)[]
-}
-
 type AgentFilterWorktree = Pick<Worktree, 'id' | 'hostId'>
 
 type AgentFilterLookup = {
   tabsByWorktree?: Record<string, readonly AgentFilterTabEvidence[]> | null
   agentTypesByWorktree?: Record<string, readonly (string | null | undefined)[]> | null
   runtimePaneTitlesByTabId?: Record<string, Record<number, string>> | null
+  terminalLayoutsByTabId?: AgentFilterLayoutsByTabId
   collidingWorktreeIds?: ReadonlySet<string>
-}
-
-function paneTitlesForAgentFilter(
-  tab: AgentFilterTabEvidence,
-  runtimePaneTitlesByTabId?: Record<string, Record<number, string>> | null
-): { titles: readonly (string | null | undefined)[]; split: boolean } {
-  if (tab.paneTitles) {
-    return { titles: tab.paneTitles, split: tab.paneTitles.length > 1 }
-  }
-  const byPane = tab.id ? runtimePaneTitlesByTabId?.[tab.id] : undefined
-  if (!byPane) {
-    return { titles: [], split: false }
-  }
-  const live: string[] = []
-  const parked: string[] = []
-  for (const [paneId, title] of Object.entries(byPane)) {
-    if (Number(paneId) >= FIRST_PANE_ID) {
-      live.push(title)
-    } else {
-      parked.push(title)
-    }
-  }
-  // Why: live and parked ids are disjoint spaces; a single-pane tab can have both.
-  return {
-    titles: [...live, ...parked],
-    split: (live.length > 0 ? live : parked).length > 1
-  }
 }
 
 export function collectWorktreeAgentIds(args: {
@@ -75,11 +47,15 @@ export function collectWorktreeAgentIds(args: {
   tabs?: readonly AgentFilterTabEvidence[] | null
   extraAgentTypes?: readonly (string | null | undefined)[] | null
   runtimePaneTitlesByTabId?: Record<string, Record<number, string>> | null
+  terminalLayoutsByTabId?: AgentFilterLayoutsByTabId
 }): Set<TuiAgent> {
   const agents: (string | null | undefined)[] = [args.createdWithAgent]
   for (const tab of args.tabs ?? []) {
-    const { titles, split } = paneTitlesForAgentFilter(tab, args.runtimePaneTitlesByTabId)
-    const owner = split ? null : tab.launchAgent
+    const { titles, owner } = paneTitlesAndLaunchOwnerForAgentFilter(
+      tab,
+      args.runtimePaneTitlesByTabId,
+      args.terminalLayoutsByTabId
+    )
     const ownerOpts = owner ? { ownerIsLaunch: true } : undefined
     agents.push(tab.launchAgent, resolveAgentTypeFromTerminalTitle(tab.title, owner, ownerOpts))
     for (const paneTitle of titles) {
@@ -122,8 +98,29 @@ export function collectWorktreeFilterAgentIds(
     createdWithAgent: worktree.createdWithAgent,
     tabs: colliding ? undefined : lookup.tabsByWorktree?.[worktree.id],
     extraAgentTypes: lookup.agentTypesByWorktree?.[extraKey],
-    runtimePaneTitlesByTabId: colliding ? undefined : lookup.runtimePaneTitlesByTabId
+    runtimePaneTitlesByTabId: colliding ? undefined : lookup.runtimePaneTitlesByTabId,
+    terminalLayoutsByTabId: colliding ? undefined : lookup.terminalLayoutsByTabId
   })
+}
+
+/**
+ * Confirming reveal must change the Agent filter when the sidebar still hides
+ * the workspace. If adding its agents is a no-op or still would not match, All.
+ */
+export function resolveRevealFilterAgentIds(
+  current: FilterAgentIds,
+  worktree: { id: string; createdWithAgent?: string | null; hostId?: Worktree['hostId'] },
+  lookup: AgentFilterLookup,
+  hiddenBySidebarFilters: boolean
+): FilterAgentIds {
+  if (!current || !hiddenBySidebarFilters) {
+    return current
+  }
+  const next = nextFilterAgentIdsForReveal(current, collectWorktreeFilterAgentIds(worktree, lookup))
+  if (next === current || !worktreeMatchesAgentFilter(worktree, next, lookup)) {
+    return null
+  }
+  return next
 }
 
 export function worktreeMatchesAgentFilter(

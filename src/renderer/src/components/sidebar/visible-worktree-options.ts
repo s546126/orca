@@ -1,5 +1,5 @@
 import type { Repo } from '../../../../shared/repo-types'
-import type { TerminalTab } from '../../../../shared/terminal-tab-types'
+import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { FilterAgentIds } from '../../../../shared/workspace-agent-filter'
 import type { WorktreeLineage } from '../../../../shared/worktree/lineage-types'
 import type { ExecutionHostId, ExecutionHostScope } from '../../../../shared/execution-host'
@@ -22,6 +22,7 @@ export type VisibleWorktreeOptions = {
   filterAgentIds: FilterAgentIds
   agentTypesByWorktree?: Record<string, readonly (string | null | undefined)[]> | null
   runtimePaneTitlesByTabId?: Record<string, Record<number, string>> | null
+  terminalLayoutsByTabId?: Record<string, TerminalLayoutSnapshot | undefined> | null
   repoMap: Map<string, Repo>
   workspaceHostScope: ExecutionHostScope
   visibleWorkspaceHostIds?: readonly ExecutionHostId[] | null

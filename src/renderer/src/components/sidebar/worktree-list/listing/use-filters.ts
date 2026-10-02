@@ -15,7 +15,6 @@ import {
   getWorktreeExecutionHostId,
   getSettingsFocusedExecutionHostId
 } from '../../../../../../shared/execution-host'
-import { nextFilterAgentIdsForReveal } from '../../../../../../shared/workspace-agent-filter'
 import { isDefaultBranchWorkspace } from '../../default-branch-workspace'
 import { getFolderWorkspaceExecutionHostIdForRows } from './host-filtering'
 import {
@@ -25,11 +24,11 @@ import {
 import { getAgentStatusEpochNow } from '@/lib/agent-status-epoch-clock'
 import { getWorktreeIdsWithLiveAgent, isInactiveWorkspace } from '@/lib/worktree-activity-state'
 import { getAllWorktreesFromState } from '@/store/selectors'
+import { worktreePassesSidebarFilters } from '../../worktree-filter-visibility'
 import {
   collectAgentTypesByWorktree,
-  collectWorktreeFilterAgentIds,
   collidingWorktreeIds,
-  worktreeMatchesAgentFilter
+  resolveRevealFilterAgentIds
 } from '../../workspace-agent-filter-evidence'
 import {
   getVisibleWorktreeBrowserActivityTabs,
@@ -163,15 +162,24 @@ export function useSidebarWorktreeFilters() {
           worktrees
         }),
         runtimePaneTitlesByTabId: state.runtimePaneTitlesByTabId,
+        terminalLayoutsByTabId: state.terminalLayoutsByTabId,
         collidingWorktreeIds: collidingWorktreeIds(worktrees)
       }
-      if (!worktreeMatchesAgentFilter(worktree, state.filterAgentIds, lookup)) {
-        const next = nextFilterAgentIdsForReveal(
-          state.filterAgentIds,
-          collectWorktreeFilterAgentIds(worktree, lookup)
-        )
-        // Why: host-shaped add can still leave it hidden (empty/mismatched evidence).
-        state.setFilterAgentIds(worktreeMatchesAgentFilter(worktree, next, lookup) ? next : null)
+      // Why: listing visibility, not a parallel match, decides whether Agent still hides it.
+      const next = resolveRevealFilterAgentIds(
+        state.filterAgentIds,
+        worktree,
+        lookup,
+        !worktreePassesSidebarFilters(worktree.id, targetHostId)
+      )
+      if (next !== state.filterAgentIds) {
+        state.setFilterAgentIds(next)
+      }
+      if (
+        useAppStore.getState().filterAgentIds &&
+        !worktreePassesSidebarFilters(worktree.id, targetHostId)
+      ) {
+        useAppStore.getState().setFilterAgentIds(null)
       }
     }
   }, [])

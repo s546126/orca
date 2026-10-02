@@ -55,6 +55,7 @@ export function buildVisibleWorktreeOptionsFromState(
       worktrees: Object.values(state.worktreesByRepo).flat()
     }),
     runtimePaneTitlesByTabId: state.filterAgentIds ? state.runtimePaneTitlesByTabId : null,
+    terminalLayoutsByTabId: state.filterAgentIds ? state.terminalLayoutsByTabId : null,
     repoMap,
     workspaceHostScope: state.workspaceHostScope,
     visibleWorkspaceHostIds: state.visibleWorkspaceHostIds,
