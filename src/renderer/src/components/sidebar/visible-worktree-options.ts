@@ -29,5 +29,6 @@ export type VisibleWorktreeOptions = {
   defaultHostId: ExecutionHostId
   worktreeLineageById: Record<string, WorktreeLineage>
   injectLineageAncestors?: boolean
+  preserveLineageParentOrder?: boolean
   forcedVisibleWorktreeIds?: readonly string[]
 }

@@ -63,7 +63,6 @@ import { getWorktreeHostIdentity } from '../../../../shared/worktree/host-qualif
  * Why shared: the sidebar pipeline and the jump palette both apply this, and a
  * second copy is how the two surfaces drift.
  */
-
 export function computeVisibleWorktrees(
   worktreesByRepo: Record<string, Worktree[]>,
   sortedIds: string[],
@@ -158,6 +157,10 @@ export function computeVisibleWorktrees(
 
   // Apply cached sort order. Items not yet in the cache (e.g. brand-new
   // worktrees before the next sortEpoch bump) are appended at the end.
+  // Manual placement belongs to the parent, even when a hidden child has a higher rank.
+  if (opts.injectLineageAncestors !== false && opts.preserveLineageParentOrder) {
+    all = addVisibleLineageAncestors(all, lineageAncestorById, opts.worktreeLineageById)
+  }
   const orderIndex = getSortedWorktreeRankIndex(sortedIds)
   all.sort((a, b) => {
     const ai = orderIndex.get(a.id) ?? Infinity
@@ -165,7 +168,7 @@ export function computeVisibleWorktrees(
     return ai - bi
   })
 
-  return opts.injectLineageAncestors === false
+  return opts.injectLineageAncestors === false || opts.preserveLineageParentOrder
     ? all
     : addVisibleLineageAncestors(all, lineageAncestorById, opts.worktreeLineageById)
 }
@@ -231,6 +234,7 @@ let _publishedVisibleIds: string[] | null = null
 export type VisibleWorktreeShortcutTarget = {
   id: string
   executionHostId?: Worktree['hostId']
+  lineageGroupKey?: string
 }
 let _publishedVisibleShortcutTargets: VisibleWorktreeShortcutTarget[] | null = null
 
@@ -242,6 +246,12 @@ export function setVisibleWorktreeShortcutTargets(
   targets: VisibleWorktreeShortcutTarget[] | null
 ): void {
   _publishedVisibleShortcutTargets = targets
+}
+
+export function getPublishedVisibleWorktreeShortcutTargets():
+  | readonly VisibleWorktreeShortcutTarget[]
+  | null {
+  return _publishedVisibleShortcutTargets
 }
 
 export function getVisibleWorktreeIds(): string[] {
