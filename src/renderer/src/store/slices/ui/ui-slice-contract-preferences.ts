@@ -14,6 +14,7 @@ import type {
 } from '../../../../../shared/ui-chrome-types'
 import type { UsagePercentageDisplay } from '../../../../../shared/usage-percentage-display'
 import type { AutomationHostFilter } from '../../../../../shared/automation-host-filter'
+import type { FilterAgentIds } from '../../../../../shared/workspace-agent-filter'
 import type { WorkspaceStatusDefinition } from '../../../../../shared/worktree/types'
 import type { WorkspacePortScanResult } from '../../../../../shared/workspace-ports'
 import type { CustomPet } from '../../../../../shared/pet-types'
@@ -59,6 +60,8 @@ export type UISlicePreferences = {
   setHideWorkspacesFromOtherDevices: (v: boolean) => void
   alwaysShowDefaultBranchWorkspace: boolean
   setAlwaysShowDefaultBranchWorkspace: (v: boolean) => void
+  filterAgentIds: FilterAgentIds
+  setFilterAgentIds: (ids: FilterAgentIds) => void
   explorerDisplayRootByWorktree: Record<string, string>
   showDotfilesByWorktree: Record<string, boolean>
   setExplorerDisplayRootForWorktree: (worktreeId: string, value: string) => void
@@ -71,6 +74,12 @@ export type UISlicePreferences = {
   setAgentsVisibleHostIds: (ids: VisibleWorkspaceHostIds) => void
   agentsFilterRepoIds: readonly string[]
   setAgentsFilterRepoIds: (ids: readonly string[]) => void
+  agentsHideWorkspacesFromOtherDevices: boolean
+  setAgentsHideWorkspacesFromOtherDevices: (v: boolean) => void
+  agentsHideAutomationGeneratedWorkspaces: boolean
+  setAgentsHideAutomationGeneratedWorkspaces: (v: boolean) => void
+  agentsHideCliCreatedWorkspaces: boolean
+  setAgentsHideCliCreatedWorkspaces: (v: boolean) => void
   agentsShowChildAgents: boolean
   setAgentsShowChildAgents: (v: boolean) => void
   agentsCompactMode: boolean

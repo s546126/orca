@@ -108,6 +108,77 @@ describe('createUISlice hydratePersistedUI', () => {
     expect(store.getState().hideDefaultBranchWorkspace).toBe(true)
   })
 
+  it('restores the multi-id agent filter from persisted UI state', () => {
+    const store = createUIStore()
+
+    store.getState().hydratePersistedUI(
+      makePersistedUI({
+        filterAgentIds: ['openclaude', 'codex']
+      })
+    )
+
+    expect(store.getState().filterAgentIds).toEqual(['openclaude', 'codex'])
+  })
+
+  it('hydrates leftover singular filterAgentId onto a one-id list', () => {
+    const store = createUIStore()
+
+    store.getState().hydratePersistedUI(
+      makePersistedUI({
+        filterAgentIds: undefined,
+        filterAgentId: 'openclaude'
+      })
+    )
+
+    expect(store.getState().filterAgentIds).toEqual(['openclaude'])
+  })
+
+  it('migrates leftover cc/codex harness values onto catalog agent lists', () => {
+    const leftoverCc = createUIStore()
+    leftoverCc.getState().hydratePersistedUI(
+      makePersistedUI({
+        filterAgentIds: undefined,
+        filterAgentId: undefined,
+        filterHarnessId: 'cc'
+      })
+    )
+    expect(leftoverCc.getState().filterAgentIds).toEqual(['claude'])
+
+    const leftoverCodex = createUIStore()
+    leftoverCodex.getState().hydratePersistedUI(
+      makePersistedUI({
+        filterAgentIds: undefined,
+        filterAgentId: undefined,
+        filterHarnessId: 'codex'
+      })
+    )
+    expect(leftoverCodex.getState().filterAgentIds).toEqual(['codex'])
+  })
+
+  it('ignores leftover singular/harness values once filterAgentIds has been persisted', () => {
+    const store = createUIStore()
+
+    store.getState().hydratePersistedUI(
+      makePersistedUI({
+        filterAgentIds: null,
+        filterAgentId: 'claude',
+        filterHarnessId: 'cc'
+      })
+    )
+
+    expect(store.getState().filterAgentIds).toBeNull()
+  })
+
+  it('ignores unknown persisted agent filter values', () => {
+    const store = createUIStore()
+
+    const unknownFilterUi = makePersistedUI({})
+    Object.assign(unknownFilterUi, { filterAgentIds: ['not-an-agent'] })
+    store.getState().hydratePersistedUI(unknownFilterUi)
+
+    expect(store.getState().filterAgentIds).toBeNull()
+  })
+
   it('restores selected card properties during hydration', () => {
     const store = createUIStore()
 
@@ -557,11 +628,32 @@ describe('createUISlice hydratePersistedUI', () => {
 
     expect(store.getState().agentsVisibleHostIds).toBeNull()
     expect(store.getState().agentsFilterRepoIds).toEqual([])
+    expect(store.getState().agentsHideWorkspacesFromOtherDevices).toBe(false)
+    expect(store.getState().agentsHideAutomationGeneratedWorkspaces).toBe(false)
+    expect(store.getState().agentsHideCliCreatedWorkspaces).toBe(false)
     expect(store.getState().agentsShowChildAgents).toBe(false)
     expect(store.getState().agentsCompactMode).toBe(true)
     expect(store.getState().agentsShowSearch).toBe(true)
     expect(store.getState().agentsReadFilter).toBe('all')
     expect(store.getState().agentsGroupBy).toBe('status')
+  })
+
+  it('restores the agents workspace-origin filters independently of the workspace-nav ones', () => {
+    const store = createUIStore()
+
+    store.getState().hydratePersistedUI(
+      makePersistedUI({
+        agentsHideWorkspacesFromOtherDevices: true,
+        agentsHideAutomationGeneratedWorkspaces: true,
+        agentsHideCliCreatedWorkspaces: true,
+        hideCliCreatedWorkspaces: false
+      })
+    )
+
+    expect(store.getState().agentsHideWorkspacesFromOtherDevices).toBe(true)
+    expect(store.getState().agentsHideAutomationGeneratedWorkspaces).toBe(true)
+    expect(store.getState().agentsHideCliCreatedWorkspaces).toBe(true)
+    expect(store.getState().hideCliCreatedWorkspaces).toBe(false)
   })
 
   it('restores a hidden agents search field', () => {

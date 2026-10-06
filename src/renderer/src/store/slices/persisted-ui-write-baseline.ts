@@ -1,4 +1,5 @@
 import type { PersistedUIState } from '../../../../shared/persisted-ui-state-types'
+import type { FilterAgentIds } from '../../../../shared/workspace-agent-filter'
 
 /**
  * Mirror-shaped snapshot of the fields the debounced persisted-UI writer owns.
@@ -10,6 +11,7 @@ import type { PersistedUIState } from '../../../../shared/persisted-ui-state-typ
  */
 export type PersistedUIWriteBaseline = {
   sidebarWidth: number
+  sidebarOpen: boolean
   rightSidebarOpen: boolean
   rightSidebarTab: PersistedUIState['rightSidebarTab']
   rightSidebarExplorerView: PersistedUIState['rightSidebarExplorerView']
@@ -20,6 +22,8 @@ export type PersistedUIWriteBaseline = {
   sortBy: PersistedUIState['sortBy']
   projectOrderBy: PersistedUIState['projectOrderBy']
   showSleepingWorkspaces: boolean
+  workspaceHostScope: PersistedUIState['workspaceHostScope']
+  visibleWorkspaceHostIds: PersistedUIState['visibleWorkspaceHostIds']
   hideDefaultBranchWorkspace: boolean
   hideAutomationGeneratedWorkspaces: boolean
   hideCliCreatedWorkspaces: boolean
@@ -29,6 +33,7 @@ export type PersistedUIWriteBaseline = {
   explorerDisplayRootByWorktree: Record<string, string>
   showDotfilesByWorktree: Record<string, boolean>
   filterRepoIds: readonly string[]
+  filterAgentIds: FilterAgentIds
   acknowledgedAgentsByPaneKey: Record<string, number>
   activityClearedAtByPaneKey: Record<string, number>
   manuallyUnreadTurnsByPaneKey: Record<string, number>
@@ -40,6 +45,7 @@ export type PersistedUIWriteBaseline = {
 // this module exists to close (see ui-state-schema-parity.ts for the same lesson).
 const PERSISTED_UI_WRITE_BASELINE_FIELD_SET = {
   sidebarWidth: true,
+  sidebarOpen: true,
   rightSidebarOpen: true,
   rightSidebarTab: true,
   rightSidebarExplorerView: true,
@@ -50,6 +56,8 @@ const PERSISTED_UI_WRITE_BASELINE_FIELD_SET = {
   sortBy: true,
   projectOrderBy: true,
   showSleepingWorkspaces: true,
+  workspaceHostScope: true,
+  visibleWorkspaceHostIds: true,
   hideDefaultBranchWorkspace: true,
   hideAutomationGeneratedWorkspaces: true,
   hideCliCreatedWorkspaces: true,
@@ -59,6 +67,7 @@ const PERSISTED_UI_WRITE_BASELINE_FIELD_SET = {
   explorerDisplayRootByWorktree: true,
   showDotfilesByWorktree: true,
   filterRepoIds: true,
+  filterAgentIds: true,
   acknowledgedAgentsByPaneKey: true,
   activityClearedAtByPaneKey: true,
   manuallyUnreadTurnsByPaneKey: true
@@ -101,6 +110,18 @@ function stringArrayEqual(a: readonly string[], b: readonly string[]): boolean {
 function writeFieldEqual(field: keyof PersistedUIWriteBaseline, a: unknown, b: unknown): boolean {
   if (field === 'filterRepoIds') {
     return stringArrayEqual(a as readonly string[], b as readonly string[])
+  }
+  if (field === 'filterAgentIds') {
+    if (a == null || b == null) {
+      return a == null && b == null
+    }
+    if (Array.isArray(a) && Array.isArray(b)) {
+      return stringArrayEqual(a, b)
+    }
+    return Object.is(a, b)
+  }
+  if (field === 'visibleWorkspaceHostIds') {
+    return a === b || (Array.isArray(a) && Array.isArray(b) && stringArrayEqual(a, b))
   }
   if (
     field === 'explorerDisplayRootByWorktree' ||
@@ -152,6 +173,8 @@ export function persistedUIWriteFieldsToWireUpdate(
       // Why: the store keeps this readonly for identity stability, but PersistedUI crosses to
       // main, which owns a mutable array — copy at the boundary rather than widening the wire type.
       update.filterRepoIds = [...(fields.filterRepoIds ?? [])]
+    } else if (field === 'filterAgentIds') {
+      update.filterAgentIds = fields.filterAgentIds == null ? null : [...fields.filterAgentIds]
     } else {
       assignSameNameWireField(
         update,
@@ -165,7 +188,7 @@ export function persistedUIWriteFieldsToWireUpdate(
 
 type SameNameWriteField = Exclude<
   keyof PersistedUIWriteBaseline,
-  'showSleepingWorkspaces' | 'filterRepoIds'
+  'showSleepingWorkspaces' | 'filterRepoIds' | 'filterAgentIds'
 >
 
 // Compile check: every non-special mirror field must exist on PersistedUIState

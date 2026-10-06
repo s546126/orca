@@ -23,6 +23,7 @@ import type {
   WorkspaceHostScope,
   WorktreeCardProperty
 } from './ui-chrome-types'
+import type { TuiAgent } from './tui-agent'
 import type { WorkspaceStatusDefinition } from './worktree/types'
 import type { PersistedAutomationHostFilter } from './automation-host-filter'
 
@@ -32,6 +33,7 @@ export type PersistedUIState = {
   /** Active top-level view at save time, restored on relaunch; sanitized to 'terminal' if unknown or now-gated. */
   activeView: TopLevelView
   sidebarWidth: number
+  sidebarOpen?: boolean
   rightSidebarOpen: boolean
   rightSidebarTab: RightSidebarTab
   rightSidebarExplorerView: RightSidebarExplorerView
@@ -72,6 +74,15 @@ export type PersistedUIState = {
   hideWorkspacesFromOtherDevices?: boolean
   /** Keep each project's main workspace out of the "Hide sleeping" sweep. Absent means on (#8873). */
   alwaysShowDefaultBranchWorkspace?: boolean
+  /** Filter the workspace list/board to workspaces that currently have or last
+   *  used any of these catalog TuiAgents. `null` / omitted means all agents. */
+  filterAgentIds?: TuiAgent[] | null
+  /** Leftover singular agent filter. Hydrate maps a catalog id onto
+   *  `filterAgentIds` and new writes omit this field. */
+  filterAgentId?: TuiAgent | null
+  /** Leftover from a short-lived `cc`/`codex` harness filter. Hydrate maps it
+   *  onto `filterAgentIds` and new writes omit this field. */
+  filterHarnessId?: 'cc' | 'codex' | null
   /** Per-worktree Explorer dotfile visibility. Missing entries inherit the default: show. */
   _explorerDisplayRootMigrated?: boolean
   explorerDisplayRootByWorktree?: Record<string, string>
@@ -81,6 +92,10 @@ export type PersistedUIState = {
   agentsVisibleHostIds?: VisibleWorkspaceHostIds
   /** Agents-view project filter; empty = all projects. Separate from filterRepoIds (workspace nav). */
   agentsFilterRepoIds?: string[]
+  /** Agents-view workspace-origin filters; separate from the workspace-nav hide flags. Absent means off. */
+  agentsHideWorkspacesFromOtherDevices?: boolean
+  agentsHideAutomationGeneratedWorkspaces?: boolean
+  agentsHideCliCreatedWorkspaces?: boolean
   /** Agents-view: include child (orchestration-dispatched) agent threads. Absent means off. */
   agentsShowChildAgents?: boolean
   /** Agents-view compact thread rows. Absent means on. */
@@ -172,6 +187,8 @@ export type PersistedUIState = {
   usageEmptyStateDismissed?: boolean
   /** One-shot toast announcing per-terminal Codex servers; set when shown, so absent means not yet seen. */
   codexTerminalServerIsolationNoticeSeen?: boolean
+  /** Windows one-shot toast for Codex moving onto ~/.codex; set when shown, so absent means not yet seen. */
+  codexSharedSettingsNoticeSeen?: boolean
   /** URL for new browser tabs; null = blank tab. */
   browserDefaultUrl?: string | null
   browserDefaultSearchEngine?: 'google' | 'duckduckgo' | 'bing' | 'kagi' | null
