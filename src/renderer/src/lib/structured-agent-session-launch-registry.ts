@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
+import type { TuiAgent } from '../../../shared/tui-agent'
 import type { AgentSessionWriteRefusal } from '../../../shared/agent-session-write-failure'
 import type { StructuredAgentSessionResumeSource } from '../../../shared/structured-agent-session-create'
 import type { ExecutionHostId } from '../../../shared/execution-host'
@@ -70,7 +70,7 @@ export function subscribeStructuredAgentLaunchStatus(listener: () => void): () =
 // Why keyed by conversation: a resume must not coalesce onto an unrelated blank launch.
 export function structuredLaunchIdentity(
   worktreeId: string,
-  agent: AgentSessionHandleProvider,
+  agent: TuiAgent,
   resumeFrom?: StructuredAgentSessionResumeSource
 ): string {
   return resumeFrom
@@ -104,7 +104,10 @@ function persistStructuredLaunchState(state: StructuredLaunchState): void {
     deleteStructuredAgentLaunchRecord(state.intent.sessionId)
     return
   }
-  writeStructuredAgentLaunchRecord(structuredAgentLaunchRecordFor(state.intent, lifecycle))
+  writeStructuredAgentLaunchRecord({
+    ...structuredAgentLaunchRecordFor(state.intent, lifecycle),
+    ...(lifecycle === 'failed' ? { failedAt: state.callers.failedAt } : {})
+  })
 }
 
 export function getPersistedStructuredAgentLaunchRecord(
