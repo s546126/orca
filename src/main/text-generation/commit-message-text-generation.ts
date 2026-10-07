@@ -1,4 +1,5 @@
 import type { BranchNameWorkContext } from '../../shared/branch-name-from-work'
+import type { ConversationNameContext } from '../../shared/conversation-name-generation'
 import type { CommitMessageDraftContext } from '../../shared/commit-message-generation'
 import { LOCAL_COMMIT_MESSAGE_HOST_KEY } from '../../shared/commit-message-host-key'
 import {
@@ -17,7 +18,7 @@ import {
   resolveSourceControlAiForOperation,
   type ResolvedSourceControlAiGenerationParams
 } from '../../shared/source-control-ai'
-import type { SourceControlAiOperation } from '../../shared/source-control-ai-types'
+import type { AiTextOperation } from '../../shared/source-control-ai-types'
 import type { TuiAgent } from '../../shared/tui-agent'
 import {
   discoverModelsLocal,
@@ -25,6 +26,7 @@ import {
   type CommitMessageModelDiscoveryLocalOptions
 } from './commit-message-model-discovery'
 import { spawnSourceControlAgent } from './source-control-agent-launch'
+import { generateConversationName } from './conversation-name-generation-request'
 import { cancelLocalGeneration } from './source-control-generation-lanes'
 import { runLocalPlanForAgent } from './source-control-local-generation'
 import { runRemoteSourceControlPlan } from './source-control-remote-generation'
@@ -39,6 +41,7 @@ import type {
   CommitMessageGenerationTarget,
   DiscoverCommitMessageModelsResult,
   GenerateBranchNameResult,
+  GenerateConversationNameResult,
   GenerateCommitMessageResult,
   GeneratePullRequestFieldsResult as GenericGeneratePullRequestFieldsResult,
   RemoteCommitMessageExecResult,
@@ -51,6 +54,7 @@ export type {
   CommitMessageModelDiscoveryLocalOptions,
   DiscoverCommitMessageModelsResult,
   GenerateBranchNameResult,
+  GenerateConversationNameResult,
   GenerateCommitMessageResult,
   RemoteCommitMessageExecResult,
   TextGenerationOperation
@@ -69,7 +73,7 @@ export function trimGeneratedCommitMessage(message: string): string {
 export function resolveCommitMessageSettings(
   settings: GlobalSettings,
   discoveryHostKey = LOCAL_COMMIT_MESSAGE_HOST_KEY,
-  operation: SourceControlAiOperation = 'commitMessage',
+  operation: AiTextOperation = 'commitMessage',
   repo?: Pick<Repo, 'sourceControlAi'> | null
 ): ResolveCommitMessageSettingsResult {
   const resolved = resolveSourceControlAiForOperation({
@@ -84,7 +88,7 @@ export function resolveCommitMessageSettings(
 export function resolveTextGenerationParams(
   settings: GlobalSettings,
   discoveryHostKey = LOCAL_COMMIT_MESSAGE_HOST_KEY,
-  operation: SourceControlAiOperation = 'commitMessage',
+  operation: AiTextOperation = 'commitMessage',
   repo?: Pick<Repo, 'sourceControlAi'> | null
 ): ResolveCommitMessageSettingsResult {
   return resolveCommitMessageSettings(settings, discoveryHostKey, operation, repo)
@@ -212,4 +216,12 @@ export async function generateTextFromPrompt(
     message: result.rawOutput.trim(),
     agentLabel: result.agentLabel
   }
+}
+
+export function generateConversationNameFromContext(
+  context: ConversationNameContext,
+  params: GenerateCommitMessageParams,
+  target: CommitMessageGenerationTarget
+): Promise<GenerateConversationNameResult> {
+  return generateConversationName({ context, params, target, spawnAgent: spawnSourceControlAgent })
 }
