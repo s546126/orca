@@ -4,6 +4,7 @@ import type { ExecutionHostId, ExecutionHostScope } from './execution-host'
 export const AI_VAULT_AGENTS = [
   'claude',
   'codebuddy',
+  'qoder',
   'codex',
   'hermes',
   'pi',
@@ -23,7 +24,8 @@ export const AI_VAULT_AGENTS = [
   'droid',
   'cline',
   'kimi',
-  'muse'
+  'muse',
+  'jcode'
 ] as const satisfies readonly TuiAgent[]
 
 // Why: the aiVault.listSessions RPC schema CLAMPS scopePaths to this bound
@@ -49,10 +51,24 @@ export const AI_VAULT_SEARCH_SORTS = ['relevance', 'newest'] as const
 /** Order of full-text search results; the list above has its own `AiVaultSort`. */
 export type AiVaultSearchSort = (typeof AI_VAULT_SEARCH_SORTS)[number]
 export type AiVaultGroup = 'project' | 'folder' | 'agent'
+export type AiVaultTimeRange = 'all' | '24h' | '7d' | '30d'
+// Why: session records have no SSH host id; WSL vs local is all we can derive
+// cheaply from cwd/filePath (UNC mounts and scanner WSL homes).
+export type AiVaultSessionHost = 'local' | 'wsl'
+
+export type AiVaultSessionProjectRef = {
+  kind: 'repo' | 'folder' | 'unknown'
+  key: string
+  label: string
+}
+
+export const AI_VAULT_TIME_RANGES = ['all', '24h', '7d', '30d'] as const
+export const AI_VAULT_SESSION_HOSTS = ['local', 'wsl'] as const
 
 export const AI_VAULT_AGENT_LABELS = {
   claude: 'Claude',
   codebuddy: 'CodeBuddy',
+  qoder: 'Qoder',
   codex: 'Codex',
   hermes: 'Hermes',
   pi: 'Pi',
@@ -72,7 +88,8 @@ export const AI_VAULT_AGENT_LABELS = {
   droid: 'Droid',
   cline: 'Cline',
   kimi: 'Kimi',
-  muse: 'Muse'
+  muse: 'Muse',
+  jcode: 'Jcode'
 } as const satisfies Record<AiVaultAgent, string>
 
 export type AiVaultSessionPreviewMessage = {
@@ -114,6 +131,8 @@ export type AiVaultSession = {
   /** Older messages fell out of the newest-N window: the earliest preview turn
    * is NOT the opening ask, so first-prompt consumers must not scan it. */
   previewMessagesTruncated?: boolean
+  /** Bounded opening-prompt identity for Antigravity history joins; never a rolling preview. */
+  antigravityOpeningPrompt?: { hash: string; timestamp: string | null }
   /**
    * Full first non-injected user prompt. List scans omit this (payload/perf);
    * populated only by on-demand `aiVault.getFirstUserPrompt` re-parses for copy.
@@ -210,6 +229,8 @@ export type AiVaultScanIssue = {
 }
 
 export type AiVaultListArgs = {
+  /** Opt-in promises this client starts IDE history in a new CLI conversation. */
+  includeAntigravityIdeSessions?: boolean
   limit?: number
   unlimited?: boolean
   force?: boolean

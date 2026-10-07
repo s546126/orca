@@ -20,13 +20,15 @@ const PACKAGED_RUNTIME_PACKAGE_ROOTS = [
   '@linear/sdk',
   '@parcel/watcher',
   'electron-updater',
+  // Why: Session History FTS require()s this WASM sql.js build from main. Left
+  // off the runtime copy, packaged Electron dies at bootstrap with
+  // "Cannot find module 'fts5-sql-bundle'".
+  'fts5-sql-bundle',
   'i18next',
   'jsonc-parser',
   'node-pty',
   'posthog-node',
   'proper-lockfile',
-  // serve-sim (for CLI JS entry + closure + state/middleware + to make packaged require('serve-sim') + its internal relatives work; mirrors other runtime JS like ws/yaml/zod. Natives/dylibs still via extraResources + the node_modules/serve-sim copy in resources from builder. Client if added too.
-  'serve-sim',
   'qrcode',
   'ssh2',
   'tweetnacl',
@@ -34,6 +36,9 @@ const PACKAGED_RUNTIME_PACKAGE_ROOTS = [
   'yaml',
   'zod'
 ]
+// Why macOS only: serve-sim drives the iOS Simulator, and its native addon is a Mach-O that
+// Windows signing rejects as a PE file.
+const DARWIN_PACKAGED_RUNTIME_PACKAGE_ROOTS = ['serve-sim']
 const WINDOWS_PACKAGED_RUNTIME_PACKAGE_ROOTS = [
   '@vscode/windows-process-tree',
   '@orca/windows-registry'
@@ -180,6 +185,7 @@ function collectPackagedRuntimePackages(electronPlatformName = process.platform)
   // Why: cross-builds must select native dependencies from the artifact target, not the build host.
   const packageRoots = [
     ...PACKAGED_RUNTIME_PACKAGE_ROOTS,
+    ...(electronPlatformName === 'darwin' ? DARWIN_PACKAGED_RUNTIME_PACKAGE_ROOTS : []),
     ...(electronPlatformName === 'win32' ? WINDOWS_PACKAGED_RUNTIME_PACKAGE_ROOTS : [])
   ]
   for (const packageName of packageRoots) {

@@ -1,3 +1,7 @@
+import {
+  antigravitySessionOrigin,
+  isAntigravityReferenceSession
+} from '../../../../shared/antigravity-session-origin'
 import type React from 'react'
 import { Badge } from '@/components/ui/badge'
 import RepoBadgeLabel from '@/components/repo/RepoBadgeLabel'
@@ -41,6 +45,7 @@ export function SessionMetadata({
   vaultScope: AiVaultScope
 }) {
   const modelLabel = sessionModelLabel(session)
+  const origin = antigravitySessionOrigin(session.filePath)
   return (
     <div
       data-testid="ai-vault-session-metadata"
@@ -54,6 +59,19 @@ export function SessionMetadata({
             would mark most rows; only live attention states earn a dot. */}
         {liveState && liveState !== 'done' ? <AgentStateDot state={liveState} /> : null}
         <span className="min-w-0 shrink-[2] truncate">{agentLabel(session.agent)}</span>
+        {isAntigravityReferenceSession(session) ? (
+          <Badge
+            variant="outline"
+            title={translate(
+              'aiVault.antigravityReferenceDescription',
+              'Continues in a new Antigravity CLI conversation using this transcript as a reference.'
+            )}
+          >
+            {origin === 'antigravity-ide'
+              ? translate('aiVault.antigravityIdeToCli', 'IDE → CLI')
+              : translate('aiVault.antigravity2ToCli', '2.0 → CLI')}
+          </Badge>
+        ) : null}
         <span className="shrink-0 tabular-nums">
           {translate(
             'auto.components.right.sidebar.AiVaultSessionRow.messageCount',
@@ -149,7 +167,7 @@ function worktreeStatusLabel(status: AiVaultSessionWorktreeInfo['status']): stri
 }
 
 export function conversationRoleLabel(
-  role: AiVaultSession['previewMessages'][number]['role']
+  role: AiVaultSession['previewMessages'][number]['role'] | 'error'
 ): string {
   if (role === 'user') {
     return translate('auto.components.right.sidebar.AiVaultSessionRow.userRole', 'You')
@@ -162,6 +180,9 @@ export function conversationRoleLabel(
   }
   if (role === 'system') {
     return translate('auto.components.right.sidebar.AiVaultSessionRow.systemRole', 'System')
+  }
+  if (role === 'error') {
+    return translate('auto.components.right.sidebar.AiVaultSessionRow.errorRole', 'Error')
   }
   return translate('auto.components.right.sidebar.AiVaultSessionRow.sessionRole', 'Session')
 }
