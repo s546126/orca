@@ -13622,6 +13622,9 @@
             "b3c8f1a902": "Filter files by name",
             "f8a2c4d1e0": "Explorer search mode"
           },
+          "ForeignSessionImportNotice": {
+            "imported": "Imported from {{value0}}"
+          },
           "GitHistoryCommitFiles": {
             "a1b2c3d4e5": "Loading files…",
             "b2c3d4e5f6": "No file changes in this commit",

@@ -17,6 +17,8 @@ import {
   assertLegacyAiVaultResumeAllowed,
   projectStructuredAiVaultSessions
 } from '../../../ai-vault/structured-session-ownership'
+import { getStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
+import { projectForeignSessionImports } from '../../../foreign-session-import/project-foreign-session-imports'
 import { ensureStructuredAgentSessionHostUnlessRefused } from '../../structured-agent-session-host-refusal'
 import {
   AiVaultListSessionsParams,
@@ -90,10 +92,14 @@ export const AI_VAULT_METHODS = [
       const stamped = params.executionHostId
         ? restampAiVaultListResult(result, params.executionHostId)
         : result
-      return projectStructuredAiVaultSessions(
+      const structured = projectStructuredAiVaultSessions(
         stamped,
         clientKind === undefined ||
           (clientCapabilities?.includes(STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY) ?? false)
+      )
+      return projectForeignSessionImports(
+        structured,
+        getStructuredAgentSessionHost()?.deps.journalDatabase ?? null
       )
     }
   }),

@@ -21,6 +21,15 @@ const COMMAND_SCOPED_FLAG_HELP: Record<string, Record<string, string>> = {
   'skills install': {
     agent: '--agent <names>        Comma-separated install targets; default is detected agents'
   },
+  'session import': {
+    harness: '--harness <codex|pi>   Which outside agent the logs came from',
+    path: '--path <file-or-dir>   Log file or directory to read; repeat for several',
+    session: '--session <id>        Only import this original session id; repeat for several',
+    workspace:
+      '--workspace <id>      Orca workspace that owns the Codex folder, so the chat can continue',
+    'workspace-kind':
+      '--workspace-kind <kind> git-worktree or folder; guessed from the workspace id when omitted'
+  },
   search: {
     query: '--query <text>         Search text; also accepted as the positional argument',
     scope: '--scope <corpus>       conversation (user and assistant turns) or all (default)',

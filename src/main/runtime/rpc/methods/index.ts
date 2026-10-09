@@ -48,6 +48,7 @@ import { STRUCTURED_AGENT_SESSION_METHODS } from './structured-agent-session'
 import { ARTIFACT_METHODS } from './artifacts'
 import { AGENT_HOOK_METHODS } from './agent-hooks'
 import { AGENT_LAUNCH_METHODS } from './agent-launch'
+import { FOREIGN_SESSION_IMPORT_METHODS } from './foreign-session-import'
 
 // Why: a flat manifest keeps registration order explicit and provides one
 // grep-point for "what methods does the RPC server expose?" — useful when
@@ -61,6 +62,7 @@ export const ALL_RPC_METHODS = [
   ...REPO_METHODS,
   ...WORKTREE_METHODS,
   ...AGENT_SESSION_METHODS,
+  ...FOREIGN_SESSION_IMPORT_METHODS,
   ...STRUCTURED_AGENT_SESSION_METHODS,
   ...AGENT_LAUNCH_METHODS,
   ...TERMINAL_METHODS,
