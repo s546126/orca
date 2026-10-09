@@ -36,9 +36,9 @@ import {
 } from './codex-subagent-executions'
 import { readRecord } from './codex-item-field-readers'
 import { readCodexTurnId } from './codex-structured-thread-facts'
-import { codexSubagentGroupBody } from './codex-subagent-group-body'
+import { subagentGroupJournalBody } from '../native-chat/agent-session-journal/journal-subagent-group-body'
 import { CodexSubagentLinkage } from './codex-subagent-linkage'
-export { codexSubagentGroupBody } from './codex-subagent-group-body'
+export { subagentGroupJournalBody as codexSubagentGroupBody } from '../native-chat/agent-session-journal/journal-subagent-group-body'
 export { codexSubagentGroupId, codexSubagentGroupIdentity } from './codex-subagent-roster-state'
 import {
   codexSubagentGroupId,
@@ -330,7 +330,7 @@ export class CodexSubagentRoster {
       group.entries.set(id, merged)
       return merged
     })
-    const body = codexSubagentGroupBody(group.groupId, agents)
+    const body = subagentGroupJournalBody(group.groupId, agents)
     const serialized = JSON.stringify(body)
     if (serialized === group.lastSerialized) {
       // Nothing changed — a duplicate delivery must not burn a revision.
@@ -339,14 +339,7 @@ export class CodexSubagentRoster {
     group.lastSerialized = serialized
     // Deliberately unstamped: a child's frame can trigger this write, but the
     // row is the PARENT's roster of its children.
-    // The append coalesces per group so a burst collapses to the latest roster.
-    // The publish must NOT reuse that key: the queue coalesces by key alone,
-    // with no op-kind check, so a publish carrying it would splice out the
-    // still-queued append and the row would never reach the journal.
-    const options = {
-      coalescingKey: `codex-subagents:${group.groupId}`,
-      turnScope: group.turnScope
-    }
+    const options = { turnScope: group.turnScope }
     const admission = this.deps.sink.tryAppendItem
       ? this.deps.sink.tryAppendItem(group.identity, body, options)
       : (this.deps.sink.appendItem(group.identity, body, options), ADMITTED)
