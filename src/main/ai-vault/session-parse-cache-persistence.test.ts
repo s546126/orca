@@ -168,7 +168,9 @@ const CACHED_SESSION_FIELDS = {
   subagentTranscriptCount: true,
   resumeCommand: true,
   subagent: true,
-  structuredSession: true
+  structuredSession: true,
+  // List-time stamp from the import catalog, not a field the transcript parser fills.
+  foreignImport: true
 } satisfies Record<keyof AiVaultSession, true>
 
 describe('cached session compatibility', () => {

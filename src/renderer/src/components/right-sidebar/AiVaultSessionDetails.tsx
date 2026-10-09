@@ -21,6 +21,7 @@ import { FirstPromptCard } from './ai-vault-first-prompt-card'
 import { sessionDetailConversationTurns, sessionPromptPreview } from './ai-vault-session-display'
 import { SessionSubagentsSection } from './AiVaultSessionSubagents'
 import { SessionUnsavedConversationNotice } from './AiVaultSessionUnsavedNotice'
+import { ForeignSessionImportNotice } from './ForeignSessionImportNotice'
 import {
   aiVaultWorktreeCompactPath,
   aiVaultWorktreeStatusLabel,
@@ -59,7 +60,8 @@ export function SessionInlineDetails({
 }): React.JSX.Element {
   // A zero-turn transcript would resume into an empty conversation, so the plain
   // resume affordances are withheld and a distinct "not saved" state is shown.
-  const hasResumableContent = isAiVaultSessionResumableContent(session)
+  const importedReadOnly = session.foreignImport?.resume.mode === 'read-only'
+  const hasResumableContent = isAiVaultSessionResumableContent(session) && !importedReadOnly
   const showResumeInWorktree = hasResumableContent && Boolean(resumeActions.worktree.worktreeId)
   const showResumeInNewTab =
     hasResumableContent &&
@@ -184,6 +186,7 @@ export function SessionInlineDetails({
       ) : null}
 
       <div className="space-y-3 p-3">
+        {session.foreignImport ? <ForeignSessionImportNotice session={session} /> : null}
         {hasResumableContent ? (
           <>
             <FirstPromptCard key={session.id} session={session} preview={promptPreview} />

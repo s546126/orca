@@ -234,13 +234,17 @@ function resolveAiVaultResumeTargetState(args: {
 // into an empty session. Copy stays available for blocked CLI sessions, while a
 // structured owner reopens natively and must never expose a legacy command.
 export function aiVaultSessionRowResumeGating(
-  session: Pick<AiVaultSession, 'messageCount' | 'previewMessages' | 'structuredSession'>,
+  session: Pick<
+    AiVaultSession,
+    'messageCount' | 'previewMessages' | 'structuredSession' | 'foreignImport'
+  >,
   state: Pick<AiVaultSessionResumeState, 'blocked'> | null
 ): { resumeDisabled: boolean; canCopyResumeCommand: boolean } {
   const hasResumableContent = isAiVaultSessionResumableContent(session)
+  const importedReadOnly = session.foreignImport?.resume.mode === 'read-only'
   return {
-    resumeDisabled: (state?.blocked ?? true) || !hasResumableContent,
-    canCopyResumeCommand: hasResumableContent && !session.structuredSession
+    resumeDisabled: (state?.blocked ?? true) || !hasResumableContent || importedReadOnly,
+    canCopyResumeCommand: hasResumableContent && !session.structuredSession && !importedReadOnly
   }
 }
 

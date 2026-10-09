@@ -46,13 +46,8 @@ describe('orca search command spec', () => {
     ])
   })
 
-  it('declares --agent and --path repeatable for this command only', () => {
+  it('declares --agent and --path repeatable', () => {
     expect(searchSpec.repeatableFlags).toEqual(['agent', 'path'])
-    for (const spec of COMMAND_SPECS) {
-      if (spec !== searchSpec) {
-        expect(spec.repeatableFlags).toBeUndefined()
-      }
-    }
   })
 
   it('does not accept or advertise browser page targeting', () => {

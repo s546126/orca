@@ -70,6 +70,7 @@ import { setAgentSessionTabVisibility, showAgentSessionTabs } from './agent-sess
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import { loadAgentSessionStoreRows } from './agent-session-record-rows'
 import { AgentSessionStoreTransactions } from './agent-session-store-transactions'
+import { commitImportedCodexRecord } from './agent-session-imported-codex-record'
 
 export const AGENT_SESSION_LEASE_TTL_MS = 30_000,
   AGENT_SESSION_LEASE_RENEW_INTERVAL_MS = 10_000
@@ -309,6 +310,11 @@ export class AgentSessionRecordStore {
 
   async retireClaimKey(keyId: string, now: number): Promise<void> {
     await this.transact((draft) => retireAgentSessionClaimKey(draft, keyId, now))
+  }
+
+  /** Records an imported Codex thread at rest. A thread another chat already holds is not taken. */
+  adoptImportedCodexRecord(record: AgentSessionRecord) {
+    return this.transact((draft) => commitImportedCodexRecord(draft, record))
   }
 
   private async mutate(

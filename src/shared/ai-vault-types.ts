@@ -1,5 +1,6 @@
 import type { TuiAgent } from './tui-agent'
 import type { ExecutionHostId, ExecutionHostScope } from './execution-host'
+import type { ForeignSessionImportStamp } from './foreign-session-import'
 
 export const AI_VAULT_AGENTS = [
   'claude',
@@ -136,6 +137,8 @@ export type AiVaultSession = {
     sessionId: string
     workspaceId: string
   }
+  /** Set after this log was copied into Orca's own session store. */
+  foreignImport?: ForeignSessionImportStamp
 }
 
 export type AiVaultSubagentListArgs = {
