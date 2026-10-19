@@ -16,8 +16,8 @@ import type {
   AgentSessionMutationResult
 } from '../../../shared/agent-session-wire'
 import { agentSessionLeaseAdmitsWriter } from '../../../shared/agent-session-lease-adjudication'
-import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type { AgentChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
 import {
   admitAttachOrRefuse,
   attachJournal,
@@ -29,10 +29,16 @@ import {
   type AttachedJournal
 } from './structured-agent-session-attach'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
-import { adapterSupportsCreateIfDeclared } from './structured-agent-session-provider-support'
+import {
+  adapterSupportsCreateIfDeclared,
+  hostCanStartRecord
+} from './structured-agent-session-provider-support'
+import type { StructuredAgentRegistry } from './structured-agent-registry'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import { resolveAgentSessionReplayOutcome } from './structured-agent-session-replay-outcome'
 import { readAgentSessionHydrationPage } from './agent-session-history-page'
+import { withPublishedWork } from './agent-session-published-work'
+import { heldStructuredAgentSessionCurrentWork } from './structured-agent-session-host-current-work'
 import { acquireOwner } from './structured-agent-session-acquisition'
 import {
   importAdoptedTranscript,
@@ -43,25 +49,45 @@ import {
   type AgentSessionCreatePhaseRecorder
 } from '../../observability/agent-session-instrumentation'
 import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
+import { readProviderHistoryWindow } from './structured-agent-session-provider-history-window'
+import type { StructuredAgentSessionStartupAttempt } from './structured-agent-session-startup-attempt-contract'
+import type { StructuredAgentSessionStartupProgress } from './structured-agent-session-startup-attempt'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
+import type { AgentModelCatalogLiveListing } from '../agent-model-catalog/agent-model-catalog-entry'
+
+export type AttachedOwner = 'acquired' | 'kept'
 
 export type AttachFlowInput = {
   store: AgentSessionRecordStore
   adapter: StructuredAgentSessionAdapter
+  /** What decides whether this build may start a record's agent at all (`agentDrivesSession`). */
+  agents: Pick<StructuredAgentRegistry, 'definition'>
   logger: StructuredAgentSessionLogger
   authority: AgentSessionAttachAuthority
   callerKey: string
   params: AgentSessionAttachParams
   now: () => number
   recordPhase?: AgentSessionCreatePhaseRecorder
-  /** Publishes the journal before clients can send against the new owner. `acquiredOwner` is
-   *  true only when this attach spawned the provider child, so a re-attach to a live one is not
-   *  mistaken for a cold acquire. */
+  /** Aborted when a close, or a Stop admitted now, must not wait behind this attach's acquire. */
+  acquireSignal?: AbortSignal
+  /** The attempt this attach's acquire runs under, minted before the adapter is called; what it
+   *  answers learns of the child's spawn and output. */
+  onStartupAttempt?: (
+    attempt: StructuredAgentSessionStartupAttempt
+  ) => StructuredAgentSessionStartupProgress
+  /** A completed acquisition's start listing. */
+  onStartCatalogListing?: (listing: AgentModelCatalogLiveListing) => void
+  /** The permission mode a start of this record launches with; absent or undefined for none. */
+  launchPermissionMode?: (
+    record: AgentSessionRecord
+  ) => Promise<AgentChatPermissionMode | undefined>
+  /** Publishes the journal before clients can send against the new owner. `owner` says whether
+   *  this attach spawned the child or kept a live one. */
   onAttached: (
     attached: AttachedJournal,
     acquisitionGeneration: string | null,
-    acquiredOwner: boolean,
+    owner: AttachedOwner,
     providerChildPhase: StructuredAgentSessionProviderChildPhase
   ) => Promise<void> | void
   /** Host-owned provider sink, bound to the journal inside `onAttached`. */
@@ -97,14 +123,21 @@ export async function performAttach(
   if (!admitted.ok) {
     return admitted
   }
+  // Every start of every agent passes here, so this is where a record this build cannot drive (its
+  // transport or account variable is not its agent's) is refused; reading it never is.
+  const supported = (record: AgentSessionRecord | null) =>
+    record === null
+      ? input.agents.definition(params.agent) !== null &&
+        adapterSupportsCreateIfDeclared(input.adapter, params.location, params.agent)
+      : hostCanStartRecord(input, record)
   // Ensure/recovery bypass create-intent, so recheck before reserving or spawning.
-  if (!adapterSupportsCreateIfDeclared(input.adapter, params.location, params.agent)) {
+  if (!supported(store.getRecord(sessionId))) {
     return unsupported()
   }
 
   let record: AgentSessionRecord
   let acquisitionGeneration: string | null = null
-  let acquiredOwner = false
+  let owner: AttachedOwner = 'kept'
   let providerChildPhase: StructuredAgentSessionProviderChildPhase = 'ready'
   let reservedRecord: AgentSessionRecord | null = null
   let unsupportedReservationSettlementAttempted = false
@@ -135,7 +168,7 @@ export async function performAttach(
     // every reservation at its effect boundary so it cannot bypass the support
     // gate, and release a pending reservation that support drift invalidated.
     reservedRecord = record
-    if (!adapterSupportsCreateIfDeclared(input.adapter, params.location, params.agent)) {
+    if (!supported(record)) {
       if (
         record.lease.claimStatus === 'reserved' &&
         record.lease.handoffStage === 'new-owner-proving' &&
@@ -176,7 +209,7 @@ export async function performAttach(
       record = acquired.record
       acquisitionGeneration = acquired.acquisitionGeneration
       providerChildPhase = acquired.providerChildPhase
-      acquiredOwner = true
+      owner = 'acquired'
     }
   } catch (error) {
     const wording = {
@@ -237,7 +270,7 @@ export async function performAttach(
       providerHistoryWindow
     })
     await importAdoptedTranscript(params, attached, record, preparedTranscript.items)
-    await input.onAttached(attached, acquisitionGeneration, acquiredOwner, providerChildPhase)
+    await input.onAttached(attached, acquisitionGeneration, owner, providerChildPhase)
     await store.recordOperationOutcome({
       callerKey: input.callerKey,
       operationId: params.envelope.clientOperationId,
@@ -257,32 +290,15 @@ export async function performAttach(
     value: {
       sessionId,
       fence,
-      page: readAgentSessionHydrationPage(attached.journal, fence),
+      // The lease this attach just took is the live generation.
+      page: withPublishedWork(
+        readAgentSessionHydrationPage(attached.journal, fence),
+        heldStructuredAgentSessionCurrentWork(store, sessionId, attached.journal, undefined)
+      ),
       unconfirmedClientMessageIds: attached.unconfirmedClientMessageIds,
       ...(tabId ? { tabId } : {})
     }
   }
-}
-
-async function readProviderHistoryWindow(input: {
-  adapter: StructuredAgentSessionAdapter
-  identity: AgentSessionJournalIdentity
-  accountHome: AgentSessionRecord['accountHome']
-  ownerAlreadyAdmitted: boolean
-}): Promise<ProviderHistoryWindow | null> {
-  const read = input.adapter.providerHistoryWindow
-  if (!read) {
-    return null
-  }
-  let history: ProviderHistoryWindow | null
-  try {
-    history = await read({ identity: input.identity, accountHome: input.accountHome })
-  } catch {
-    return null
-  }
-  // A lease that was already live may belong to a provider child this process
-  // has not indexed yet. Preserve the safe unknown outcome in that case.
-  return history && input.ownerAlreadyAdmitted ? { ...history, turnInFlight: true } : history
 }
 
 async function settleUnsupportedReservation(

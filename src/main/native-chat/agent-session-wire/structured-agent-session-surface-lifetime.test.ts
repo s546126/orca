@@ -41,7 +41,11 @@ import {
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import { NO_STRUCTURED_AGENTS } from './structured-agent-session-adapter-router-test-support'
+import { startsWhenPublished } from './structured-agent-session-instant-start.test-support'
 
+const REQUESTED_CLOSE_END = { type: 'ended', reason: 'closed', cause: 'requested-close' } as const
 const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
   'Codex stopped while this response was in progress. You can continue in this conversation.'
 
@@ -61,21 +65,25 @@ let hostErrors: unknown[]
 let statusSink: StructuredAgentSessionStatusSink
 let clock: number
 function adapter(): StructuredAgentSessionAdapter {
-  return {
-    acquire,
-    closeSession,
-    releaseAcquisition: vi.fn(async () => true),
-    dispatch,
-    cancelTurn: vi.fn(async () => ({ cancelled: false })),
-    answerPrompt: vi.fn(async () => undefined),
-    setOption: vi.fn(async () => undefined)
-  }
+  return startsWhenPublished(
+    {
+      acquire,
+      closeSession,
+      releaseAcquisition: vi.fn(async () => true),
+      dispatch,
+      cancelTurn: vi.fn(async () => ({ cancelled: false })),
+      answerPrompt: vi.fn(async () => undefined),
+      setOption: vi.fn(async () => undefined)
+    },
+    () => host
+  )
 }
 
 function openHost(
   probeOwner?: (record: AgentSessionRecord) => Promise<AgentSessionOwnerProbe>
 ): void {
   host = new StructuredAgentSessionHost({
+    agents: NO_STRUCTURED_AGENTS,
     logger: {
       warn: (_message, fields) => hostErrors.push(fields.error),
       error: (_message, fields) => hostErrors.push(fields.error)
@@ -217,11 +225,12 @@ beforeEach(async () => {
   acquire = vi.fn(async ({ fence, spawnToken, events }) => {
     sink = events ?? null
     return {
+      providerChildPhase: 'starting' as const,
       process: { hostId: 'local', pid: 4242, processStartTimeMs: 1_700_000_000_000, spawnToken },
       acquisitionGeneration: `generation-${++generation}`,
       link: {
         linkId: `link-${fence}`,
-        handle: { provider: 'codex' as const, threadId: THREAD },
+        handle: codexProviderHandle(THREAD),
         origin: store.getRecord(SESSION)?.providerHandleChain.length
           ? ('resumed' as const)
           : ('created' as const),
@@ -230,7 +239,19 @@ beforeEach(async () => {
       }
     }
   })
-  closeSession = vi.fn(async () => true)
+  // Like real adapters, the close reports its own end onto the chat's lane before it returns.
+  closeSession = vi.fn(async (sessionId: string) => {
+    const child = host['sessions'].get(sessionId)?.child
+    if (child?.generation) {
+      void host.handleAdapterEvent({
+        ...REQUESTED_CLOSE_END,
+        sessionId,
+        fence: child.fence,
+        acquisitionGeneration: child.generation
+      })
+    }
+    return true
+  })
   dispatch = vi.fn(async () => ({
     state: 'rejected' as const,
     ...agentSessionFailureWords(agentSessionFailureFact('providerRejected'), {
@@ -247,6 +268,45 @@ afterEach(async () => {
 })
 
 describe('a chat that closes', () => {
+  it('returns the receipt for a stopped child whose provider reports its own end', async () => {
+    await attach()
+    await host['tasks'].drainAttaches()
+    const reported = vi.spyOn(host, 'handleAdapterEvent')
+
+    expect(await host.sleepWorkspace('workspace-1')).toEqual({ stoppedSessionIds: [SESSION] })
+    expect(reported).toHaveBeenCalledWith(expect.objectContaining({ cause: 'requested-close' }))
+    // History stays saved while the conversation handle closes.
+    expect([store.getRecord(SESSION) !== null, host.hasSession(SESSION)]).toEqual([true, false])
+    expect(await host.sleepWorkspace('other-workspace')).toEqual({ stoppedSessionIds: [] })
+  })
+
+  it('omits an unproven workspace child from the stop receipt', async () => {
+    await attach()
+    closeSession.mockResolvedValueOnce(false)
+
+    expect(await host.sleepWorkspace('workspace-1')).toEqual({
+      stoppedSessionIds: [],
+      failures: [{ sessionId: SESSION, reason: 'stop-unverifiable' }]
+    })
+    expect(store.getRecord(SESSION)).not.toBeNull()
+  })
+
+  it('does not count a chat whose send was accepted after the stop as stopped', async () => {
+    await attach()
+    await vi.waitFor(() => expect(host['conversationDelivery'].loop.isRunning(SESSION)).toBe(false))
+    const close = host['lifetime'].closeForWorkspaceSleep
+    vi.spyOn(host['lifetime'], 'closeForWorkspaceSleep').mockImplementation(async (...args) => {
+      const result = await close(...args)
+      const body = hostTestMessage('newer send')
+      // The later work exists once the send is accepted, not merely once it is queued.
+      const sent = host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
+      expect(await sent).toMatchObject({ ok: true })
+      return result
+    })
+
+    expect(await host.sleepWorkspace('workspace-1')).toEqual({ stoppedSessionIds: [] })
+  })
+
   it('stops the provider child it started', async () => {
     await attach()
 
@@ -337,7 +397,7 @@ describe('a chat that closes', () => {
     expect(closeSession).toHaveBeenCalledOnce()
   })
 
-  it('settles and releases on the retry when a step after the child stopped aborts', async () => {
+  it('reports a failed drain after the child stopped, and still settles and releases', async () => {
     await attach()
     dispatch.mockResolvedValueOnce({ state: 'admitted' })
     const body = hostTestMessage('pending across an aborted eviction')
@@ -351,12 +411,9 @@ describe('a chat that closes', () => {
     failEvictionDrain()
     const settled = captureSettledSubmissions()
 
-    await expect(host.close(SESSION, 'evict')).rejects.toMatchObject({ step: 'drain-published' })
-    // The child is proven gone, but the wind-down it owes is not done: nothing settled, no release.
-    expect(session!.child).toBeNull()
-    expect(store.getRecord(SESSION)?.lease.claimStatus).not.toBe('released')
-
+    // The child is proven gone: the failed drain is bookkeeping, reported, and the rest still runs.
     await expect(host.close(SESSION, 'evict')).resolves.toBeUndefined()
+    expect(session!.child).toBeNull()
     expect(closeSession).toHaveBeenCalledOnce()
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'released',
@@ -367,7 +424,7 @@ describe('a chat that closes', () => {
 })
 
 describe('a session with a turn in flight', () => {
-  it('is not stopped while the turn runs, and is once it ends and idles', async () => {
+  it('keeps a running turn and sleeps only proven ended chats after idle eviction or restart', async () => {
     await attach()
     emitTurnLifecycle('running', 1)
     await host.flushStreamedEvents(SESSION)
@@ -383,6 +440,17 @@ describe('a session with a turn in flight', () => {
     clock += IDLE_MS
 
     await waitForEviction()
+    expect(await host.sleepWorkspace('workspace-1')).toEqual({ stoppedSessionIds: [SESSION] })
+    await abandonStructuredAgentSessionHost(host)
+    await reboot()
+    await host.restoreReadableSessions()
+    expect(await host.sleepWorkspace('workspace-1')).toEqual({ stoppedSessionIds: [SESSION] })
+    const getRecord = store.getRecord.bind(store)
+    const withoutDeath = (record: ReturnType<typeof getRecord>) =>
+      record && { ...record, lease: { ...record.lease, deathEvidence: null } }
+    vi.spyOn(store, 'getRecord').mockImplementation((id) => withoutDeath(getRecord(id)))
+    const receipt = await host.sleepWorkspace('workspace-1')
+    expect(receipt).toMatchObject({ failures: [{ reason: 'stop-unverifiable' }] })
   })
 
   // Codex settles an admitted send only on its echo, which may never come; the stop retires it.
@@ -544,6 +612,36 @@ describe('an unexpected provider exit', () => {
     replaceFailedSink()
   })
 
+  // TypeScript accepts the body; the persisted reader rejects a call id that is only spaces.
+  it('stops a provider whose output would not read back, and the next send starts a child', async () => {
+    await attach()
+
+    sink?.appendItem(
+      { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 1 },
+      {
+        kind: 'message',
+        role: 'assistant',
+        blocks: [{ type: 'tool-call', name: 'Bash', input: null, callId: ' ' }]
+      },
+      { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+    await vi.waitFor(() => {
+      expect(closeSession).toHaveBeenCalledWith(SESSION)
+      expect(store.getRecord(SESSION)?.lease).toMatchObject({ claimStatus: 'released' })
+    })
+    expect(hostErrors).toContainEqual(expect.objectContaining({ code: 'journal_row_rejected' }))
+    replaceFailedSink()
+
+    // Nothing restarts it on its own; the next send does, and the chat still loads.
+    expect(acquire).toHaveBeenCalledOnce()
+    await startAgent()
+    expect(acquire).toHaveBeenCalledTimes(2)
+    emitTurnLifecycle('running', 2)
+    await host.flushAllStreamedEvents()
+    await reboot()
+    expect((await host.history({ sessionId: SESSION, direction: 'tail' })).ok).toBe(true)
+  })
+
   it('settles a journal sink failure whose stop saw the provider root exit', async () => {
     await attach()
     // The lease follows the root, so its seen exit settles like a proven one.
@@ -645,7 +743,7 @@ describe('an unexpected provider exit', () => {
     unsubscribe()
   })
 
-  it('keeps a requested close out of recovery', async () => {
+  it('ends the record of a requested close as a close, never as a crash to recover from', async () => {
     await attach()
     const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
 
@@ -659,7 +757,9 @@ describe('an unexpected provider exit', () => {
     })
 
     expect(acquire).toHaveBeenCalledOnce()
-    expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('live')
+    expect(host['sessions'].get(SESSION)?.child).toBeNull()
+    expect(host['sessions'].get(SESSION)?.lastEndedChild).not.toHaveProperty('failure')
+    expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('released')
   })
 
   it('recovers after a failed lifecycle barrier and dispatches a distinct next message', async () => {
@@ -812,19 +912,16 @@ describe('an unexpected provider exit', () => {
   })
 })
 
-describe('a quit over an eviction that never got its retry', () => {
-  // Nothing calls `close` a second time when the user quits instead of reopening the chat, so the
-  // quit sweep is the last thing that can hand the lease back — and it only reaches the session if
-  // it still counts a stopped child's unfinished wind-down as owed.
-  it('finishes the wind-down the aborted close left behind', async () => {
+describe('a quit after a close whose drain failed', () => {
+  // The close's own wind-down hands the lease back past a failed drain, so quit finds nothing owed.
+  it('has nothing of that child left to finish', async () => {
     await attach()
-    await sendPending('pending across an abandoned eviction')
+    await sendPending('pending across a failed drain')
     const settled = captureSettledSubmissions()
     failEvictionDrain()
 
-    await expect(host.close(SESSION, 'evict')).rejects.toMatchObject({ step: 'drain-published' })
-    expect(host['sessions'].get(SESSION)?.child).toBeNull()
-    expect(store.getRecord(SESSION)?.lease.claimStatus).not.toBe('released')
+    await expect(host.close(SESSION, 'evict')).resolves.toBeUndefined()
+    expect(host['sessions'].get(SESSION)?.child ?? null).toBeNull()
 
     await host.flushAllStreamedEvents()
 

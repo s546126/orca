@@ -1,9 +1,11 @@
 import type { BrowserScreencastResult } from '../../shared/runtime-types'
-import type { RuntimeBrowserCommands, RuntimeBrowserCommandHost } from './orca-runtime-browser'
+import type { RuntimeBrowserCommandHost } from './browser/browser-command-contracts'
+import type { RuntimeBrowserCommands } from './browser/browser-commands'
 import { RuntimeEmulatorCommands } from './orca-runtime-emulator'
 import { RuntimeBrowserScreencastController } from './runtime-browser-screencast-controller'
 import { createRuntimeBrowserCommands } from './runtime-browser-commands-factory'
 import { RuntimeJiraCommands } from './runtime-jira-commands'
+import type { RpcBinarySender } from './rpc/rpc-binary-sender'
 
 type PublicMethods<T> = Pick<T, keyof T>
 type BrowserSurface = Omit<PublicMethods<RuntimeBrowserCommands>, 'browserScreencast'> & {
@@ -13,7 +15,7 @@ type BrowserSurface = Omit<PublicMethods<RuntimeBrowserCommands>, 'browserScreen
       connectionId?: string
       pairedDeviceId?: string
       clientKind?: 'mobile' | 'runtime'
-      sendBinary?: (bytes: Uint8Array<ArrayBufferLike>) => boolean | void
+      sendBinary?: RpcBinarySender
       signal?: AbortSignal
       emit: (result: BrowserScreencastResult) => void
     }
@@ -112,6 +114,32 @@ const BROWSER_COMMAND_NAMES = [
   'browserTabClose'
 ] as const satisfies readonly (keyof RuntimeBrowserCommands)[]
 
+const EMULATOR_COMMAND_NAMES = [
+  'emulatorTap',
+  'emulatorGesture',
+  'emulatorType',
+  'emulatorButton',
+  'emulatorRotate',
+  'emulatorExec',
+  'emulatorAttach',
+  'emulatorList',
+  'emulatorUnregisterActive',
+  'emulatorListSimulators',
+  'emulatorAvailability',
+  'emulatorListDevices',
+  'emulatorAdbConnect',
+  'emulatorAdbDisconnect',
+  'emulatorAdbConnectionStatus',
+  'emulatorInstall',
+  'emulatorLaunch',
+  'emulatorPermissions',
+  'emulatorAx',
+  'emulatorLogcat',
+  'emulatorKill',
+  'emulatorShutdown',
+  'emulatorExecRaw'
+] as const satisfies readonly (keyof RuntimeEmulatorCommands)[]
+
 function bindPrefixedMethods<T extends object>(
   instance: T,
   prefix: string
@@ -135,7 +163,7 @@ function bindNamedMethods<T extends object>(
 }
 
 export class RuntimeEdgeCommandController {
-  private readonly jira = new RuntimeJiraCommands()
+  private readonly jira: RuntimeJiraCommands
   private readonly browser: RuntimeBrowserCommands
   private readonly screencasts: RuntimeBrowserScreencastController
   private readonly emulator: RuntimeEmulatorCommands
@@ -143,20 +171,23 @@ export class RuntimeEdgeCommandController {
 
   constructor(args: {
     browserHost: RuntimeBrowserCommandHost
+    jiraHost: ConstructorParameters<typeof RuntimeJiraCommands>[0]
     screencast: Omit<ScreencastDependencies, 'getCommands'>
     emulatorHost: EmulatorHost
     getBrowserCommands?: () => RuntimeBrowserCommands
   }) {
+    this.jira = new RuntimeJiraCommands(args.jiraHost)
     this.browser = createRuntimeBrowserCommands(args.browserHost)
     this.screencasts = new RuntimeBrowserScreencastController({
       ...args.screencast,
       getCommands: () => args.getBrowserCommands?.() ?? this.browser
     })
     this.emulator = new RuntimeEmulatorCommands(args.emulatorHost)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: bind helpers return Partial maps; the name lists above are the complete public command surface.
     this.surface = {
       ...bindPrefixedMethods(this.jira, 'jira'),
       ...bindNamedMethods(this.browser, BROWSER_COMMAND_NAMES),
-      ...bindPrefixedMethods(this.emulator, 'emulator'),
+      ...bindNamedMethods(this.emulator, EMULATOR_COMMAND_NAMES),
       browserScreencast: (params, options) => this.screencasts.start(params, options)
     } as RuntimeEdgeCommandSurface
   }

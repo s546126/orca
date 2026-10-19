@@ -26,6 +26,7 @@ import {
   neverThrowingStructuredAgentSessionLogger
 } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 import { recordingStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
+import { StructuredAgentSessionDeliveryOrder } from '../native-chat/agent-session-wire/structured-agent-session-delivery-order'
 import { _resetTracerForTests, setActiveSink } from '../observability/tracer'
 import { createStructuredAgentSessionDispatchFollowUps } from './structured-agent-session-dispatch-followups'
 import { createStructuredAgentSessionLifecycleDelivery } from './structured-agent-session-lifecycle-delivery'
@@ -110,8 +111,7 @@ describe('failures the desktop host used to drop', () => {
       sessionId: SESSION,
       fence: 1,
       acquisitionGeneration: 'generation-1',
-      reportedOptions: { model: 'gpt-5' },
-      restoreSkippedOptions: []
+      reportedOptions: { model: 'gpt-5' }
     })
     lifecycle.deliver({
       type: 'ended',
@@ -132,9 +132,8 @@ describe('failures the desktop host used to drop', () => {
   it('logs provider events the chat journal would not take', async () => {
     const log = recordingStructuredAgentSessionLogger()
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: minting and binding a sink reads no other host dependency.
-    const runtime = new StructuredAgentSessionHostRuntimeState({
-      logger: log.logger
-    } as unknown as StructuredAgentSessionHostDeps)
+    const deps = { logger: log.logger } as unknown as StructuredAgentSessionHostDeps
+    const runtime = new StructuredAgentSessionHostRuntimeState(deps, new Map())
     const sink = runtime.eventSinkFor(SESSION)
     const error = new Error('journal append failed')
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the sink calls only appendItem before it fails.
@@ -173,6 +172,8 @@ describe('host collaborators log with their own scope', () => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a step that rejects at its first serialize reads only these members.
       {
         serialize: rejectingSerialize,
+        sessions: new Map(),
+        deliveryOrder: new StructuredAgentSessionDeliveryOrder(),
         trackStart: <T>(start: Promise<T>) => start,
         logger: log.logger
       } as unknown as StructuredAgentSessionDeliveryLoopDeps
@@ -209,7 +210,7 @@ describe('host collaborators log with their own scope', () => {
 
   it('the queued-message drain logs a step that fails', async () => {
     const log = recordingStructuredAgentSessionLogger()
-    const journal = { isReadOnly: false, queuedMessages: { settlementOwed: () => true } }
+    const journal = { queuedMessages: { settlementOwed: () => true } }
     const drain = new StructuredAgentSessionQueuedMessageDrain(
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a schedule past the owed-settlement check reads only these members.
       {
@@ -302,13 +303,14 @@ describe('installing the runtime', () => {
 
     await expect(
       ensureStructuredAgentSessionHost(
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: deliberately missing the logger, as a `@ts-nocheck` caller could drop it.
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: deliberately omits the logger to verify installation rejects it.
         {
           stateDirectory: root,
           hostId: 'local',
           claimKeyId: 'key-1',
           resolveWorkspacePath: async () => root,
-          resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true })
+          resolveLaunchArgs: () => [],
+          resolveClaudeAuthPolicy: () => ({ account: 'managed' })
         } as unknown as Parameters<typeof ensureStructuredAgentSessionHost>[0]
       )
     ).rejects.toThrow(STRUCTURED_AGENT_SESSION_LOGGER_REQUIRED)
@@ -324,7 +326,8 @@ describe('installing the runtime', () => {
       claimKeyId: 'key-1',
       resolveWorkspacePath: async () => root,
       resolveEnvironment: async () => ({}),
-      resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true }),
+      resolveLaunchArgs: () => [],
+      resolveClaudeAuthPolicy: () => ({ account: 'managed' }),
       logger: {
         warn: () => {
           throw new Error('logger broke')
