@@ -21,9 +21,9 @@ vi.mock('../../../../shared/resolved-worktree-lineage', async (importOriginal) =
   }
 })
 
-import { computeVisibleWorktreeIds } from './visible-worktrees'
-import type { computeVisibleWorktrees } from './visible-worktrees'
-import { getCyclicProjectedWorktreeLineageIds } from './worktree-lineage-projection'
+import { computeVisibleWorktreeIds } from './compute-visible-worktrees'
+import type { computeVisibleWorktrees } from './compute-visible-worktrees'
+import { getCyclicProjectedWorktreeLineageIds } from '../../../../shared/sidebar-list/worktree-lineage-projection'
 import { getLineageAncestorIndex, getSortedWorktreeRankIndex } from './visible-worktree-indexes'
 
 type IdentifiedWorktree = Worktree & { instanceId: string }
@@ -96,6 +96,7 @@ function visibleOptions(
     hideDetachedHeadWorkspaces: false,
     hideWorkspacesFromOtherDevices: false,
     pairedDeviceIdsByEnvironment: new Map<string, string>(),
+    filterAgentIds: null,
     repoMap,
     workspaceHostScope: 'all',
     defaultHostId: LOCAL_EXECUTION_HOST_ID,

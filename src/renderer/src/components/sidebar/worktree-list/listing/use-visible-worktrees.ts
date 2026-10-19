@@ -6,18 +6,20 @@ import type { Repo } from '../../../../../../shared/repo-types'
 import type { WorktreeLineage } from '../../../../../../shared/worktree/lineage-types'
 import type { ExecutionHostId } from '../../../../../../shared/execution-host'
 import { computeVisibleWorktrees } from '../../visible-worktrees'
+import { collectAgentTypesByWorktree } from '../../workspace-agent-filter-evidence'
 import {
   EMPTY_PAIRED_DEVICE_IDS_BY_ENVIRONMENT,
   getPairedDeviceIdsByEnvironment
-} from '../../workspace-creator-visibility'
+} from '../../../../../../shared/workspace-creator-visibility'
 import {
   getVisibleWorktreeBrowserActivityTabs,
   getVisibleWorktreeTerminalActivityTabs,
   getStructuredChatWorktreeIds
 } from '../../visible-worktree-activity-inputs'
-import type { SortBy } from '../../smart-sort'
+import type { SortBy } from '../../../../../../shared/sidebar-list/smart-sort'
 import type { SidebarWorktreeFilters } from './use-filters'
 import { useReusedArrayIdentity } from './use-reused-array-identity'
+import { useSleepingSweepRetention } from './use-sleeping-sweep-retention'
 
 const EMPTY_WORKTREE_ID_SET: ReadonlySet<string> = new Set()
 
@@ -44,6 +46,7 @@ export function useVisibleSidebarWorktrees(args: {
     hideDetachedHeadWorkspaces,
     hideWorkspacesFromOtherDevices,
     alwaysShowDefaultBranchWorkspace,
+    filterAgentIds,
     visibleWorkspaceHostIds,
     workspaceHostScope
   } = filterState
@@ -64,8 +67,49 @@ export function useVisibleSidebarWorktrees(args: {
 
   // Read tabsByWorktree when needed for filtering or sorting
   const needsActivityMaps = !showSleepingWorkspaces || sortBy === 'smart'
-  const tabsByWorktree = useAppStore((s) =>
-    needsActivityMaps ? getVisibleWorktreeTerminalActivityTabs(s.tabsByWorktree) : null
+  const needsAgentFilterMaps = filterAgentIds != null
+  const tabsByWorktree = useAppStore((s) => {
+    if (needsAgentFilterMaps) {
+      // Why: agent matching reads launchAgent and title, which the sleeping
+      // activity projection strips down to tab ids.
+      return s.tabsByWorktree
+    }
+    return needsActivityMaps ? getVisibleWorktreeTerminalActivityTabs(s.tabsByWorktree) : null
+  })
+  const agentFilterStatusByPaneKey = useAppStore((s) =>
+    needsAgentFilterMaps ? s.agentStatusByPaneKey : null
+  )
+  const agentFilterRetainedByPaneKey = useAppStore((s) =>
+    needsAgentFilterMaps ? s.retainedAgentsByPaneKey : null
+  )
+  const agentFilterSleepingByPaneKey = useAppStore((s) =>
+    needsAgentFilterMaps ? s.sleepingAgentSessionsByPaneKey : null
+  )
+  const agentTypesByWorktree = useMemo(
+    () =>
+      needsAgentFilterMaps
+        ? collectAgentTypesByWorktree({
+            agentStatusByPaneKey: agentFilterStatusByPaneKey,
+            retainedAgentsByPaneKey: agentFilterRetainedByPaneKey,
+            sleepingAgentSessionsByPaneKey: agentFilterSleepingByPaneKey,
+            tabsByWorktree,
+            worktrees: Object.values(worktreesByRepo).flat()
+          })
+        : null,
+    [
+      needsAgentFilterMaps,
+      agentFilterStatusByPaneKey,
+      agentFilterRetainedByPaneKey,
+      agentFilterSleepingByPaneKey,
+      tabsByWorktree,
+      worktreesByRepo
+    ]
+  )
+  const runtimePaneTitlesByTabId = useAppStore((s) =>
+    needsAgentFilterMaps ? s.runtimePaneTitlesByTabId : null
+  )
+  const terminalLayoutsByTabId = useAppStore((s) =>
+    needsAgentFilterMaps ? s.terminalLayoutsByTabId : null
   )
   const ptyIdsByTabId = useAppStore((s) => (needsActivityMaps ? s.ptyIdsByTabId : null))
   const browserTabsByWorktree = useAppStore((s) =>
@@ -75,10 +119,30 @@ export function useVisibleSidebarWorktrees(args: {
     getStructuredChatWorktreeIds(showSleepingWorkspaces, s.unifiedTabsByWorktree)
   )
 
-  const recomputedVisibleWorktrees = useMemo(() => {
+  // Why snapshot on agentStatusEpoch: update membership immediately without repainting on every hook ping.
+  const worktreeIdsWithLiveAgent = useMemo(() => {
     // Keyed on the epoch, not `agentStatusNow`: two bumps in one millisecond
     // share a sample, so the timestamp alone would not re-key this memo.
     void agentStatusEpoch
+    return showSleepingWorkspaces
+      ? EMPTY_WORKTREE_ID_SET
+      : getWorktreeIdsWithLiveAgent(
+          useAppStore.getState().agentStatusByPaneKey,
+          tabsByWorktree,
+          agentStatusNow
+        )
+  }, [agentStatusEpoch, agentStatusNow, showSleepingWorkspaces, tabsByWorktree])
+  const sleepingSweepExemptWorktreeIds = useSleepingSweepRetention({
+    enabled: !showSleepingWorkspaces,
+    worktreesByRepo,
+    tabsByWorktree,
+    ptyIdsByTabId,
+    browserTabsByWorktree,
+    worktreeIdsWithLiveAgent,
+    worktreeIdsWithStructuredChat
+  })
+
+  const recomputedVisibleWorktrees = useMemo(() => {
     return computeVisibleWorktrees(worktreesByRepo, sortedIds, {
       filterRepoIds,
       showSleepingWorkspaces,
@@ -86,14 +150,8 @@ export function useVisibleSidebarWorktrees(args: {
       ptyIdsByTabId,
       browserTabsByWorktree,
       worktreeIdsWithStructuredChat,
-      // Why snapshot on agentStatusEpoch: update membership immediately without repainting on every hook ping.
-      worktreeIdsWithLiveAgent: showSleepingWorkspaces
-        ? EMPTY_WORKTREE_ID_SET
-        : getWorktreeIdsWithLiveAgent(
-            useAppStore.getState().agentStatusByPaneKey,
-            tabsByWorktree,
-            agentStatusNow
-          ),
+      worktreeIdsWithLiveAgent,
+      sleepingSweepExemptWorktreeIds,
       hideDefaultBranchWorkspace,
       hideAutomationGeneratedWorkspaces,
       hideCliCreatedWorkspaces,
@@ -101,19 +159,24 @@ export function useVisibleSidebarWorktrees(args: {
       hideWorkspacesFromOtherDevices,
       pairedDeviceIdsByEnvironment,
       alwaysShowDefaultBranchWorkspace,
+      filterAgentIds: filterAgentIds ?? null,
+      agentTypesByWorktree,
+      runtimePaneTitlesByTabId,
+      terminalLayoutsByTabId,
       repoMap,
       workspaceHostScope,
       visibleWorkspaceHostIds,
       defaultHostId,
       worktreeLineageById,
+      preserveLineageParentOrder: sortBy === 'manual',
       forcedVisibleWorktreeIds: args.agentSendTargetWorktreeId
         ? [args.agentSendTargetWorktreeId]
         : undefined
     })
   }, [
     args.agentSendTargetWorktreeId,
-    agentStatusEpoch,
-    agentStatusNow,
+    worktreeIdsWithLiveAgent,
+    sleepingSweepExemptWorktreeIds,
     filterRepoIds,
     showSleepingWorkspaces,
     hideDefaultBranchWorkspace,
@@ -122,6 +185,10 @@ export function useVisibleSidebarWorktrees(args: {
     hideDetachedHeadWorkspaces,
     hideWorkspacesFromOtherDevices,
     alwaysShowDefaultBranchWorkspace,
+    filterAgentIds,
+    agentTypesByWorktree,
+    runtimePaneTitlesByTabId,
+    terminalLayoutsByTabId,
     workspaceHostScope,
     visibleWorkspaceHostIds,
     defaultHostId,
@@ -130,6 +197,7 @@ export function useVisibleSidebarWorktrees(args: {
     ptyIdsByTabId,
     browserTabsByWorktree,
     sortedIds,
+    sortBy,
     worktreeLineageById,
     worktreesByRepo,
     pairedDeviceIdsByEnvironment,

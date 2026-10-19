@@ -8,6 +8,8 @@ import { getWorktreeHostIdentity } from '../../../../../../shared/worktree/host-
 import { makeRepo, makeWorktree } from '../../../worktree-jump-palette-test-fixtures'
 import { useVisibleSidebarWorktrees } from './use-visible-worktrees'
 import type * as visibleWorktreesModule from '../../visible-worktrees'
+import { computeVisibleWorktreeIds, computeVisibleWorktrees } from '../../compute-visible-worktrees'
+import { sidebarHasActiveFilters } from '../../sidebar-filter-actions'
 
 const computeVisibleWorktreesCalls = { count: 0 }
 vi.mock('../../visible-worktrees', async (importOriginal) => {
@@ -35,6 +37,13 @@ describe('useVisibleSidebarWorktrees', () => {
     useAppStore.setState(initialState, true)
   })
 
+  it('keeps the pure filtering functions available through the sidebar module', async () => {
+    const facade = await vi.importActual<typeof visibleWorktreesModule>('../../visible-worktrees')
+    expect(facade.computeVisibleWorktreeIds).toBe(computeVisibleWorktreeIds)
+    expect(facade.computeVisibleWorktrees).toBe(computeVisibleWorktrees)
+    expect(facade.sidebarHasActiveFilters).toBe(sidebarHasActiveFilters)
+  })
+
   it('projects both host rows through the primary sidebar pipeline', () => {
     const local = makeWorktree('shared', 'Local workspace', { hostId: 'local' })
     const ssh = makeWorktree('shared', 'SSH workspace', { hostId: 'ssh:box' })
@@ -52,6 +61,7 @@ describe('useVisibleSidebarWorktrees', () => {
           hideDetachedHeadWorkspaces: false,
           hideWorkspacesFromOtherDevices: false,
           alwaysShowDefaultBranchWorkspace: true,
+          filterAgentIds: null,
           visibleWorkspaceHostIds: null,
           workspaceHostScope: 'all'
         },
@@ -87,6 +97,7 @@ describe('useVisibleSidebarWorktrees', () => {
           hideDetachedHeadWorkspaces: false,
           hideWorkspacesFromOtherDevices: false,
           alwaysShowDefaultBranchWorkspace: true,
+          filterAgentIds: null,
           visibleWorkspaceHostIds: ['ssh:box'],
           workspaceHostScope: 'all'
         },
@@ -108,7 +119,7 @@ describe('useVisibleSidebarWorktrees', () => {
     const worktree = makeWorktree('alpha', 'Alpha workspace', { hostId: 'local' })
     useAppStore.setState({ worktreesByRepo: { [repo.id]: [worktree] } })
 
-    const baseArgs = {
+    const baseArgs: Parameters<typeof useVisibleSidebarWorktrees>[0] = {
       filterState: {
         showSleepingWorkspaces: true,
         filterRepoIds: [],
@@ -118,6 +129,7 @@ describe('useVisibleSidebarWorktrees', () => {
         hideDetachedHeadWorkspaces: false,
         hideWorkspacesFromOtherDevices: false,
         alwaysShowDefaultBranchWorkspace: true,
+        filterAgentIds: null,
         visibleWorkspaceHostIds: null,
         workspaceHostScope: 'all'
       },
@@ -127,7 +139,7 @@ describe('useVisibleSidebarWorktrees', () => {
       worktreeLineageById: {},
       defaultHostId: LOCAL_EXECUTION_HOST_ID,
       agentSendTargetWorktreeId: null
-    } as Parameters<typeof useVisibleSidebarWorktrees>[0]
+    }
     // Why the extra `settings`: it is the pre-fix memo key. Passing it keeps
     // this test red against the old hook, which re-keyed the whole scan on the
     // settings object identity.
@@ -177,6 +189,7 @@ describe('useVisibleSidebarWorktrees', () => {
           hideDetachedHeadWorkspaces: false,
           hideWorkspacesFromOtherDevices: false,
           alwaysShowDefaultBranchWorkspace: true,
+          filterAgentIds: null,
           visibleWorkspaceHostIds: null,
           workspaceHostScope: 'all'
         },

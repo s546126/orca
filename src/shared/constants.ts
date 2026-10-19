@@ -3,8 +3,8 @@ import type { RepoHookSettings } from './orca-yaml-hook-types'
 import type { PersistedState } from './persisted-state-types'
 import type { PersistedUIState } from './persisted-ui-state-types'
 import type { AgentActivityDisplayMode } from './ui-chrome-types'
-import type { WorkspaceSessionState } from './workspace-session-state-types'
 import { EMPTY_CODEX_RESET_CREDIT_ATTEMPT_LEDGER } from './codex-reset-credit-attempt-ledger'
+import { getDefaultWorkspaceSession } from './default-workspace-session'
 import { DEFAULT_STATUS_BAR_ITEMS } from './status-bar-defaults'
 import type { VoiceSettings } from './speech-types'
 import { cloneDefaultWorkspaceStatuses } from './workspace-statuses'
@@ -23,6 +23,7 @@ import {
   getDefaultTerminalRightClickToPaste
 } from './terminal-platform-defaults'
 
+export { getDefaultWorkspaceSession } from './default-workspace-session'
 export { DEFAULT_STATUS_BAR_ITEMS } from './status-bar-defaults'
 export {
   COMPACT_WORKTREE_CARD_PROPERTIES,
@@ -175,7 +176,6 @@ export function getDefaultPersistedState(homedir: string): PersistedState {
     deletedSshConfigAliases: [],
     sshRemotePtyLeases: [],
     sshPtyConsumerRecoveries: [],
-    claudeLivePtySessionIds: [],
     migrationUnsupportedPtyEntries: [],
     legacyPaneKeyAliasEntries: [],
     automations: [],
@@ -216,12 +216,16 @@ export function getDefaultUIState(): PersistedUIState {
     hideDetachedHeadWorkspaces: false,
     hideWorkspacesFromOtherDevices: false,
     alwaysShowDefaultBranchWorkspace: true,
+    filterAgentIds: null,
     _explorerDisplayRootMigrated: true,
     explorerDisplayRootByWorktree: {},
     showDotfilesByWorktree: {},
     filterRepoIds: [],
     agentsVisibleHostIds: null,
     agentsFilterRepoIds: [],
+    agentsHideWorkspacesFromOtherDevices: false,
+    agentsHideAutomationGeneratedWorkspaces: false,
+    agentsHideCliCreatedWorkspaces: false,
     agentsShowChildAgents: false,
     agentsCompactMode: true,
     agentsShowSearch: true,
@@ -266,29 +270,11 @@ export function getDefaultUIState(): PersistedUIState {
     projectOrderManualDefaultNoticeDismissed: true,
     // Why: only upgraded profiles saw the old default, so only they get the one-time change notice.
     usagePercentageDisplayChangeNoticeDismissed: true,
+    statusBarCompactChangeNoticeDismissed: true,
     workspaceCleanup: { dismissals: {} },
     featureTipsSeenIds: [],
     featureInteractions: {},
     contextualToursSeenIds: [],
     browserDefaultZoomLevel: DEFAULT_BROWSER_PAGE_ZOOM_LEVEL
-  }
-}
-
-export function getDefaultWorkspaceSession(): WorkspaceSessionState {
-  return {
-    activeRepoId: null,
-    activeWorktreeId: null,
-    activeTabId: null,
-    tabsByWorktree: {},
-    terminalLayoutsByTabId: {},
-    openFilesByWorktree: {},
-    markdownFrontmatterVisible: {},
-    browserTabsByWorktree: {},
-    browserPagesByWorkspace: {},
-    activeBrowserTabIdByWorktree: {},
-    activeFileIdByWorktree: {},
-    activeTabTypeByWorktree: {},
-    browserUrlHistory: [],
-    defaultTerminalTabsAppliedByWorktreeId: {}
   }
 }

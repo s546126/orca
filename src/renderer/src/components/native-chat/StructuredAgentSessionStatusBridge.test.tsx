@@ -7,7 +7,8 @@ import type {
   AgentSessionStatusSummary
 } from '../../../../shared/agent-session-wire'
 import { buildSubagentChildRows } from '../sidebar/worktree-subagent-child-rows'
-import { resolveAttention } from '../sidebar/smart-attention'
+import { hasSleepableWorkspaceActivity } from '../sidebar/workspace-lineage-menu-actions'
+import { resolveAttention } from '../../../../shared/sidebar-list/smart-attention'
 import { isExplicitAgentStatusFresh } from '@/lib/pane-agent-evidence'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import type { Tab } from '../../../../shared/tab-types'
@@ -46,8 +47,8 @@ vi.mock('@/store', async () => {
 })
 
 vi.mock('@/lib/worktree-runtime-owner', () => ({
-  getRuntimeEnvironmentIdForWorktree: (state: { testRuntimeOwner?: string | null }) =>
-    state.testRuntimeOwner ?? null
+  getExecutionHostIdForWorktree: (state: { testRuntimeOwner?: string | null }) =>
+    state.testRuntimeOwner ? `runtime:${state.testRuntimeOwner}` : 'local'
 }))
 
 vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({
@@ -64,9 +65,11 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 import {
   getStructuredAgentSessionTabs,
   StructuredAgentSessionStatusBridge,
-  useStructuredAgentSessionHostExecution
+  useStructuredAgentSessionHostExecutionPhase,
+  useStructuredAgentSessionHostStopping
 } from './StructuredAgentSessionStatusBridge'
 import { resetStructuredAgentSessionStatusFeedsForTests } from '@/runtime/structured-agent-session-status-feed'
+import { useAppStore } from '@/store'
 
 const structuredTab = {
   id: 'structured-tab-1',
@@ -648,6 +651,33 @@ describe('StructuredAgentSessionStatusBridge', () => {
     expect(mocks.setAgentStatus).toHaveBeenCalledTimes(calls)
   })
 
+  it('keeps the host-fed chat row through Sleep and stops offering Sleep once the host lets go', async () => {
+    const state = (): AppState => useAppStore.getState()
+    const sleepable = (): boolean => hasSleepableWorkspaceActivity('wt-1', state())
+    render(<StructuredAgentSessionStatusBridge />)
+    await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
+    act(() => feed().emit({ type: 'status', session: summary({ status: 'idle', updatedAt: 2 }) }))
+    const paneKey = statuses()[0].paneKey
+    mocks.store?.setState({ acknowledgedAgentsByPaneKey: { [paneKey]: 3 } })
+    expect(sleepable()).toBe(true)
+
+    // Sleep's terminal teardown drops the worktree's rows before the host's revoke reaches the feed.
+    act(() => state().dropAgentStatusByWorktree('wt-1', { shutdownReason: 'manual-sleep' }))
+    expect(state().agentStatusByPaneKey[paneKey]).toEqual(
+      expect.objectContaining({ state: 'done', structuredHostOwned: true })
+    )
+    act(() =>
+      feed().emit({
+        type: 'status',
+        session: summary({ status: 'idle', updatedAt: 2, hostExecutionOwned: undefined })
+      })
+    )
+    expect(statuses()).toEqual([expect.objectContaining({ state: 'done' })])
+    expect(statuses()[0].structuredHostOwned).toBeUndefined()
+    expect(state().acknowledgedAgentsByPaneKey).toEqual({ [paneKey]: 3 })
+    expect(sleepable()).toBe(false)
+  })
+
   it('drops the status and the feed when the last structured tab closes', async () => {
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
@@ -685,10 +715,39 @@ describe('StructuredAgentSessionStatusBridge', () => {
     expect(feed().target).toEqual({ kind: 'environment', environmentId: 'env-1' })
   })
 
-  it('does not project an unknown provider as Codex', async () => {
+  // Two hosts can publish the same workspace id; the tab records which one holds this chat.
+  it("reads a chat's status from the host recorded on its tab, not its workspace", async () => {
+    mocks.store?.setState({
+      testRuntimeOwner: null,
+      unifiedTabsByWorktree: {
+        'wt-1': [{ ...structuredTab, executionHostId: 'runtime:server-1' }]
+      }
+    })
+    render(<StructuredAgentSessionStatusBridge />)
+    await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
+
+    expect(feed().target).toEqual({ kind: 'environment', environmentId: 'server-1' })
+  })
+
+  // Hosts publish chat tabs only of agents they registered; each projects as itself.
+  it("projects a host-registered agent's status as that agent, never as Codex", async () => {
     mocks.store?.setState({
       unifiedTabsByWorktree: {
-        'wt-1': [{ ...structuredTab, agentSessionAgent: 'gemini' }]
+        'wt-1': [{ ...structuredTab, agentSessionAgent: 'grok' }]
+      }
+    })
+    render(<StructuredAgentSessionStatusBridge />)
+    await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
+
+    act(() => feed().emit({ type: 'snapshot', sessions: [summary()] }))
+
+    expect(statuses()).toEqual([expect.objectContaining({ agentType: 'grok' })])
+  })
+
+  it('does not project a tab naming no agent', async () => {
+    mocks.store?.setState({
+      unifiedTabsByWorktree: {
+        'wt-1': [{ ...structuredTab, agentSessionAgent: undefined }]
       }
     })
     render(<StructuredAgentSessionStatusBridge />)
@@ -698,102 +757,61 @@ describe('StructuredAgentSessionStatusBridge', () => {
     expect(mocks.setAgentStatus).not.toHaveBeenCalled()
   })
 
-  it('re-renders a startup reader only when its phase or child changes', async () => {
-    const executions: ReturnType<typeof useStructuredAgentSessionHostExecution>[] = []
+  it('re-renders a startup reader only when its phase changes', async () => {
+    const phases: ReturnType<typeof useStructuredAgentSessionHostExecutionPhase>[] = []
     function PhaseProbe(): null {
-      executions.push(useStructuredAgentSessionHostExecution('session-1', { kind: 'local' }))
+      phases.push(useStructuredAgentSessionHostExecutionPhase('session-1', { kind: 'local' }))
       return null
     }
     render(<PhaseProbe />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
 
+    act(() => feed().emit({ type: 'status', session: summary({ hostExecutionPhase: 'starting' }) }))
+    const rendersWhileStarting = phases.length
     act(() =>
       feed().emit({
         type: 'status',
-        session: summary({
-          hostExecutionPhase: 'starting',
-          hostExecutionChild: { generation: 'child-1', fence: 1 }
-        })
+        session: summary({ hostExecutionPhase: 'starting', latestPrompt: 'next', updatedAt: 2 })
       })
     )
-    const rendersWhileStarting = executions.length
+    expect(phases).toHaveLength(rendersWhileStarting)
+    // Older hosts (v1.4.218 on) also send which provider child is starting; nothing reads it.
+    const olderHostChild = { hostExecutionChild: { generation: 'child-1', fence: 2 } }
     act(() =>
       feed().emit({
         type: 'status',
-        session: summary({
-          hostExecutionPhase: 'starting',
-          hostExecutionChild: { generation: 'child-1', fence: 1 },
-          latestPrompt: 'next',
-          updatedAt: 2
-        })
+        session: summary({ hostExecutionPhase: 'starting', ...olderHostChild })
       })
     )
-    expect(executions).toHaveLength(rendersWhileStarting)
-    act(() =>
-      feed().emit({
-        type: 'status',
-        session: summary({
-          hostExecutionPhase: 'starting',
-          hostExecutionChild: { generation: 'child-1', fence: 2 }
-        })
-      })
-    )
-    expect(executions).toHaveLength(rendersWhileStarting)
+    expect(phases).toHaveLength(rendersWhileStarting)
 
-    act(() =>
-      feed().emit({
-        type: 'status',
-        session: summary({
-          hostExecutionPhase: 'ready',
-          hostExecutionChild: { generation: 'child-1', fence: 1 }
-        })
-      })
-    )
-    expect(executions.at(-1)?.phase).toBe('ready')
-    act(() =>
-      feed().emit({
-        type: 'status',
-        session: summary({
-          hostExecutionPhase: 'starting',
-          hostExecutionChild: { generation: 'child-2', fence: 2 }
-        })
-      })
-    )
-    expect(executions.at(-1)).toEqual({
-      phase: 'starting',
-      childKey: 'child-2'
-    })
-    expect(executions.some(({ phase }) => phase === 'starting')).toBe(true)
+    act(() => feed().emit({ type: 'status', session: summary({ hostExecutionPhase: 'ready' }) }))
+    expect(phases.at(-1)).toBe('ready')
+    act(() => feed().emit({ type: 'status', session: summary({ hostExecutionPhase: 'starting' }) }))
+    expect(phases.at(-1)).toBe('starting')
   })
 
-  it('uses the fence for a child whose acquisition has no generation', async () => {
-    const executions: ReturnType<typeof useStructuredAgentSessionHostExecution>[] = []
-    function PhaseProbe(): null {
-      executions.push(useStructuredAgentSessionHostExecution('session-1', { kind: 'local' }))
+  it('re-renders a Stopping reader only when the host starts or stops saying so', async () => {
+    const stops: boolean[] = []
+    function StoppingProbe(): null {
+      stops.push(useStructuredAgentSessionHostStopping('session-1', { kind: 'local' }))
       return null
     }
-    render(<PhaseProbe />)
+    render(<StoppingProbe />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
+
+    act(() => feed().emit({ type: 'status', session: summary({ stopping: true }) }))
+    expect(stops.at(-1)).toBe(true)
+    const rendersWhileStopping = stops.length
     act(() =>
       feed().emit({
         type: 'status',
-        session: summary({
-          hostExecutionPhase: 'starting',
-          hostExecutionChild: { generation: null, fence: 1 }
-        })
+        session: summary({ stopping: true, latestPrompt: 'next', updatedAt: 2 })
       })
     )
-    expect(executions.at(-1)?.childKey).toBe(1)
-    act(() =>
-      feed().emit({
-        type: 'status',
-        session: summary({
-          hostExecutionPhase: 'starting',
-          hostExecutionChild: { generation: null, fence: 2 }
-        })
-      })
-    )
-    expect(executions.at(-1)?.childKey).toBe(2)
+    expect(stops).toHaveLength(rendersWhileStopping)
+    act(() => feed().emit({ type: 'status', session: summary({}) }))
+    expect(stops.at(-1)).toBe(false)
   })
 })
 

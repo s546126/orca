@@ -28,6 +28,9 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import { NO_STRUCTURED_AGENTS } from './structured-agent-session-adapter-router-test-support'
+import { startsWhenPublished } from './structured-agent-session-instant-start.test-support'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -37,10 +40,11 @@ let root = ''
 function adapter(): StructuredAgentSessionAdapter {
   return {
     acquire: async ({ fence, spawnToken }) => ({
+      providerChildPhase: 'starting' as const,
       process: { hostId: 'local', pid: 4242, processStartTimeMs: 1_700_000_000_000, spawnToken },
       link: {
         linkId: `link-${fence}`,
-        handle: { provider: 'codex', threadId: THREAD },
+        handle: codexProviderHandle(THREAD),
         origin: 'created',
         mintedAtFence: fence,
         observedAt: NOW
@@ -57,10 +61,11 @@ function adapter(): StructuredAgentSessionAdapter {
 }
 
 function createHost(store: AgentSessionRecordStore): StructuredAgentSessionHost {
-  const host = new StructuredAgentSessionHost({
+  const host: StructuredAgentSessionHost = new StructuredAgentSessionHost({
+    agents: NO_STRUCTURED_AGENTS,
     logger: createStructuredAgentSessionLogger(),
     store,
-    adapter: adapter(),
+    adapter: startsWhenPublished(adapter(), () => host),
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-a',

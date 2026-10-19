@@ -145,6 +145,7 @@ export function usePersistedUIWriter(): void {
   const ui = useAppStore(
     useShallow((s): PersistedUIWriteBaseline => ({
       sidebarWidth: s.sidebarWidth,
+      sidebarOpen: s.sidebarOpen,
       rightSidebarOpen: s.rightSidebarOpen,
       rightSidebarTab: s.rightSidebarTab,
       rightSidebarExplorerView: s.rightSidebarExplorerView,
@@ -155,6 +156,8 @@ export function usePersistedUIWriter(): void {
       sortBy: s.sortBy,
       projectOrderBy: s.projectOrderBy,
       showSleepingWorkspaces: s.showSleepingWorkspaces,
+      workspaceHostScope: s.workspaceHostScope,
+      visibleWorkspaceHostIds: s.visibleWorkspaceHostIds,
       hideDefaultBranchWorkspace: s.hideDefaultBranchWorkspace,
       hideAutomationGeneratedWorkspaces: s.hideAutomationGeneratedWorkspaces,
       hideCliCreatedWorkspaces: s.hideCliCreatedWorkspaces,
@@ -164,6 +167,7 @@ export function usePersistedUIWriter(): void {
       explorerDisplayRootByWorktree: s.explorerDisplayRootByWorktree,
       showDotfilesByWorktree: s.showDotfilesByWorktree,
       filterRepoIds: s.filterRepoIds,
+      filterAgentIds: s.filterAgentIds,
       // Why: dashboard auto-acks (fire on focus/visibility) and the in-memory ack cleanup
       // paths in agent-status.ts (close/dismiss) flow to disk through map identity changes.
       // Without persisting, agent rows that survive restart come back bold even when the

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { computeVisibleWorktreeIds } from './visible-worktrees'
-import { isDefaultBranchWorkspace } from './default-branch-workspace'
+import { computeVisibleWorktreeIds } from './compute-visible-worktrees'
+import { isDefaultBranchWorkspace } from '../../../../shared/worktree/workspace-kinds'
 import type { Repo } from '../../../../shared/repo-types'
 import type { Worktree } from '../../../../shared/worktree/types'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
@@ -58,6 +58,7 @@ function visibleOptions(overrides: Partial<VisibleOptions> = {}): VisibleOptions
     hideDetachedHeadWorkspaces: false,
     hideWorkspacesFromOtherDevices: false,
     pairedDeviceIdsByEnvironment: new Map(),
+    filterAgentIds: null,
     repoMap,
     workspaceHostScope: 'all',
     defaultHostId: LOCAL_EXECUTION_HOST_ID,

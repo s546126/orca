@@ -5,7 +5,8 @@ import type { ClaudeSession } from './claude-structured-session-state'
 import { ClaudeBackgroundTaskTracker } from './claude-background-task-tracker'
 import { ClaudeChildWorkDecoder } from './claude-child-work-decoder'
 import { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
-import { createClaudeSessionStartup } from './claude-structured-session-startup-state'
+import { createClaudeInitProof } from './claude-structured-init-proof'
+import { claudeProviderHandleLink } from './claude-structured-owner-identity'
 
 export function sessionFor(send: Mock = vi.fn().mockResolvedValue(undefined)): ClaudeSession {
   return {
@@ -29,10 +30,24 @@ export function sessionFor(send: Mock = vi.fn().mockResolvedValue(undefined)): C
     reportedModelMutation: 0,
     confirmedOptions: new Set(),
     restoreSkippedOptions: new Set(),
+    launchedModel: null,
+    fastModeAtStart: false,
     capabilities: [],
     events: undefined,
     translator: null,
-    startup: { ...createClaudeSessionStartup(), state: 'proven' }
+    link: claudeProviderHandleLink({
+      sessionId: 'provider-session',
+      leafUuid: null,
+      resumed: false,
+      fence: 1,
+      observedAt: 1
+    }),
+    initialization: {
+      proof: createClaudeInitProof(),
+      account: undefined,
+      resumesTranscript: false,
+      onLateRefusal: () => {}
+    }
   }
 }
 

@@ -1,3 +1,4 @@
+import { resolveStatusBarCompactChangeNoticeDismissed } from '../../../shared/status-bar-compact-change-notice'
 import { migrateExplorerDisplayRoots } from '../../../shared/file-explorer-display-root'
 import {
   getWorktreeCardModeProperties,
@@ -20,6 +21,7 @@ import {
 } from '../applying-settings/onboarding-normalization'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { OnboardingState } from '../../../shared/onboarding-state-types'
+import { resolvePersistedFilterAgentIds } from '../../../shared/workspace-agent-filter'
 
 /** Normalizes legacy UI payloads and marks one-time migrations for saving without replacing explicit user choices. */
 export function normalizeLoadedUiState(
@@ -165,20 +167,43 @@ export function normalizeLoadedUiState(
     markNeedsSave()
   }
   // Why: only upgraded profiles still on the new default get the one-time usage-display notice; fresh profiles stay quiet.
-  const usagePercentageDisplayChangeNoticeDismissed =
-    resolveUsagePercentageDisplayChangeNoticeDismissed({
-      rawDismissed: parsed.ui?.usagePercentageDisplayChangeNoticeDismissed,
-      rawUsagePercentageDisplay: parsed.ui?.usagePercentageDisplay,
-      isExistingProfile: isExistingPersistedProfile({
-        repoCount: parsed.repos?.length ?? 0,
-        onboardingClosedAt: normalizedOnboarding.closedAt,
-        ui: parsed.ui
-      })
+  const percentageNoticeDismissed = resolveUsagePercentageDisplayChangeNoticeDismissed({
+    rawDismissed: parsed.ui?.usagePercentageDisplayChangeNoticeDismissed,
+    rawUsagePercentageDisplay: parsed.ui?.usagePercentageDisplay,
+    isExistingProfile: isExistingPersistedProfile({
+      repoCount: parsed.repos?.length ?? 0,
+      onboardingClosedAt: normalizedOnboarding.closedAt,
+      ui: parsed.ui
     })
+  })
+  const statusBarCompactChangeNoticeDismissed = resolveStatusBarCompactChangeNoticeDismissed({
+    rawDismissed: parsed.ui?.statusBarCompactChangeNoticeDismissed,
+    rawUsageMode: parsed.ui?.statusBarUsageMode,
+    isExistingProfile: isExistingPersistedProfile({
+      repoCount: parsed.repos?.length ?? 0,
+      onboardingClosedAt: normalizedOnboarding.closedAt,
+      ui: parsed.ui
+    })
+  })
+  if (parsed.ui?.statusBarCompactChangeNoticeDismissed !== statusBarCompactChangeNoticeDismissed) {
+    markNeedsSave()
+  }
+  // Why: one rollout card is enough; the Compact notice supersedes the older percentage notice.
+  const usagePercentageDisplayChangeNoticeDismissed =
+    percentageNoticeDismissed || !statusBarCompactChangeNoticeDismissed
   if (
     parsed.ui?.usagePercentageDisplayChangeNoticeDismissed !==
     usagePercentageDisplayChangeNoticeDismissed
   ) {
+    markNeedsSave()
+  }
+  const rawUi = stripMainOwnedTelemetryMarkerFromUI(parsed.ui)
+  // Why: leftovers must not survive the defaults spread; defaults.ui already
+  // has filterAgentIds: null, so resolve from the raw payload first.
+  delete rawUi.filterAgentId
+  delete rawUi.filterHarnessId
+  const filterAgentIds = resolvePersistedFilterAgentIds(parsed.ui ?? {})
+  if (parsed.ui?.filterAgentId !== undefined || parsed.ui?.filterHarnessId !== undefined) {
     markNeedsSave()
   }
   return {
@@ -187,7 +212,8 @@ export function normalizeLoadedUiState(
     worktreeCardProperties: getWorktreeCardModeProperties(
       loadedCompactWorktreeCards ? 'Compact' : 'Default'
     ),
-    ...stripMainOwnedTelemetryMarkerFromUI(parsed.ui),
+    ...rawUi,
+    filterAgentIds,
     // Why: migrate once from the retired Appearance setting only when no explicit chrome preference exists yet.
     rightSidebarOpen,
     rightSidebarTab: normalizeRightSidebarTab(parsed.ui?.rightSidebarTab),
@@ -196,6 +222,7 @@ export function normalizeLoadedUiState(
     rightSidebarExplorerView,
     setupGuideSidebarDismissed,
     usagePercentageDisplayChangeNoticeDismissed,
+    statusBarCompactChangeNoticeDismissed,
     setupGuideBrowserMilestoneMigrated:
       typeof parsed.ui?.setupGuideBrowserMilestoneMigrated === 'boolean'
         ? parsed.ui.setupGuideBrowserMilestoneMigrated
