@@ -157,7 +157,7 @@ describe('EmulatorBridge ADB network devices', () => {
     }
   })
 
-  it('stops the scrcpy helper and clears the session registry before adb disconnect', async () => {
+  it('clears the session registry before adb disconnect without removing shared forwards', async () => {
     const ADDRESS = '127.0.0.1:5555'
     mockPlatformToolsSdk()
     let disconnected = false
@@ -185,10 +185,10 @@ describe('EmulatorBridge ADB network devices', () => {
     expect(status).toEqual({ state: 'disconnected', address: ADDRESS, serial: null })
     expect(bridge.getActiveForWorktree('wt-1')).toBeNull()
     const argLists = androidCommandRunnerMock.mock.calls.map((call) => call[1])
-    const forwardIndex = argLists.findIndex((args) => args.includes('forward'))
     const disconnectIndex = argLists.findIndex((args) => args[0] === 'disconnect')
-    expect(forwardIndex).toBeGreaterThanOrEqual(0)
-    expect(disconnectIndex).toBeGreaterThan(forwardIndex)
+    expect(disconnectIndex).toBeGreaterThanOrEqual(0)
+    // `adb forward --remove-all` ignores `-s` and would drop every device's forwards.
+    expect(argLists.some((args) => args.includes('--remove-all'))).toBe(false)
   })
 
   it('never issues adb disconnect on pane-close (stopActiveForWorktree) or app quit', async () => {
