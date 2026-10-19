@@ -7,6 +7,7 @@ import type {
 import {
   formatTerminalClose,
   formatTerminalFocus,
+  formatTerminalRead,
   formatTerminalSend,
   formatTerminalShow,
   formatTerminalWait
@@ -54,6 +55,22 @@ describe('formatTerminalClose', () => {
       })
     ).toBe(
       'Closed terminal term_remote. The PTY was not confirmed stopped: its SSH provider is no longer registered.'
+    )
+  })
+
+  it('promises the reconnect replay only when the host recorded the kill for it', () => {
+    const close = {
+      handle: 'term_remote',
+      tabId: 'tab-1',
+      ptyKilled: false,
+      ptyStopVerdict: 'unverifiable' as const,
+      ptyStopReason: 'SSH connection lost, reconnecting...'
+    }
+    expect(formatTerminalClose({ close: { ...close, pendingKillRecorded: true } })).toBe(
+      'Closed terminal term_remote. The PTY was not confirmed stopped: SSH connection lost, reconnecting... The kill retries when the host reconnects.'
+    )
+    expect(formatTerminalClose({ close })).toBe(
+      'Closed terminal term_remote. The PTY was not confirmed stopped: SSH connection lost, reconnecting...'
     )
   })
 
@@ -250,5 +267,24 @@ describe('blocked-reason rendering against a mixed-version host', () => {
     expect(formatTerminalShow(showResult(undefined))).toContain(
       'agentWait: interactive prompt (via prompt-text)'
     )
+  })
+})
+
+describe('formatTerminalRead draft separation', () => {
+  it('labels composer drafts outside terminal output', () => {
+    const output = formatTerminalRead({
+      terminal: {
+        handle: 'term_1',
+        status: 'running',
+        tail: ['Build passed', '❯'],
+        truncated: false,
+        nextCursor: null,
+        source: 'screen',
+        draft: 'proceed with the release'
+      }
+    })
+
+    expect(output).toContain('draft: "proceed with the release"')
+    expect(output).toContain('\n\nBuild passed\n❯')
   })
 })

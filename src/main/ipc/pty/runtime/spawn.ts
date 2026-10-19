@@ -8,7 +8,7 @@ import {
   reservePaneSpawn
 } from '../pane/spawn-reservation'
 import { resolveStablePaneOwner } from '../pane/stable-owner'
-import { ptySizes } from '../delivery/visibility-state'
+import { restoreProvisionalPtySize } from '../spawn-options-assembly'
 import type { PtyRuntimeControllerDeps } from './controller-deps'
 import { adoptMaterializedRuntimePtySpawn } from './spawn-early'
 import { prepareRuntimePtySpawn } from './spawn-preflight'
@@ -16,6 +16,10 @@ import { buildRuntimePtySpawnOptions } from './spawn-options'
 import { executeRuntimePtySpawn } from './spawn-execute'
 import { commitRuntimePtySpawn } from './spawn-commit'
 import { createRuntimePtySpawnState, type RuntimePtySpawnArgs } from './spawn-state'
+import {
+  commitRuntimeSpawnHiddenDelivery,
+  releaseRuntimeSpawnPreSpawnHiddenMark
+} from './spawn-hidden-delivery'
 
 function toRuntimeSpawnReply(result: {
   id: string
@@ -30,18 +34,6 @@ function toRuntimeSpawnReply(result: {
     ...(typeof result.wslDistro === 'string' ? { wslDistro: result.wslDistro } : {}),
     ...(result.stablePaneOwner ? { stablePaneOwner: result.stablePaneOwner } : {}),
     ...(result.agentSessionEnsure ? { agentSessionEnsure: result.agentSessionEnsure } : {})
-  }
-}
-
-function restoreProvisionalPtySize(ctx: ReturnType<typeof createRuntimePtySpawnState>): void {
-  if (ctx.sessionId === undefined) {
-    return
-  }
-  const key = ctx.effectiveSessionAppId ?? ctx.sessionId
-  if (ctx.hadSessionSizeBeforeAttach && ctx.sessionSizeBeforeAttach) {
-    ptySizes.set(key, ctx.sessionSizeBeforeAttach)
-  } else {
-    ptySizes.delete(key)
   }
 }
 
@@ -88,15 +80,23 @@ export async function spawnPtyFromRuntimeController(
       return toRuntimeSpawnReply(earlyAdopt)
     }
     const earlyReserved = await buildRuntimePtySpawnOptions(ctx).catch((error: unknown) => {
-      restoreProvisionalPtySize(ctx)
+      restoreProvisionalPtySize({
+        sessionId: ctx.sessionId,
+        sessionAppId: ctx.effectiveSessionAppId,
+        hadSessionSizeBeforeAttach: ctx.hadSessionSizeBeforeAttach,
+        sessionSizeBeforeAttach: ctx.sessionSizeBeforeAttach
+      })
       throw error
     })
     if (earlyReserved) {
       return toRuntimeSpawnReply(earlyReserved)
     }
     await executeRuntimePtySpawn(ctx)
-    return toRuntimeSpawnReply(await commitRuntimePtySpawn(ctx))
+    const committed = await commitRuntimePtySpawn(ctx)
+    commitRuntimeSpawnHiddenDelivery(ctx)
+    return toRuntimeSpawnReply(committed)
   } catch (err) {
+    releaseRuntimeSpawnPreSpawnHiddenMark(ctx)
     if (ctx.pendingRegistrationPtyId) {
       deps.runtime?.cancelPendingPtyRegistration?.(
         ctx.pendingRegistrationPtyId,

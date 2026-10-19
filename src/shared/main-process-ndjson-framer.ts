@@ -28,6 +28,8 @@ export type IncrementalNdjsonFramer = {
   feed(chunk: string): void
   resume(): void
   reset(): void
+  /** Once input has ended: the unterminated last line, never parsed as a record. */
+  takeTail(): string
 }
 
 export type IncrementalNdjsonFramerOptions = {
@@ -63,6 +65,8 @@ export function createIncrementalNdjsonFramer(
   options: IncrementalNdjsonFramerOptions = {}
 ): IncrementalNdjsonFramer {
   const maxLineBytes = Math.max(1, options.maxLineBytes ?? NDJSON_MAX_LINE_BYTES)
+  // No line can exceed an unbounded limit, so measuring segments and keeping a rejection prefix is dead work.
+  const unbounded = maxLineBytes === Number.POSITIVE_INFINITY
   const maxPendingInputBytes = Math.max(REJECTED_LINE_PREFIX_MAX_BYTES, maxLineBytes * 2)
   let lineSegments: string[] = []
   let lineBytes = 0
@@ -152,9 +156,11 @@ export function createIncrementalNdjsonFramer(
           return
         }
       } else {
-        const segmentBytes = Buffer.byteLength(segment, 'utf8')
+        const segmentBytes = unbounded ? 0 : Buffer.byteLength(segment, 'utf8')
         const nextLineBytes = lineBytes + segmentBytes
-        rememberPrefix(segment, segmentBytes)
+        if (!unbounded) {
+          rememberPrefix(segment, segmentBytes)
+        }
         if (nextLineBytes > maxLineBytes) {
           const rejected: NdjsonRejectedRecord = {
             kind: 'line-too-long',
@@ -257,6 +263,12 @@ export function createIncrementalNdjsonFramer(
           process(input)
         }
       }
+    },
+    takeTail(): string {
+      const tail = discardingOversizedLine ? '' : `${lineSegments.join('')}${pendingInput ?? ''}`
+      clearLine()
+      pendingInput = null
+      return tail
     },
     reset(): void {
       clearLine()

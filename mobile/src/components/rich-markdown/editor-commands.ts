@@ -1,5 +1,10 @@
 import { emitChange, syncTaskCheckboxesDisabled } from './editor-content'
-import { restoreSelectionOrEnd, wrapSelection } from './editor-selection'
+import {
+  rememberSelection,
+  restoreRememberedSelection,
+  restoreSelectionOrEnd,
+  wrapSelection
+} from './editor-selection'
 import { editorElement } from './editor-surface'
 import { isSafeUrl } from './markdown-escaping'
 import type { MobileRichMarkdownCommand } from '../mobile-rich-markdown-editor-contract'
@@ -35,14 +40,18 @@ function acceptsCommands(scope: RichMarkdownEditorScope, generation: number): bo
 /**
  * The two commands that need a URL the document does not have.
  *
- * A promise because the answer is a dialog: inside the WebView that is `window.prompt`, and on a
- * page it is a modal the host renders, which cannot answer before it has been shown. The
+ * A promise because the answer is a modal the page renders, which cannot answer before it has been
+ * shown. The
  * difference matters — a modal is a task boundary, so while it is open the host can stop the
  * document, make it read-only or replace its content, and the answer comes back to a document
  * that is no longer the one the user was pointing at.
  *
  * The generation is read before the wait rather than passed in, which is the same instant:
  * nothing between `runCommand`'s own read and this one yields.
+ *
+ * The caret is saved before the wait and put back after it, because the dialog is what takes it:
+ * the page's modal focuses its own field, and `execCommand` on a document that does not hold the
+ * selection inserts nothing.
  */
 async function insertUrl(
   scope: RichMarkdownEditorScope,
@@ -50,8 +59,10 @@ async function insertUrl(
   command: 'createLink' | 'insertImage'
 ) {
   const generation = scope.documentGeneration
+  rememberSelection(scope)
   const url = await scope.promptForUrl(kind)
   if (url && isSafeUrl(url) && acceptsCommands(scope, generation)) {
+    restoreRememberedSelection(scope)
     exec(scope, command, url)
   }
 }

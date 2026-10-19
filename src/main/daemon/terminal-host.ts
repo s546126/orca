@@ -1,32 +1,25 @@
 import type { Session } from './session'
-import {
-  SessionNotFoundError,
-  type SessionInfo,
-  type TakePendingOutputResult,
-  type TerminalSnapshot
-} from './types'
+import type { PtyProcessInspectionOptions } from '../providers/pty-process-inspection'
+import { SessionNotFoundError } from './types'
+import type { SessionInfo, TakePendingOutputResult, TerminalSnapshot } from './types'
 import type { CreateOrAttachResult } from './terminal-host-create-contract'
 import type { TerminalHostOptions } from './terminal-host-options'
-import { shutdownTerminalHostSessions } from './terminal-host-session-shutdown'
+import { disposeTerminalHostSessions } from './terminal-host-disposal'
+import { getAliveTerminalHostSession } from './terminal-host-session-access'
 import { TerminalSessionTeardown } from './terminal-session-teardown'
 import { ClaimedAgentPtyOwnerRegistry } from '../../shared/claimed-agent-pty-owner'
-import {
-  createOrAttachClaimedAgentSession,
-  type InternalCreateOrAttachOptions
-} from './terminal-host-agent-session-claim'
+import { createOrAttachClaimedAgentSession } from './terminal-host-agent-session-claim'
+import type { InternalCreateOrAttachOptions } from './terminal-host-agent-session-claim'
 import { TerminalHostAgentSessionGenerations } from './terminal-host-agent-session-generations'
 import { resolveTerminalHostSessionCwd } from './terminal-host-session-cwd'
 import { TerminalHostTombstones } from './terminal-host-tombstones'
 import { listLiveTerminalHostSessions } from './terminal-host-session-listing'
 import { createOrAttachTerminalSession } from './terminal-host-session-create'
 import { TerminalAttachCanceledError } from './daemon-errors'
-import { rejectOnAbort } from './terminal-attach-cancellation'
+import { waitForTerminalAttachOperation } from './terminal-attach-cancellation'
 import { randomUUID } from 'node:crypto'
 import { pruneRetiredPtyIncarnations } from '../../shared/retired-pty-incarnations'
-import {
-  inspectTerminalHostProcess,
-  type TerminalHostProcessInspection
-} from './terminal-host-process-inspection'
+import { inspectTerminalHostProcess } from './terminal-host-process-inspection'
 import {
   confirmTerminalHostForegroundProcess,
   confirmTerminalHostShellForeground,
@@ -50,7 +43,7 @@ export class TerminalHost {
   private pendingCreations = new Map<string, Promise<void>>()
   private sessionTeardown = new TerminalSessionTeardown(this.sessions)
   private killedTombstones: TerminalHostTombstones
-  private spawnSubprocess: TerminalHostOptions['spawnSubprocess']
+  private readonly spawnOptions: Pick<TerminalHostOptions, 'spawnSubprocess' | 'spawnGate'>
   private onSessionReaped: TerminalHostOptions['onSessionReaped']
   private reportReadinessEvent: TerminalHostOptions['reportReadinessEvent']
   private onFinalCheckpoint: TerminalHostOptions['onFinalCheckpoint']
@@ -66,7 +59,7 @@ export class TerminalHost {
   >()
 
   constructor(opts: TerminalHostOptions) {
-    this.spawnSubprocess = opts.spawnSubprocess
+    this.spawnOptions = opts
     this.onSessionReaped = opts.onSessionReaped
     this.reportReadinessEvent = opts.reportReadinessEvent
     this.onFinalCheckpoint = opts.onFinalCheckpoint
@@ -83,7 +76,7 @@ export class TerminalHost {
       // Why: the create ahead of us can be stuck on an unreachable share for
       // minutes. Waiting unconditionally is what let one dead path strand every
       // later create and attach for the session, so a canceled caller leaves.
-      await Promise.race([inFlight, rejectOnAbort(opts.cancelSignal, opts.sessionId)])
+      await waitForTerminalAttachOperation(inFlight, opts.cancelSignal, opts.sessionId)
       this.assertCreateOrAttachAllowed(opts)
     }
     this.assertCreateOrAttachAllowed(opts)
@@ -114,7 +107,8 @@ export class TerminalHost {
             assertCreateAllowed: () => this.assertCreateOrAttachAllowed(options),
             sessionTeardown: this.sessionTeardown,
             killedTombstones: this.killedTombstones,
-            spawnSubprocess: this.spawnSubprocess,
+            spawnSubprocess: this.spawnOptions.spawnSubprocess,
+            spawnGate: this.spawnOptions.spawnGate,
             onDeadSessionRemoved: (sessionId) => this.agentSessionGenerations.forget(sessionId),
             onSessionCreated: (sessionId, generation, isAlive) =>
               this.agentSessionGenerations.remember(sessionId, generation, isAlive),
@@ -156,15 +150,15 @@ export class TerminalHost {
   }
 
   write(sessionId: string, data: string): void {
-    this.getAliveSession(sessionId).write(data)
+    getAliveTerminalHostSession(this.sessions, sessionId).write(data)
   }
 
   closeStartupQueryAuthority(sessionId: string): number {
-    return this.getAliveSession(sessionId).closeStartupQueryAuthority()
+    return getAliveTerminalHostSession(this.sessions, sessionId).closeStartupQueryAuthority()
   }
 
   resize(sessionId: string, cols: number, rows: number): void {
-    this.getAliveSession(sessionId).resize(cols, rows)
+    getAliveTerminalHostSession(this.sessions, sessionId).resize(cols, rows)
   }
 
   // Why null-not-throw (unlike write/resize): pause/resume are best-effort hints against a session that may have exited.
@@ -187,7 +181,7 @@ export class TerminalHost {
         opts.immediate ? this.sessionTeardown.requestImmediate(sessionId) : pending
       )
     }
-    const session = this.getAliveSession(sessionId)
+    const session = getAliveTerminalHostSession(this.sessions, sessionId)
     const killed = this.sessionTeardown.killSession(sessionId, session, opts.immediate === true)
     this.killedTombstones.record(sessionId)
     return Promise.resolve(killed)
@@ -205,7 +199,7 @@ export class TerminalHost {
   }
 
   signal(sessionId: string, sig: string): void {
-    this.getAliveSession(sessionId).signal(sig)
+    getAliveTerminalHostSession(this.sessions, sessionId).signal(sig)
   }
 
   detach(sessionId: string, token: symbol): void {
@@ -219,7 +213,9 @@ export class TerminalHost {
   }
 
   async getCwd(sessionId: string): Promise<string | null> {
-    return await resolveTerminalHostSessionCwd(this.getAliveSession(sessionId))
+    return await resolveTerminalHostSessionCwd(
+      getAliveTerminalHostSession(this.sessions, sessionId)
+    )
   }
 
   // Why: null-not-throw — fetched for the tab-bar icon, so a vanished pane should quietly yield "no agent".
@@ -233,8 +229,8 @@ export class TerminalHost {
 
   inspectProcess(
     sessionId: string,
-    options?: { expectedIncarnationId?: string; steadyState?: boolean }
-  ): Promise<TerminalHostProcessInspection> {
+    options?: PtyProcessInspectionOptions
+  ): ReturnType<typeof inspectTerminalHostProcess> {
     pruneRetiredPtyIncarnations(this.retiredIncarnations)
     const session = this.sessions.get(sessionId)
     if (
@@ -249,11 +245,9 @@ export class TerminalHost {
     }
     return inspectTerminalHostProcess({
       sessionId,
+      currentSession: () => this.sessions.get(sessionId),
       session: session?.isAlive ? session : null,
-      ...(options?.expectedIncarnationId
-        ? { expectedIncarnationId: options.expectedIncarnationId }
-        : {}),
-      ...(options?.steadyState === true ? { steadyState: true } : {}),
+      ...options,
       retiredIncarnation: this.retiredIncarnations.get(sessionId),
       authorityGeneration: this.authorityGeneration,
       nextObservationEpoch: () => ++this.observationEpoch
@@ -271,10 +265,14 @@ export class TerminalHost {
   }
 
   clearScrollback(sessionId: string): void {
-    this.getAliveSession(sessionId).clearScrollback()
+    getAliveTerminalHostSession(this.sessions, sessionId).clearScrollback()
   }
 
-  // Why: null-not-throw (unlike getAliveSession) — checkpoint is best-effort against a session that may have just exited.
+  resetInputModes(sessionId: string): void {
+    getAliveTerminalHostSession(this.sessions, sessionId).resetInputModes()
+  }
+
+  // Why: null-not-throw — checkpoint is best-effort against a session that may have just exited.
   getSnapshot(sessionId: string, opts: { scrollbackRows?: number } = {}): TerminalSnapshot | null {
     return getTerminalHostSnapshot(this.sessions.get(sessionId), opts)
   }
@@ -313,6 +311,15 @@ export class TerminalHost {
     return listLiveTerminalHostSessions(this.sessions, this.agentSessionOwners)
   }
 
+  hasLiveSessions(): boolean {
+    let hasLive = false
+    // Read every Session, even after a live one, to preserve the inventory's error order.
+    for (const session of this.sessions.values()) {
+      hasLive = session.isAlive || hasLive
+    }
+    return hasLive
+  }
+
   dispose(): Promise<void> {
     this.creationFenced = true
     if (this.disposePromise) {
@@ -329,20 +336,13 @@ export class TerminalHost {
     return disposePromise
   }
 
-  private async disposeSessions(): Promise<void> {
-    if (this.pendingCreations.size > 0) {
-      // No spawn may publish a session after teardown completes.
-      await Promise.all(this.pendingCreations.values())
-    }
-    await shutdownTerminalHostSessions(this.sessions, this.onFinalCheckpoint)
-    this.killedTombstones.clear()
-  }
-
-  private getAliveSession(sessionId: string): Session {
-    const session = this.sessions.get(sessionId)
-    if (!session || !session.isAlive) {
-      throw new SessionNotFoundError(sessionId)
-    }
-    return session
+  private disposeSessions(): Promise<void> {
+    return disposeTerminalHostSessions({
+      pendingCreations: this.pendingCreations,
+      sessionTeardown: this.sessionTeardown,
+      sessions: this.sessions,
+      onFinalCheckpoint: this.onFinalCheckpoint,
+      killedTombstones: this.killedTombstones
+    })
   }
 }

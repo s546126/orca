@@ -1,8 +1,14 @@
-import { AlertTriangle, Loader2, Server, ServerOff, Trash2 } from 'lucide-react'
-import type { PublicKnownRuntimeEnvironment } from '../../../../shared/runtime-environments'
+import { useState } from 'react'
+import { AlertTriangle, Link2, Loader2, Server, ServerOff, Trash2 } from 'lucide-react'
+import {
+  isUserManagedRuntimeEnvironment,
+  type PublicKnownRuntimeEnvironment
+} from '../../../../shared/runtime-environments'
 import type { RemoteServerUpdateEntry } from '@/runtime/remote-server-update-coordinator'
 import { translate } from '@/i18n/i18n'
 import { cn } from '@/lib/utils'
+import { resolveHostDisplay } from '../../../../shared/host-display-resolution'
+import { lastVerifiedRuntimeStatus } from '../../../../shared/runtime-host-status'
 import {
   isConnectedRuntimeHostState,
   runtimeHostConnectionStateForEntry
@@ -13,9 +19,7 @@ import {
   getHostDetailsDescription,
   getHostDetailsSummary,
   evaluateHostDetails,
-  getRuntimeServerConnectionLabel,
   getRuntimeServerConnectionState,
-  getRuntimeServerDotClass,
   isRuntimeServerTransportConnected,
   type RuntimeHostDetails
 } from './runtime-environment-host-details'
@@ -23,6 +27,11 @@ import {
   getRemoteServerManualUpdateHelp,
   RemoteServerUpdateStatus
 } from './RemoteServerUpdateStatus'
+import { RuntimeRepairDialog } from './RuntimeRepairDialog'
+import {
+  getRuntimeServerStatusIndicator,
+  getRuntimeServerVersionFooter
+} from './runtime-server-row-presentation'
 
 type RuntimeServerRowProps = {
   environment: PublicKnownRuntimeEnvironment
@@ -85,7 +94,21 @@ export function RuntimeServerRow({
           runtimeStatusEntry.remoteControl ?? runtimeStatusEntry.status?.remoteControl ?? null
       }
     : details
-  const detailsDescription = getHostDetailsDescription(effectiveDetails)
+  const [repairOpen, setRepairOpen] = useState(false)
+  const snapshot = runtimeStatusEntry?.snapshot
+  const accessRevoked =
+    snapshot?.verification === 'blocked' &&
+    !snapshot.retired &&
+    snapshot.blockedReason === 'access-revoked'
+  // Why: managed and cloud-workspace servers are paired by the service that owns them.
+  const repairable = !environment.orcadDeployment && isUserManagedRuntimeEnvironment(environment)
+  const detailsDescription = accessRevoked
+    ? translate(
+        'auto.components.settings.RuntimeEnvironmentsPane.accessRevoked',
+        '{{value0}} no longer accepts this computer. Re-pair it with a new access link.',
+        { value0: environment.name }
+      )
+    : getHostDetailsDescription(effectiveDetails)
   const connectionState =
     details?.status === 'loading' && !runtimeStatusEntry?.status
       ? 'checking'
@@ -93,46 +116,65 @@ export function RuntimeServerRow({
   // A connected host exposes Disconnect; otherwise Connect.
   const isReachable = isRuntimeServerTransportConnected(connectionState)
   const actionBusy = connecting || switching || disconnecting || removing
+  // Why: the snapshot keeps the last answered status across a lost probe; `status` is only the latest answer.
+  const descriptorStatus = lastVerifiedRuntimeStatus(runtimeStatusEntry)
+  const hostDisplay = resolveHostDisplay({
+    name: environment.name,
+    machineName: descriptorStatus?.machineName,
+    platform: descriptorStatus?.hostPlatform
+  })
+  const hostDescriptorText = hostDisplay.descriptorLine
+  const statusIndicator = getRuntimeServerStatusIndicator(connectionState, accessRevoked)
+  const versionFooter = remoteUpdate
+    ? getRuntimeServerVersionFooter(remoteUpdate, {
+        accessRevoked,
+        lastKnownVersion: descriptorStatus?.appVersion
+      })
+    : null
+  // Why: when revoked, the red line replaces the summary; "Status unavailable" would contradict it.
+  const rowSummary =
+    environment.connectionDependency === 'ssh-tunnel'
+      ? translate(
+          'auto.components.settings.RuntimeEnvironmentsPane.sshTunnelRequired',
+          'SSH tunnel required'
+        )
+      : isActive
+        ? translate(
+            'auto.components.settings.RuntimeEnvironmentsPane.activeServerRowHelp',
+            'Default host for new projects. Existing projects stay on their own host.'
+          )
+        : accessRevoked
+          ? null
+          : getHostDetailsSummary(effectiveDetails)
+  // Why: the revoked host rejects this token on every Connect; Re-pair is the only way back.
+  const showConnect = !(accessRevoked && repairable)
 
   return (
     <div data-settings-section={environment.id} className="flex items-center gap-3 px-4 py-3">
       <Server className="size-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
-          <div className="truncate text-sm font-medium">{environment.name}</div>
-          <span
-            className={cn(
-              'size-2 shrink-0 rounded-full',
-              getRuntimeServerDotClass(connectionState)
-            )}
-          />
-          <span className="text-[11px] text-muted-foreground">
-            {getRuntimeServerConnectionLabel(connectionState)}
+          <div className="truncate text-sm font-medium">{hostDisplay.title}</div>
+          <span className={cn('size-2 shrink-0 rounded-full', statusIndicator.dotClassName)} />
+          <span className={cn('text-[11px]', statusIndicator.labelClassName)}>
+            {statusIndicator.label}
           </span>
-          {effectiveDetails?.compatibility?.kind === 'blocked' ? (
+          {/* Why: the red "Access revoked" label already carries the warning. */}
+          {!accessRevoked && effectiveDetails?.compatibility?.kind === 'blocked' ? (
             <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
           ) : effectiveDetails?.status === 'loading' ? (
             <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
           ) : null}
         </div>
-        <p className="truncate text-xs text-muted-foreground">
-          {environment.connectionDependency === 'ssh-tunnel'
-            ? translate(
-                'auto.components.settings.RuntimeEnvironmentsPane.sshTunnelRequired',
-                'SSH tunnel required'
-              )
-            : isActive
-              ? translate(
-                  'auto.components.settings.RuntimeEnvironmentsPane.activeServerRowHelp',
-                  'Active server for server-routed projects, terminals, and provider checks.'
-                )
-              : getHostDetailsSummary(effectiveDetails)}
-        </p>
+        {hostDescriptorText ? (
+          <p className="truncate text-xs text-muted-foreground">{hostDescriptorText}</p>
+        ) : null}
+        {rowSummary ? <p className="truncate text-xs text-muted-foreground">{rowSummary}</p> : null}
         {detailsDescription ? (
           <p
             className={cn(
               'mt-0.5 truncate text-xs',
-              effectiveDetails?.compatibility?.kind === 'blocked'
+              accessRevoked || effectiveDetails?.compatibility?.kind === 'blocked'
                 ? 'text-destructive'
                 : 'text-muted-foreground'
             )}
@@ -140,21 +182,12 @@ export function RuntimeServerRow({
             {detailsDescription}
           </p>
         ) : null}
-        {remoteUpdate ? (
+        {remoteUpdate && versionFooter ? (
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <span className="text-[11px] text-muted-foreground">
-              {remoteUpdate.currentVersion
-                ? translate(
-                    'auto.components.settings.RuntimeEnvironmentsPane.orcaVersion',
-                    'Orca v{{value0}}',
-                    { value0: remoteUpdate.currentVersion }
-                  )
-                : translate(
-                    'auto.components.settings.RuntimeEnvironmentsPane.versionUnavailable',
-                    'Orca version unavailable'
-                  )}
-            </span>
-            <RemoteServerUpdateStatus entry={remoteUpdate} compact />
+            <span className="text-[11px] text-muted-foreground">{versionFooter.text}</span>
+            {versionFooter.showUpdateStatus ? (
+              <RemoteServerUpdateStatus entry={remoteUpdate} compact />
+            ) : null}
           </div>
         ) : null}
         {remoteUpdate?.phase === 'manual' ? (
@@ -178,6 +211,18 @@ export function RuntimeServerRow({
             {translate('auto.components.settings.RuntimeEnvironmentsPane.updateServer', 'Update')}
           </Button>
         ) : null}
+        {accessRevoked && repairable ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            onClick={() => setRepairOpen(true)}
+            disabled={actionBusy}
+          >
+            <Link2 />
+            {translate('auto.components.settings.RuntimeEnvironmentsPane.repair', 'Re-pair…')}
+          </Button>
+        ) : null}
         {isReachable ? (
           <Button
             type="button"
@@ -194,7 +239,7 @@ export function RuntimeServerRow({
             )}
             {translate('auto.components.settings.RuntimeEnvironmentsPane.disconnect', 'Disconnect')}
           </Button>
-        ) : (
+        ) : showConnect ? (
           <Button
             type="button"
             variant="ghost"
@@ -210,7 +255,7 @@ export function RuntimeServerRow({
             )}
             {translate('auto.components.settings.RuntimeEnvironmentsPane.connect', 'Connect')}
           </Button>
-        )}
+        ) : null}
         <Button
           type="button"
           variant="ghost"
@@ -227,6 +272,12 @@ export function RuntimeServerRow({
           {removing ? <Loader2 className="size-3 animate-spin" /> : <Trash2 className="size-3" />}
         </Button>
       </div>
+      <RuntimeRepairDialog
+        open={repairOpen}
+        onOpenChange={setRepairOpen}
+        environmentId={environment.id}
+        name={environment.name}
+      />
     </div>
   )
 }

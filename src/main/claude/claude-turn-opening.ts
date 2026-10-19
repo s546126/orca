@@ -13,6 +13,8 @@ import {
   claudeText,
   type ClaudeMessageEnvelope
 } from './claude-structured-item-translation'
+import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
+import type { ClaudeStartedSend } from './claude-structured-session-state'
 import {
   claudeProviderResumedTurnTimingAnchor,
   type ClaudeCurrentTurn
@@ -59,6 +61,19 @@ export function isRootClaudeFrame(frame: Record<string, unknown>): boolean {
   return typeof frame.parent_tool_use_id !== 'string'
 }
 
+/** The parent this frame names, or null when it names none.
+ *
+ *  Deliberately STRICTER than `isRootClaudeFrame` above, which asks only whether
+ *  the field is a string: an empty string is a string but names no parent, and
+ *  attribution must not mint a producer out of it. The two therefore disagree on
+ *  `''` — and this is the side that decides who produced a row, where treating
+ *  `''` as a parent would stamp an id no reader could ever resolve. */
+export function claudeFrameParentRef(frame: Record<string, unknown>): string | null {
+  return typeof frame.parent_tool_use_id === 'string' && frame.parent_tool_use_id.length > 0
+    ? frame.parent_tool_use_id
+    : null
+}
+
 export type ClaudeTurnSource = { sessionId: string; uuid: string; assistant: boolean }
 
 /** Reads a turn source off a raw frame, for the streamed path that has no envelope. */
@@ -81,17 +96,21 @@ export function claudeStreamTurnStartSource(
 
 /** The provider produced, so a turn is running. Root-ness first, then the
  *  suppression latch, then idempotency — every frame of one reply stays inside
- *  the turn its first frame opened. */
+ *  the turn its first frame opened. A send the CLI has started is the turn's
+ *  opener, and like any accepted send it lifts the latch; with none, the
+ *  provider resumed on its own. */
 export function createClaudeTurnOpener(deps: {
   isTurnOpen: () => boolean
   isSuppressed: () => boolean
+  startedSend: () => ClaudeStartedSend | null
   open: (turn: ClaudeCurrentTurn, observedAt: number) => void
 }): (frame: Record<string, unknown>, source: ClaudeTurnSource | null, observedAt: number) => void {
   return (frame, source, observedAt) => {
     if (!source?.assistant || !isRootClaudeFrame(frame)) {
       return
     }
-    if (deps.isSuppressed() || deps.isTurnOpen()) {
+    const send = deps.startedSend()
+    if ((!send && deps.isSuppressed()) || deps.isTurnOpen()) {
       return
     }
     deps.open(
@@ -99,7 +118,10 @@ export function createClaudeTurnOpener(deps: {
         sessionId: source.sessionId,
         turnId: source.uuid,
         startedAt: observedAt,
-        userItemId: claudeProviderResumedTurnTimingAnchor(source.sessionId, source.uuid)
+        ...(send?.requestedAt === undefined ? {} : { requestedAt: send.requestedAt }),
+        userItemId: send
+          ? agentJournalSubmissionKey(send.clientMessageId)
+          : claudeProviderResumedTurnTimingAnchor(source.sessionId, source.uuid)
       },
       observedAt
     )

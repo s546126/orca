@@ -1,6 +1,5 @@
-import { getCellHeight } from './fit-scale'
+import { getCellHeight, getTotalScale } from './cell-metrics'
 import { routeScrollLines, shouldRouteScrollToTerminalInput } from './mouse-input-encoding'
-import { getTotalScale } from './viewport-transform'
 import { dispatcherShouldBlockSurface } from './tap-dispatch'
 import {
   enqueueNormalBufferScrollDelta,
@@ -19,7 +18,7 @@ export function wheelEventPixelDeltaY(scope: TerminalDocumentScope, e: WheelEven
     return delta * getCellHeight(scope) * getTotalScale(scope)
   }
   if (e.deltaMode === 2) {
-    return delta * window.innerHeight
+    return delta * scope.viewportRect().height
   }
   return delta
 }

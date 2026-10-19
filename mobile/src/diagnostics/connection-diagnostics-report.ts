@@ -5,7 +5,7 @@ import type {
   ConnectionState,
   MobileConnectionDiagnosticPath
 } from '../transport/types'
-import { normalizeHostAppVersion } from '../transport/host-app-version-store'
+import { normalizeHostAppVersion } from '../transport/host-app-version'
 import { formatEndpoint } from './host-reachability'
 import { diagnoseConnection } from './connection-diagnostics-analysis'
 import { redactConnectionLogEntry, redactConnectionLogText } from './connection-log-redaction'
@@ -28,6 +28,8 @@ export function buildConnectionDiagnosticsReport(args: {
   entries: readonly ConnectionLogEntry[]
   activePath?: MobileConnectionDiagnosticPath
   pendingPath?: MobileConnectionDiagnosticPath | null
+  /** The page bridge version this shell speaks. */
+  bridgeProtocolVersion: number
   nowMs?: number
 }): string {
   const now = args.nowMs ?? Date.now()
@@ -43,6 +45,7 @@ export function buildConnectionDiagnosticsReport(args: {
   lines.push('Orca Mobile connection diagnostics')
   lines.push(`Generated: ${new Date(now).toISOString()}`)
   lines.push(`App: Orca Mobile ${args.appVersion} · ${args.platform}`)
+  lines.push(`Bridge protocol: ${args.bridgeProtocolVersion}`)
   const desktopAppVersion = normalizeHostAppVersion(args.desktopAppVersion)
   lines.push(`Host Orca version: ${desktopAppVersion ?? 'unknown'}`)
   lines.push(`Host: ${redactConnectionLogText(args.hostName)}`)

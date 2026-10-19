@@ -1,9 +1,16 @@
+import {
+  resolveTerminalNotificationOwner,
+  type TerminalNotificationBinding
+} from '@/attention/notification-subject-owner'
+import {
+  notificationExecutionHostForOwner,
+  notificationSourceForOwner
+} from '../../../../shared/notification-source'
 import { useCallback } from 'react'
 import { useAppStore } from '@/store'
 import { resolveCommittedTitleAgentType } from '@/lib/pane-agent-evidence'
-import { playDesktopNotificationSound } from '@/lib/desktop-notification-sound'
-import { showBlockedNotificationFallbackToast } from '@/lib/blocked-notification-fallback'
 import { buildAgentNotificationId } from '../../../../shared/agent-notification-id'
+import { agentMainAgentVerdict } from '../../../../shared/agent-main-agent-verdict'
 import { shareCompatibleTitleIdentityGroup } from '../../../../shared/agent-title-owner'
 import {
   isFreshNonDoneAgentStatus,
@@ -21,6 +28,10 @@ import {
   resolveAgentAttention,
   type AgentAttentionDeliveryRequest
 } from '@/attention/agent-attention-policy'
+import {
+  deliverAgentAttentionNotification,
+  readAgentAttentionNotificationSound
+} from '@/attention/agent-attention-notification-delivery'
 
 const AGENT_NOTIFICATION_SNAPSHOT_MAX_AGE_MS = 10_000
 
@@ -45,10 +56,9 @@ function hasFreshActiveHookStatus(
   return Boolean(isFreshNonDoneAgentStatus(snapshot) && !titleNamesDifferentKnownAgent)
 }
 
-export type TerminalNotificationEvent = {
+export type TerminalNotificationEvent = TerminalNotificationBinding & {
   source: 'terminal-bell' | 'agent-task-complete'
   terminalTitle?: string
-  paneKey?: string
   agentStatusSnapshot?: AgentCompletionStatusSnapshot
   agentCompletionSource?: AgentCompletionDispatchMeta['source']
 }
@@ -122,8 +132,7 @@ export function dispatchTerminalNotification(
       // Why: main-process hook IPC can update inactive worktrees before the renderer's live-PTY
       // map catches up. An accepted fresh hook snapshot is authority that the turn ended;
       // title/BEL-only paths still need surface liveness.
-      hasFreshActivityEvidence: Boolean(agentStatus),
-      groupAttentionEnabled: state.settings?.experimentalTerminalAttention === true
+      hasFreshActivityEvidence: Boolean(agentStatus)
     },
     createTerminalAttentionSurface(state)
   )
@@ -133,8 +142,7 @@ export function dispatchTerminalNotification(
 
   // Desktop settings are applied in main after independent mobile delivery.
 
-  const customSoundId = state.settings?.notifications?.customSoundId ?? 'system'
-  const customSoundVolume = state.settings?.notifications?.customSoundVolume ?? null
+  const sound = readAgentAttentionNotificationSound(state.settings ?? {})
   // Why: pane keys are reused across turns. A rich OS notification must not
   // expose the previous turn's prompt if the current turn has no fresh hook snapshot yet.
   const agentSnapshot = agentStatus
@@ -145,7 +153,7 @@ export function dispatchTerminalNotification(
         agentToolName: agentStatus.toolName,
         agentToolInput: agentStatus.toolInput,
         agentLastAssistantMessage: agentStatus.lastAssistantMessage,
-        agentInterrupted: agentStatus.interrupted
+        agentTurnOutcome: agentMainAgentVerdict(agentStatus) ?? undefined
       }
     : {}
   const notificationId =
@@ -161,41 +169,27 @@ export function dispatchTerminalNotification(
       : null
 
   const requestDelivery = (request: AgentAttentionDeliveryRequest): void => {
-    void window.api.notifications
-      .dispatch({
+    const owner = resolveTerminalNotificationOwner(state, worktreeId, event)
+    const executionHost = notificationExecutionHostForOwner(owner)
+    deliverAgentAttentionNotification(
+      {
         source: event.source,
         ...(notificationId ? { notificationId } : {}),
         worktreeId: request.workspaceId,
+        ...(executionHost ? { executionHost } : {}),
         paneKey: request.subjectKey ?? undefined,
         ...getNotificationWorkspaceLabels(state, request.workspaceId, event.terminalTitle),
+        notificationSourceId: notificationSourceForOwner(owner, state),
         terminalTitle: event.terminalTitle,
         isActiveWorktree: request.workspaceIsActive,
         ...agentSnapshot
-      })
-      .then((result) => {
-        if (result.delivered) {
-          void playDesktopNotificationSound(customSoundId, customSoundVolume)
-          return
-        }
-        // Why: macOS is silently swallowing notifications (permission off or
-        // prompt unanswered) — surface an in-app pointer at the fix instead of
-        // letting the alert vanish without a trace.
-        if (result.reason === 'blocked-by-system') {
-          showBlockedNotificationFallbackToast()
-        }
-      })
-      .catch((err) => {
-        console.warn('Failed to dispatch notification:', err)
-      })
+      },
+      sound
+    )
   }
 
   applyAgentAttention(attentionDecision, {
-    unread: {
-      markWorkspaceUnread: state.markWorktreeUnread,
-      markSubjectUnread: state.markAgentCompletionPaneUnread,
-      markGroupUnread: state.markTerminalTabUnread,
-      markSurfaceUnread: state.markTerminalPaneUnread
-    },
+    unread: state.markAgentAttentionUnread,
     requestDelivery
   })
 }

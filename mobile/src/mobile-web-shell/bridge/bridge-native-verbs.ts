@@ -5,9 +5,7 @@ import {
   audioStartParamsSchema,
   audioStartResultSchema,
   audioStopParamsSchema,
-  audioStopResultSchema,
-  wakelockSetParamsSchema,
-  wakelockSetResultSchema
+  audioStopResultSchema
 } from './bridge-audio-verbs'
 import {
   mediaPickParamsSchema,
@@ -15,8 +13,11 @@ import {
   mediaReadParamsSchema,
   mediaReadResultSchema,
   mediaReleaseParamsSchema,
-  mediaReleaseResultSchema
+  mediaReleaseResultSchema,
+  mediaNameParamsSchema,
+  mediaNameResultSchema
 } from './bridge-media-verbs'
+import { PAGE_STORAGE_MAX_KEY_CHARS } from '../page-storage-keys'
 
 /**
  * The shell-answered request seam: what a `native.` method is, and every verb there is.
@@ -42,10 +43,11 @@ export const BRIDGE_NATIVE_VERB_NAMES = [
   'native.media.pick',
   'native.media.read',
   'native.media.release',
+  'native.media.name',
   'native.audio.start',
   'native.audio.read',
   'native.audio.stop',
-  'native.wakelock.set'
+  'native.storage.read'
 ] as const
 
 export type BridgeNativeVerb = (typeof BRIDGE_NATIVE_VERB_NAMES)[number]
@@ -91,6 +93,12 @@ export const clipboardReadParamsSchema = z.strictObject({ mime: mimeSchema })
 export const clipboardWriteResultSchema = z.strictObject({ written: z.boolean() })
 export const clipboardReadResultSchema = z.strictObject({ value: z.string() })
 
+// A workspace key the host-area page opened in-page, read on demand rather than carried in `init`.
+export const storageReadParamsSchema = z.strictObject({
+  key: z.string().min(1).max(PAGE_STORAGE_MAX_KEY_CHARS)
+})
+export const storageReadResultSchema = z.strictObject({ value: z.string().nullable() })
+
 export const BRIDGE_NATIVE_VERBS: Readonly<Record<BridgeNativeVerb, BridgeNativeVerbSpec>> = {
   'native.clipboard.write': {
     params: clipboardWriteParamsSchema,
@@ -114,9 +122,13 @@ export const BRIDGE_NATIVE_VERBS: Readonly<Record<BridgeNativeVerb, BridgeNative
     params: mediaReleaseParamsSchema,
     result: mediaReleaseResultSchema
   },
+  // Optional beside the trio: a page without it names a picked file from its mime.
+  'native.media.name': {
+    params: mediaNameParamsSchema,
+    result: mediaNameResultSchema
+  },
   // Dictation's capture. Their shapes live in `bridge-audio-verbs.ts` for the media trio's reason:
-  // the pull, its ring and the wake tag that outlives it are one contract, and the wake lock is
-  // here rather than beside `navigate` because nothing but a capture asks for one.
+  // the pull, its ring and the tail the stop carries back are one contract.
   'native.audio.start': {
     params: audioStartParamsSchema,
     result: audioStartResultSchema
@@ -129,9 +141,9 @@ export const BRIDGE_NATIVE_VERBS: Readonly<Record<BridgeNativeVerb, BridgeNative
     params: audioStopParamsSchema,
     result: audioStopResultSchema
   },
-  'native.wakelock.set': {
-    params: wakelockSetParamsSchema,
-    result: wakelockSetResultSchema
+  'native.storage.read': {
+    params: storageReadParamsSchema,
+    result: storageReadResultSchema
   }
 }
 

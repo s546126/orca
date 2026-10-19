@@ -1,6 +1,7 @@
 import { ipcRenderer } from 'electron'
 import type { PreloadApi } from '../api-types'
 import type { BrowserUserAgentMode } from '../../shared/browser-user-agent-mode'
+import type { GrabIntent } from '../../shared/browser-grab-types'
 
 export const browserPageInteractionAndSessionsApi = {
   onContextMenuRequested: (
@@ -61,6 +62,29 @@ export const browserPageInteractionAndSessionsApi = {
     ipcRenderer.on('browser:activateView', listener)
     return () => ipcRenderer.removeListener('browser:activateView', listener)
   },
+  onCapturePaintHold: (
+    callback: (data: { browserPageId: string; held: boolean }) => void
+  ): (() => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      data: { browserPageId: string; held: boolean }
+    ) => callback(data)
+    ipcRenderer.on('browser:capturePaintHold', listener)
+    return () => ipcRenderer.removeListener('browser:capturePaintHold', listener)
+  },
+  onAgentInputFocusGuard: (
+    callback: (data: { browserPageId: string; token: string; active: boolean }) => void
+  ): (() => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      data: { browserPageId: string; token: string; active: boolean }
+    ) => callback(data)
+    ipcRenderer.on('browser:agentInputFocusGuard', listener)
+    return () => ipcRenderer.removeListener('browser:agentInputFocusGuard', listener)
+  },
+  agentInputFocusGuardReady: (token: string, composing: boolean): void => {
+    ipcRenderer.send('browser:agentInputFocusGuardReady', { token, composing })
+  },
   onPaneFocus: (
     callback: (data: { worktreeId: string | null; browserPageId: string }) => void
   ): (() => void) => {
@@ -95,9 +119,14 @@ export const browserPageInteractionAndSessionsApi = {
   }) => ipcRenderer.invoke('browser:captureSelectionScreenshot', args),
   extractHoverPayload: (args: { browserPageId: string }) =>
     ipcRenderer.invoke('browser:extractHoverPayload', args),
-  onGrabModeToggle: (callback: (browserPageId: string) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, browserPageId: string) =>
-      callback(browserPageId)
+  onGrabModeToggle: (
+    callback: (browserPageId: string, intent: GrabIntent) => void
+  ): (() => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      browserPageId: string,
+      intent: GrabIntent
+    ) => callback(browserPageId, intent)
     ipcRenderer.on('browser:grabModeToggle', listener)
     return () => ipcRenderer.removeListener('browser:grabModeToggle', listener)
   },
@@ -114,6 +143,7 @@ export const browserPageInteractionAndSessionsApi = {
   sessionListProfiles: () => ipcRenderer.invoke('browser:session:listProfiles'),
   prepareSshWorkspacePartition: (args: {
     targetId: string
+    expectedSshTargetGeneration?: number
     browserProfileId?: string
     skipProbe?: boolean
   }): Promise<{ partition: string }> =>

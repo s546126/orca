@@ -14,6 +14,7 @@ import type {
 } from '../../shared/automations-types'
 import { resolveAutomationRunTarget, type AutomationRunTargetResult } from './run-target-resolution'
 import type { AutomationRunWriter } from './automation-run-writer'
+import { wslMoveRepoBackoff } from '../persistence/moving-wsl-projects/wsl-move-background-backoff'
 
 export const NO_DISPATCH_HOST = 'No Orca window was available to launch the automation.'
 
@@ -24,6 +25,14 @@ export const UNEVALUABLE_SCHEDULE =
 /** A record the authority refuses to execute at all, with no target diagnosis of its own. */
 export const NO_RUNNABLE_HOST = 'This automation has no host to run on.'
 
+/** A move is taking its project; the schedule keeps ticking, so runs resume once it finishes. */
+export const WSL_MOVE_IN_PROGRESS =
+  "This automation's project is moving to its WSL host, so Orca skipped this run. Runs resume when the move finishes."
+
+/** The WSL host owns its project now; this retained local copy never runs again. */
+export const WSL_MOVE_OWNED_BY_HOST =
+  "This automation's project now runs on its WSL host, which runs this automation there. Orca no longer runs this local copy."
+
 /** Every reason this occurrence cannot start, decided before a run row exists so
  *  the scheduler can fold repeats instead of writing one row each. */
 export function describeScheduledRefusal(input: {
@@ -32,6 +41,11 @@ export function describeScheduledRefusal(input: {
 }): string | null {
   if (!input.target.ok) {
     return input.target.error
+  }
+  // Refused here, before a run row or a worktree create, so repeats fold into one skip.
+  const backoff = wslMoveRepoBackoff(input.target.repo)
+  if (backoff) {
+    return backoff === 'moving' ? WSL_MOVE_IN_PROGRESS : WSL_MOVE_OWNED_BY_HOST
   }
   return input.canDispatch ? null : NO_DISPATCH_HOST
 }
@@ -43,17 +57,17 @@ export function describeScheduledRefusal(input: {
  * and doc:94 asks for both. Never dispatches: the reason is the one the
  * scheduler would have written for the same record.
  */
-export function recordRefusedAutomationRun(input: {
+export async function recordRefusedAutomationRun(input: {
   store: Store
   runs: AutomationRunWriter
   automation: Automation
   allowRemoteHostScheduling: boolean
-}): void {
+}): Promise<void> {
   const target = resolveAutomationRunTarget(input.store, input.automation, {
     allowRemoteHostScheduling: input.allowRemoteHostScheduling
   })
-  const run = input.runs.createRun(input.automation, Date.now(), 'manual')
-  input.runs.updateRun({
+  const run = await input.runs.createRun(input.automation, Date.now(), 'manual')
+  await input.runs.updateRun({
     runId: run.id,
     status: 'skipped_unavailable',
     workspaceId: input.automation.workspaceId,
@@ -66,21 +80,24 @@ export function recordRefusedAutomationRun(input: {
  * stalled. Folds on the fixed sentence and the unchanged nextRunAt, so a record that stays
  * broken writes one row rather than one per tick, and never throws back into the tick.
  */
-export function recordUnevaluableAutomation(input: {
+export async function recordUnevaluableAutomation(input: {
   runs: AutomationRunWriter
   automation: Automation
   error: unknown
-}): void {
+}): Promise<void> {
   const { automation } = input
   try {
     // nextRunAt deliberately stays put: the record is retried so a repaired schedule resumes
     // on its own. The fold is what keeps that from writing a row — and logging — every tick.
-    if (input.runs.repeatSkip(automation.id, UNEVALUABLE_SCHEDULE, automation.nextRunAt)) {
+    if (await input.runs.repeatSkip(automation.id, UNEVALUABLE_SCHEDULE, automation.nextRunAt)) {
       return
     }
     console.error('[automations] failed to evaluate automation:', automation.id, input.error)
-    const run = input.runs.createRun(automation, automation.nextRunAt)
-    input.runs.updateRun({
+    const run = await input.runs.createRun(automation, automation.nextRunAt)
+    if (run.status !== 'pending') {
+      return
+    }
+    await input.runs.updateRun({
       runId: run.id,
       status: 'skipped_unavailable',
       workspaceId: automation.workspaceId,
@@ -101,12 +118,12 @@ export function recordUnevaluableAutomation(input: {
  * Sends the dispatch request through the renderer channel, closing the run out as
  * `dispatch_failed` when the send throws — a failed send is not an unreadable schedule.
  */
-export function sendRendererDispatch(
+export async function sendRendererDispatch(
   channel: Pick<WebContents, 'send'> | null,
   payload: AutomationDispatchRequest,
   runs: AutomationRunWriter,
   run: AutomationRun
-): AutomationRun {
+): Promise<AutomationRun> {
   try {
     channel?.send('automations:dispatchRequested', payload)
     return run
@@ -153,13 +170,16 @@ export function missedBeyondGrace(input: {
   return input.now - input.scheduledFor > graceMs + jitterMs
 }
 
-export function recordMissedRun(input: {
+export async function recordMissedRun(input: {
   runs: AutomationRunWriter
   automation: Automation
   scheduledFor: number
-}): void {
-  const missed = input.runs.createRun(input.automation, input.scheduledFor)
-  input.runs.updateRun({
+}): Promise<void> {
+  const missed = await input.runs.createRun(input.automation, input.scheduledFor)
+  if (missed.status !== 'pending') {
+    return
+  }
+  await input.runs.updateRun({
     runId: missed.id,
     status: 'skipped_missed',
     workspaceId: input.automation.workspaceId,

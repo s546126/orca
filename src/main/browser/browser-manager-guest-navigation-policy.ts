@@ -4,6 +4,7 @@ import {
 } from '../../shared/browser-url'
 import { isChromiumInternalErrorUrl } from './browser-manager-types'
 import { BrowserManagerGuestPopupPolicy } from './browser-manager-guest-popup-policy'
+import { allowPageUnload } from './browser-guest-unload-policy'
 
 export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManagerGuestPopupPolicy {
   protected installGuestNavigationPolicy(guest: Electron.WebContents): () => void {
@@ -12,7 +13,7 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
       if (url.startsWith('blob:https://') || url.startsWith('blob:http://')) {
         return true
       }
-      // Why: initial file:// attach is allowed for user-opened previews, but block later file:// redirects so remote pages can't probe the FS.
+      // Why: initial file:// attach is allowed for user-opened previews, but block web → file:// navs and redirects so remote pages can't probe the FS.
       if (url.startsWith('file:')) {
         event.preventDefault()
         return false
@@ -25,6 +26,15 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
       return true
     }
 
+    const willNavigateHandler = (event: Electron.Event, url: string): void => {
+      // Why: a local page's own links (e.g. relative <a href>) stay file:// → file://, as in Chrome;
+      // web pages still can't navigate into the filesystem.
+      if (url.startsWith('file:') && guest.getURL().startsWith('file:')) {
+        return
+      }
+      navigationGuard(event, url)
+    }
+
     const willRedirectHandler = (
       event: Electron.Event,
       url: string,
@@ -35,7 +45,7 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
         return
       }
       this.updatePendingNavigationForRedirect(guest.id, url)
-      this.applyGoogleAuthUserAgent(guest, url, { duringRedirect: true })
+      void this.retargetTabIdentity(guest, url)
     }
 
     const didFailLoadHandler = (
@@ -51,8 +61,8 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
       // Why: a nav that never committed must not leave its target standing as the tab's host.
       const failedNavigationWasCurrent = this.failPendingNavigation(guest.id, validatedURL)
       if (failedNavigationWasCurrent) {
-        // The attempted host never committed, so restore every UA layer to the document that remains.
-        this.applyGoogleAuthUserAgent(guest, guest.getURL())
+        // Restore the identity of the document that remains (usually the failed URL's error page).
+        void this.retargetTabIdentity(guest, guest.getURL())
       }
       const browserPageId = this.tabIdByWebContentsId.get(guest.id)
       const certificateFailure = browserPageId
@@ -91,7 +101,7 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
     const didStartNavigationHandler = (
       _event: Electron.Event,
       url: string,
-      _isInPlace: boolean,
+      isInPlace: boolean,
       isMainFrame: boolean
     ): void => {
       if (!isMainFrame || isChromiumInternalErrorUrl(url)) {
@@ -100,7 +110,7 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
       // Why: getURL() still reports the previous committed URL until this navigation commits, so
       // every UA writer must read the in-flight target or they disagree about the tab's host.
       this.startPendingNavigation(guest.id, url)
-      this.applyGoogleAuthUserAgent(guest, url)
+      void this.presentTabIdentityAtNavigationStart(guest, url, isInPlace)
       this.certificateTrustController?.onMainFrameNavigationStarted(guest.id)
       // Why: a pre-registration failure belongs only to its own nav; a replacement nav must not replay it.
       this.pendingLoadFailuresByGuestId.delete(guest.id)
@@ -121,13 +131,17 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
       // Why: a committed nav makes the did-start-navigation stash obsolete; drop it so a later ERR_ABORTED can't restore an error over it.
       this.clearedLoadErrorsByGuestId.delete(guest.id)
       this.certificateTrustController?.onMainFrameNavigationCommitted(guest.id, url)
+      // Why: an offscreen page has no renderer to publish its row, so this commit is the only
+      // moment paired clients can learn the new url — every failure path above already announces.
+      this.notifyBrowserGuestStateChanged(guest.id)
     }
 
-    guest.on('will-navigate', navigationGuard)
+    guest.on('will-navigate', willNavigateHandler)
     guest.on('will-redirect', willRedirectHandler)
     guest.on('did-start-navigation', didStartNavigationHandler)
     guest.on('did-navigate', didNavigateHandler)
     guest.on('did-fail-load', didFailLoadHandler)
+    guest.on('will-prevent-unload', allowPageUnload)
     const handleDestroyed = (): void => {
       const browserTabId = this.tabIdByWebContentsId.get(guest.id)
       // A destroyed primary guest also owns per-page callbacks that capture its WebContents.
@@ -146,11 +160,12 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
         // guest may already be destroyed
       }
       if (!guest.isDestroyed()) {
-        guest.off('will-navigate', navigationGuard)
+        guest.off('will-navigate', willNavigateHandler)
         guest.off('will-redirect', willRedirectHandler)
         guest.off('did-start-navigation', didStartNavigationHandler)
         guest.off('did-navigate', didNavigateHandler)
         guest.off('did-fail-load', didFailLoadHandler)
+        guest.off('will-prevent-unload', allowPageUnload)
       }
     }
   }

@@ -3,14 +3,17 @@ import type { AgentJournalMessageItem } from '../../shared/agent-session-journal
 import { retireClaudeDispatchWaiters } from './claude-structured-dispatch'
 import type { ClaudeSession } from './claude-structured-session-state'
 import { ClaudeBackgroundTaskTracker } from './claude-background-task-tracker'
+import { ClaudeChildWorkDecoder } from './claude-child-work-decoder'
 import { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
+import { createClaudeInitProof } from './claude-structured-init-proof'
+import { claudeProviderHandleLink } from './claude-structured-owner-identity'
 
 export function sessionFor(send: Mock = vi.fn().mockResolvedValue(undefined)): ClaudeSession {
   return {
     connection: { send } as unknown as ClaudeSession['connection'],
     providerSessionId: 'provider-session',
-    claudeConfigDir: '/accounts/claude',
     leafUuid: null,
+    turnEndLeafUuid: null,
     fence: 1,
     acquisitionGeneration: 'generation-1',
     prompts: {} as ClaudeSession['prompts'],
@@ -18,6 +21,7 @@ export function sessionFor(send: Mock = vi.fn().mockResolvedValue(undefined)): C
     retiredDispatchWaiters: [],
     replayContentFallbackBlocked: false,
     backgroundTasks: new ClaudeBackgroundTaskTracker(),
+    childWork: new ClaudeChildWorkDecoder(),
     commands: new ClaudeSlashCommandCatalog(),
     dispatchSequence: 0,
     optionMutationSequence: 0,
@@ -26,9 +30,24 @@ export function sessionFor(send: Mock = vi.fn().mockResolvedValue(undefined)): C
     reportedModelMutation: 0,
     confirmedOptions: new Set(),
     restoreSkippedOptions: new Set(),
+    launchedModel: null,
+    fastModeAtStart: false,
     capabilities: [],
     events: undefined,
-    translator: null
+    translator: null,
+    link: claudeProviderHandleLink({
+      sessionId: 'provider-session',
+      leafUuid: null,
+      resumed: false,
+      fence: 1,
+      observedAt: 1
+    }),
+    initialization: {
+      proof: createClaudeInitProof(),
+      account: undefined,
+      resumesTranscript: false,
+      onLateRefusal: () => {}
+    }
   }
 }
 

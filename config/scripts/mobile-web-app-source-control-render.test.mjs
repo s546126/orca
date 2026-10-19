@@ -243,13 +243,13 @@ describeRender(
     it('serves the shipped image policy and neither route violates it', async () => {
       // The policy the shells send, read from the Kotlin source rather than restated, so this
       // cannot pass against a header the app does not use.
-      expect(cspHeader).toContain("img-src 'self' data: https:")
+      expect(cspHeader).toContain("img-src 'self' data: blob: https:")
       const swift = await readFile(
         join(projectDir, 'mobile/modules/orca-mobile-web-shell/ios/MobileWebShellCsp.swift'),
         'utf8'
       )
       // The other shell says the same thing, which no served header can show.
-      expect(swift).toContain(`"img-src 'self' data: https:"`)
+      expect(swift).toContain(`"img-src 'self' data: blob: https:"`)
 
       for (const [route, text] of [
         [HUB_ROUTE, 'Source Control'],
@@ -283,10 +283,8 @@ describeRender(
  * this tree by driving the page with the double. Scripting that chain would put five hand-written
  * fixtures against five Zod schemas into a transport double, which is the thing the harness's own
  * docstring says it must not become. So neither the comment avatar nor the drawer is exercised on
- * this page at all: the avatar's branch is the component test named in the header, and the drawer's
- * scroll handler is answered by `mobile/src/components/right-drawer-scroll-handler.test.ts`, which
- * records the two static facts that make the missing dependency array unobservable. The behavioural
- * scroll probe belongs with the device proof, which reaches a real PR.
+ * this page at all: the avatar's branch is the component test named in the header. The drawer's
+ * scroll behavior belongs with the device proof, which reaches a real PR.
  *
  * **The seams.** The external-link, clipboard and router seams this series moved are each reached
  * from a control that only renders once the screens have provider data, for the same reason. They

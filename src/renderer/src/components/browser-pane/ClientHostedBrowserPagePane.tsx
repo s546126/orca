@@ -16,7 +16,6 @@ import {
   startBrowserClientPageMetadataPublisher
 } from './browser-client-page-metadata-reporting'
 import { attachBrowserClientPageToViewport } from './browser-client-page-renderer-installation'
-import { useBrowserClientHostedDownloadNotices } from './browser-client-hosted-download-notices'
 import { useBrowserClientHostedPopupNotices } from './browser-client-hosted-popup-notices'
 import { useBrowserClientHostedPermissionNotices } from './browser-client-hosted-permission-notices'
 import { useClientHostedBrowserIntroTour } from './use-client-hosted-browser-intro-tour'
@@ -115,11 +114,9 @@ export function ClientHostedBrowserPagePane({
   }, [browserTab.id, isActive, onUpdatePageState])
 
   const guestFocus = useWebviewGuestFocus(webviewRef)
+  const shortcutOwner = { browserTabId: browserTab.id, workspaceId, isActive, chromeShortcutScope }
   const { keepAddressBarFocusRef, startAddressBarFocusGrab } = useBrowserPageChromeFocus({
-    browserTabId: browserTab.id,
-    workspaceId,
-    isActive,
-    chromeShortcutScope,
+    ...shortcutOwner,
     addressBarInputRef,
     guestFocus
   })
@@ -141,22 +138,17 @@ export function ClientHostedBrowserPagePane({
     onUpdatePageStateRef
   })
 
-  useBrowserClientHostedDownloadNotices(browserTab.id)
   useBrowserClientHostedPopupNotices(browserTab.id)
   useBrowserClientHostedPermissionNotices(browserTab.id)
   // Why: the tour points at controls that cannot work yet, and recording the interaction is a
   // one-way write that would burn the tour on a pane the user has not really seen.
   useClientHostedBrowserIntroTour(isActive && !attachmentError && placement !== null)
   useBrowserPageFindShortcuts({
-    browserTabId: browserTab.id,
-    workspaceId,
-    isActive,
-    chromeShortcutScope,
+    ...shortcutOwner,
     setFindOpen
   })
   useBrowserPageWebviewShortcuts({
-    browserTabId: browserTab.id,
-    isActive,
+    ...shortcutOwner,
     isActiveRef,
     webviewRef,
     paneZoomLevelRef: zoom.paneZoomLevelRef,
@@ -425,6 +417,7 @@ export function ClientHostedBrowserPagePane({
             runtimeEnvironmentId={runtimeEnvironmentId}
             worktreeId={worktreeId}
             lastCommittedUrl={browserTab.url}
+            placementHostClientId={browserHostClientId}
           />
         ) : null}
       </div>

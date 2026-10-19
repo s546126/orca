@@ -1,11 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { readFileSync, rmSync, mkdtempSync } from 'node:fs'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
-import type { WorkspaceSessionState } from '../shared/workspace-session-state-types'
-import { getDefaultWorkspaceSession } from '../shared/constants'
-import { isTerminalLeafId } from '../shared/stable-pane-id'
 import {
+  closeTestStores,
   testState,
   createStore,
   dataFile,
@@ -16,6 +10,14 @@ import {
   makeWorktreeLineage,
   makeWorkspaceLineage
 } from './persistence-test-harness'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { readFileSync, rmSync, mkdtempSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import type { WorkspaceSessionState } from '../shared/workspace-session-state-types'
+import { getDefaultWorkspaceSession } from '../shared/constants'
+import { isTerminalLeafId } from '../shared/stable-pane-id'
+
 import { worktreeWorkspaceKey } from '../shared/workspace-scope'
 
 // Stub the ~/.ssh/config parser so the SSH-import test drives the real Store with deterministic hosts, not the operator's actual ~/.ssh/config.
@@ -24,7 +26,7 @@ const { loadUserSshConfigMock, sshConfigHostsToTargetsMock } = vi.hoisted(() => 
   sshConfigHostsToTargetsMock: vi.fn()
 }))
 
-vi.mock('./ssh/ssh-config-parser', () => ({
+vi.mock('./ssh/config/ssh-config-parser', () => ({
   loadUserSshConfig: loadUserSshConfigMock,
   sshConfigHostsToTargets: sshConfigHostsToTargetsMock
 }))
@@ -63,7 +65,8 @@ describe('Store host-partitioned workspace sessions', () => {
     testState.dir = mkdtempSync(join(tmpdir(), 'orca-test-'))
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await closeTestStores()
     rmSync(testState.dir, { recursive: true, force: true })
   })
 
@@ -309,6 +312,20 @@ describe('Store host-partitioned workspace sessions', () => {
     expect(store.getWorkspaceSession('runtime:env-a').activeRepoId).toBe('repo-a2')
     expect(store.getWorkspaceSession('runtime:env-b').activeRepoId).toBe('repo-b')
     expect(store.getWorkspaceSession('local').activeRepoId).toBe('repo-local')
+  })
+
+  it('names the one partition each session write changed', async () => {
+    const store = await createStore()
+    store.setWorkspaceSession(makeHostSession('repo-a'), 'runtime:env-a')
+    const written: (string | null)[] = []
+    store.onWorkspaceSessionWritten((hostId) => written.push(hostId))
+
+    store.setWorkspaceSession(makeHostSession('repo-local'), 'local')
+    store.setWorkspaceSession(makeHostSession('repo-a2'), 'runtime:env-a')
+    store.patchWorkspaceSession({ activeTabId: 'tab-a' }, 'runtime:env-a')
+    store.removeWorkspaceSessionHost('runtime:env-a')
+
+    expect(written).toEqual(['local', 'runtime:env-a', 'runtime:env-a', 'runtime:env-a'])
   })
 
   it('patches a single host partition without touching the others', async () => {

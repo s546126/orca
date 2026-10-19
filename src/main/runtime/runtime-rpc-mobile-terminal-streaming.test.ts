@@ -1,3 +1,4 @@
+import { pairedRuntimeConnectionFromOffer } from '../../shared/paired-runtime-connection'
 import { mkdtempSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -405,10 +406,12 @@ describe('OrcaRuntimeRpcServer', () => {
     // Why: a remote-host runtime proxy only implements RPC-forwarded methods;
     // activation is a local-host concern, so the proxy legitimately lacks
     // activateRecentPtyPathCandidateTracking and onReady must not throw.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the proxy fake carries only the surface the auth and status paths under test read.
     const runtimeProxy = {
       configureNotificationDismissalStore: () => {},
       getRuntimeId: () => 'proxy-runtime-test',
       getStartedAt: () => 1,
+      machineNameReady: async () => undefined,
       getStatus: () => ({ graphStatus: 'unavailable' }),
       cleanupSubscriptionsForConnection: () => {},
       cancelMobileDictationForConnection: () => {},
@@ -532,7 +535,7 @@ describe('OrcaRuntimeRpcServer', () => {
     const binaryFrames: Uint8Array<ArrayBufferLike>[] = []
     const onError = vi.fn()
     const subscription = await subscribeRemoteRuntimeRequest(
-      pairing,
+      pairedRuntimeConnectionFromOffer(pairing),
       'terminal.multiplex',
       {},
       15_000,

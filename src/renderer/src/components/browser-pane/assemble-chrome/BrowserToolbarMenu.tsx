@@ -12,6 +12,7 @@ import {
 import { BrowserToolbarMenuDropdown } from './browser-toolbar-menu-dropdown'
 import { BrowserToolbarProfileDialogs } from './browser-toolbar-profile-dialogs'
 import { translate } from '@/i18n/i18n'
+import type { BrowserChromeOverflowMenuProps } from './browser-chrome-folded-tools'
 
 type BrowserToolbarMenuProps = {
   currentProfileId: string | null
@@ -20,6 +21,9 @@ type BrowserToolbarMenuProps = {
   viewportPresetId: BrowserViewportPresetId | null
   onDestroyWebview: () => void
   isActive: boolean
+  /** Set only on a local HTML page whose file the editor can open. */
+  onOpenSourceFile?: (() => void) | null
+  overflow: BrowserChromeOverflowMenuProps
 }
 
 export function BrowserToolbarMenu({
@@ -28,7 +32,9 @@ export function BrowserToolbarMenu({
   browserPageId,
   viewportPresetId,
   onDestroyWebview,
-  isActive
+  isActive,
+  onOpenSourceFile,
+  overflow
 }: BrowserToolbarMenuProps): React.JSX.Element {
   const browserSessionProfiles = useAppStore((s) => s.browserSessionProfiles)
   const detectedBrowsers = useAppStore((s) => s.detectedBrowsers)
@@ -241,6 +247,8 @@ export function BrowserToolbarMenu({
         onImportFromFile={() => void handleImportFromFile()}
         viewportPresetId={viewportPresetId}
         onApplyViewportPreset={applyViewportPreset}
+        onOpenSourceFile={onOpenSourceFile}
+        overflow={overflow}
       />
 
       <BrowserToolbarProfileDialogs

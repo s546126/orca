@@ -1,6 +1,7 @@
 import { repositionOverlay } from './selection-overlay'
 import { shouldRouteScrollToTerminalInput } from './mouse-input-encoding'
 import type { TerminalDocumentScope } from './document-scope'
+import { getCellWidth, getTotalScale } from './cell-metrics'
 
 // Why: after init() the initial scrollback applyFitScale may have run
 // against an empty buffer (or one without the widest line yet). Re-fit
@@ -17,17 +18,6 @@ export function flog(scope: TerminalDocumentScope, tag: string, payload: Record<
       payload: payload
     })
   } catch {}
-}
-
-export function getCellWidth(scope: TerminalDocumentScope) {
-  if (!scope.term || !scope.term._core) {
-    return 0
-  }
-  const core = scope.term._core
-  if (core._renderService && core._renderService.dimensions) {
-    return core._renderService.dimensions.css.cell.width || 0
-  }
-  return 0
 }
 
 // Why: width measurement strategy.
@@ -50,12 +40,12 @@ export function computeFitScale(scope: TerminalDocumentScope) {
   if (termWidth <= 0) {
     return 1
   }
-  const vpWidth = window.innerWidth
+  const vpWidth = scope.viewportRect().width
+  // Why: a viewport with no width yet (a page host never laid out) would give scale 0 and blank the grid.
+  if (vpWidth <= 0) {
+    return 1
+  }
   return Math.min(1, vpWidth / termWidth)
-}
-
-export function getTotalScale(scope: TerminalDocumentScope) {
-  return scope.currentScale * scope.userScale
 }
 
 export function updateTransform(scope: TerminalDocumentScope) {
@@ -83,7 +73,7 @@ export function updateScrollIndicator(scope: TerminalDocumentScope, reveal: bool
     scope.scrollIndicator.classList.remove('visible')
     return
   }
-  const trackHeight = Math.max(0, window.innerHeight - 8)
+  const trackHeight = Math.max(0, scope.viewportRect().height - 8)
   const totalRows = maxViewportY + (scope.term.rows || 0)
   if (trackHeight <= 0 || totalRows <= 0) {
     return
